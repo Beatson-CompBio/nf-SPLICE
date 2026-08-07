@@ -16,8 +16,11 @@ from nf_splice.domain.authoring import (
 )
 from nf_splice.domain.components import ComponentCandidate, ReviewedComponent
 from nf_splice.domain.execution import (
-    EnvironmentUse,
+    ContainerEngine,
+    ExecutionEngine,
+    ExecutionExecutor,
     ExecutionProfileCandidate,
+    ExecutionProfileType,
     ReviewedExecutionProfile,
 )
 from nf_splice.domain.inputs import (
@@ -51,8 +54,6 @@ from nf_splice.domain.outputs import (
 )
 from nf_splice.domain.provenance import (
     ProvenanceCandidate,
-    ProvenanceStrategy,
-    ReviewedAuthor,
     ReviewedProvenance,
 )
 from nf_splice.domain.serialization import (
@@ -68,14 +69,17 @@ __all__ = [
     "AuthoringDocument",
     "AuthoringDocumentError",
     "ComponentCandidate",
+    "ContainerEngine",
     "Decision",
     "DecisionStatus",
     "EntryType",
-    "EnvironmentUse",
     "Evidence",
     "EvidenceKind",
     "EvidenceProvenance",
+    "ExecutionEngine",
+    "ExecutionExecutor",
     "ExecutionProfileCandidate",
+    "ExecutionProfileType",
     "InputCandidate",
     "InputClassification",
     "InspectedPath",
@@ -96,10 +100,8 @@ __all__ = [
     "PathClassification",
     "PipelineIdentity",
     "ProvenanceCandidate",
-    "ProvenanceStrategy",
     "RepositoryEvidence",
     "RepositoryInspection",
-    "ReviewedAuthor",
     "ReviewedComponent",
     "ReviewedExecutionProfile",
     "ReviewedInput",
