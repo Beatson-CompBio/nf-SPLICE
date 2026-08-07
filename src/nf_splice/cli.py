@@ -9,7 +9,7 @@ from typing import Annotated
 import typer
 
 from nf_splice import __version__
-from nf_splice.domain import OutputCandidate
+from nf_splice.domain import InputCandidate, OutputCandidate
 from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.runtime import (
     AnalysisOutputError,
@@ -20,10 +20,16 @@ from nf_splice.services import (
     ApplicationService,
     AuthoringOperationError,
     ChangeKind,
+    ComponentReviewError,
+    InputReviewError,
     Operation,
     OutputReviewError,
+    StateMigrationError,
+    StaticChangeKind,
     WorkspaceSnapshot,
     apply_output_decision_file,
+    unresolved_component_candidates,
+    unresolved_input_candidates,
     unresolved_output_candidates,
 )
 
@@ -76,7 +82,10 @@ SetFieldOption = Annotated[
     list[str] | None,
     typer.Option(
         "--set",
-        help="Repeat CANDIDATE_ID.FIELD=VALUE for explicit non-interactive review.",
+        help=(
+            "Repeat PARAMETER=CLASSIFICATION or CANDIDATE_ID.FIELD=VALUE for "
+            "explicit non-interactive review."
+        ),
     ),
 ]
 
@@ -181,7 +190,7 @@ def init_command(
         help="Explicitly accept unambiguous identity evidence detected in config/Git.",
     ),
 ) -> None:
-    """Initialise nf-splice.yaml with reviewed pipeline identity."""
+    """Initialise splice/nf-splice.yaml with reviewed pipeline identity."""
     try:
         document = _service.initialise(
             repository,
@@ -195,9 +204,49 @@ def init_command(
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
     typer.echo(
-        f"Initialised {repository / 'nf-splice.yaml'} for "
+        f"Initialised {repository / 'splice' / 'nf-splice.yaml'} for "
         f"{document.pipeline.name} {document.pipeline.version}."
     )
+
+
+@app.command("migrate-state")
+def migrate_state_command(
+    repository: RepositoryOption = Path("."),
+    apply: bool = typer.Option(
+        False,
+        "--apply",
+        help="Apply the displayed migration while preserving legacy source files.",
+    ),
+) -> None:
+    """Preview or explicitly apply legacy root-state reconciliation."""
+    try:
+        result = (
+            _service.apply_state_migration(repository)
+            if apply
+            else _service.plan_state_migration(repository)
+        )
+    except (OSError, StateMigrationError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if not result.changes:
+        typer.echo("No repository-root legacy state was detected.")
+        return
+    for change in result.changes:
+        typer.echo(
+            f"{change.kind.value}: {change.source.relative_to(repository)} -> "
+            f"{change.destination.relative_to(repository)}"
+        )
+    if apply:
+        if result.wrote:
+            typer.echo(
+                "Migration applied atomically; legacy source files were preserved."
+            )
+        else:
+            typer.echo("Canonical state is already byte-identical; no files changed.")
+    else:
+        typer.echo(
+            "Preview complete; repository was not changed. Pass --apply to migrate."
+        )
 
 
 def _parse_field_reviews(
@@ -249,13 +298,18 @@ def _parse_field_reviews(
     return reviews
 
 
-def _export_unresolved(
-    path: Path | None, candidates: tuple[OutputCandidate, ...]
-) -> None:
+def _export_unresolved(path: Path | None, candidates: tuple[object, ...]) -> None:
     if path is None:
         return
     content = (
-        json.dumps([item.model_dump(mode="json") for item in candidates], indent=2)
+        json.dumps(
+            [
+                item.model_dump(mode="json")
+                for item in candidates
+                if hasattr(item, "model_dump")
+            ],
+            indent=2,
+        )
         + "\n"
     )
     if str(path) == "-":
@@ -280,11 +334,103 @@ def configure_command(
             "pipeline version."
         ),
     ),
+    accept_detected: bool = typer.Option(
+        False,
+        help="Explicitly accept every detected component without conflicts.",
+    ),
 ) -> None:
     """Discover and explicitly review one integration layer."""
-    if layer != "outputs":
+    if layer not in {"inputs", "outputs", "components"}:
         _unavailable(Operation.CONFIGURE)
     try:
+        if layer == "inputs":
+            document = _service.discover_inputs(repository)
+            input_candidates = unresolved_input_candidates(document)
+            input_reviews: list[dict[str, object]] = []
+            if decision_file is not None:
+                loaded: object = json.loads(decision_file.read_text(encoding="utf-8"))
+                if not isinstance(loaded, list) or not all(
+                    isinstance(item, dict) for item in loaded
+                ):
+                    raise InputReviewError(
+                        "input decision file must contain a JSON array"
+                    )
+                input_reviews.extend(loaded)
+            input_reviews.extend(
+                _parse_input_reviews(input_candidates, set_field or [])
+            )
+            for review in input_reviews:
+                name = str(review.get("parameter", ""))
+                candidate_id = name if name.startswith("input:") else f"input:{name}"
+                document = _service.review_input(
+                    repository,
+                    candidate_id,
+                    str(review.get("classification", "")),
+                    type_override=(
+                        str(review["type"]) if review.get("type") is not None else None
+                    ),
+                    description_override=(
+                        str(review["description"])
+                        if review.get("description") is not None
+                        else None
+                    ),
+                )
+            input_candidates = unresolved_input_candidates(document)
+            _export_unresolved(export_unresolved, input_candidates)
+            if input_candidates:
+                typer.echo(
+                    f"{len(input_candidates)} input parameter(s) still require review.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            typer.echo("Input review is complete; canonical authoring state saved.")
+            return
+
+        if layer == "components":
+            document = _service.discover_components(repository)
+            if accept_detected:
+                document = _service.accept_unambiguous_components(repository)
+            component_candidates = unresolved_component_candidates(document)
+            component_reviews: list[dict[str, object]] = []
+            if decision_file is not None:
+                loaded = json.loads(decision_file.read_text(encoding="utf-8"))
+                if not isinstance(loaded, list) or not all(
+                    isinstance(item, dict) for item in loaded
+                ):
+                    raise ComponentReviewError(
+                        "component decision file must contain a JSON array"
+                    )
+                component_reviews.extend(loaded)
+            component_reviews.extend(
+                _parse_component_reviews(component_candidates, set_field or [])
+            )
+            for review in component_reviews:
+                candidate_id = str(review.get("component", ""))
+                document = _service.review_component(
+                    repository,
+                    candidate_id,
+                    version=(
+                        str(review["version"])
+                        if review.get("version") is not None
+                        else None
+                    ),
+                    container_uri=(
+                        str(review["container_uri"])
+                        if review.get("container_uri") is not None
+                        else None
+                    ),
+                )
+            component_candidates = unresolved_component_candidates(document)
+            _export_unresolved(export_unresolved, component_candidates)
+            if component_candidates:
+                typer.echo(
+                    f"{len(component_candidates)} component(s) still require review.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            typer.echo("Component review is complete; canonical authoring state saved.")
+            return
+
         result = _service.discover_outputs(
             repository,
             example_output_tree=example_output_tree,
@@ -294,25 +440,88 @@ def configure_command(
         document = result.document
         if decision_file is not None:
             document = apply_output_decision_file(repository, decision_file)
-        candidates = unresolved_output_candidates(document)
-        for candidate_id, review in _parse_field_reviews(candidates, set_field or []):
+        output_candidates = unresolved_output_candidates(document)
+        for candidate_id, review in _parse_field_reviews(
+            output_candidates, set_field or []
+        ):
             if review.get("action") == "reject":
                 document = _service.reject_output(
                     repository, candidate_id, str(review.get("reason", ""))
                 )
             else:
                 document = _service.accept_output(repository, candidate_id, review)
-        candidates = unresolved_output_candidates(document)
-        _export_unresolved(export_unresolved, candidates)
+        output_candidates = unresolved_output_candidates(document)
+        _export_unresolved(export_unresolved, output_candidates)
     except (OSError, ValueError, AuthoringOperationError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
-    if candidates:
+    if output_candidates:
         typer.echo(
-            f"{len(candidates)} output candidate(s) still require review.", err=True
+            f"{len(output_candidates)} output candidate(s) still require review.",
+            err=True,
         )
         raise typer.Exit(code=2)
     typer.echo("Output review is complete; canonical authoring state saved.")
+
+
+def _parse_input_reviews(
+    candidates: tuple[InputCandidate, ...], assignments: list[str]
+) -> list[dict[str, object]]:
+    """Parse repeatable input classifications without interface-side semantics."""
+    by_id = {item.id: item for item in candidates}
+    by_name = {item.name: item.id for item in candidates}
+    grouped: dict[str, dict[str, object]] = {}
+    for assignment in assignments:
+        left, separator, value = assignment.partition("=")
+        if not separator:
+            raise InputReviewError("input --set must contain '='")
+        matched = next(
+            (
+                candidate_id
+                for candidate_id in sorted(by_id, key=len, reverse=True)
+                if left == candidate_id or left.startswith(candidate_id + ".")
+            ),
+            None,
+        )
+        if matched is None:
+            name, dot, field = left.partition(".")
+            matched = by_name.get(name)
+            if matched is None:
+                raise InputReviewError(f"unknown input parameter {name!r}")
+            selected_field = field if dot else "classification"
+        else:
+            selected_field = (
+                left[len(matched) + 1 :] if left != matched else "classification"
+            )
+        grouped.setdefault(matched, {"parameter": matched})[selected_field] = value
+    return list(grouped.values())
+
+
+def _parse_component_reviews(
+    candidates: tuple[object, ...], assignments: list[str]
+) -> list[dict[str, object]]:
+    """Parse explicit component selections against currently unresolved IDs."""
+    identifiers = {str(item.id) for item in candidates if hasattr(item, "id")}
+    grouped: dict[str, dict[str, object]] = {}
+    for assignment in assignments:
+        left, separator, value = assignment.partition("=")
+        if not separator:
+            raise ComponentReviewError("component --set must contain '='")
+        candidate_id = next(
+            (
+                item
+                for item in sorted(identifiers, key=len, reverse=True)
+                if left == item or left.startswith(item + ".")
+            ),
+            None,
+        )
+        if candidate_id is None:
+            raise ComponentReviewError(f"unknown component candidate in {left!r}")
+        field = left[len(candidate_id) + 1 :] if left != candidate_id else "accept"
+        review = grouped.setdefault(candidate_id, {"component": candidate_id})
+        if field != "accept":
+            review[field] = value
+    return list(grouped.values())
 
 
 @app.command("plan")
@@ -326,35 +535,59 @@ def build_command(
     target: str = typer.Argument(help="Integration layer name or 'all'."),
     repository: RepositoryOption = Path("."),
     check: bool = typer.Option(
-        False, help="Show deterministic output-contract changes without writing files."
+        False, help="Show deterministic generated-file changes without writing."
     ),
     replace_existing: bool = typer.Option(
         False,
         help=(
-            "Replace differing recognized output contracts after reviewing their diff."
+            "Replace a differing recognized generated artefact after reviewing "
+            "its diff."
         ),
     ),
 ) -> None:
-    """Build a reviewed integration layer; only outputs is currently available."""
-    if target != "outputs":
+    """Build a reviewed outputs, inputs, or components integration layer."""
+    if target not in {"outputs", "inputs", "components"}:
         _unavailable(Operation.BUILD)
     try:
-        plan = _service.plan_output_contracts(repository)
-        for change in plan.changes:
+        if target in {"inputs", "components"}:
+            static_plan = _service.plan_static_layer(repository, target)
+            typer.echo(f"{static_plan.change.kind.value}: {static_plan.change.path}")
+            if static_plan.change.diff:
+                typer.echo(
+                    static_plan.change.diff,
+                    nl=not static_plan.change.diff.endswith("\n"),
+                )
+            if check:
+                typer.echo("Check complete; repository was not changed.")
+                return
+            static_result = _service.build_static_layer(
+                repository, target, replace_existing=replace_existing
+            )
+            if static_result.wrote:
+                typer.echo(f"Built reviewed {target} artefact.")
+            elif static_result.change.kind is StaticChangeKind.UNCHANGED:
+                typer.echo(
+                    f"Reviewed {target} artefact is byte-identical; no files changed."
+                )
+            return
+        output_plan = _service.plan_output_contracts(repository)
+        for change in output_plan.changes:
             typer.echo(f"{change.kind.value}: {change.path}")
             if change.diff:
                 typer.echo(change.diff, nl=not change.diff.endswith("\n"))
         if check:
             typer.echo("Check complete; repository was not changed.")
             return
-        result = _service.build_output_contracts(
+        output_result = _service.build_output_contracts(
             repository, replace_existing=replace_existing
         )
     except (OSError, ValueError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
-    changed = sum(item.kind is not ChangeKind.UNCHANGED for item in result.changes)
-    if result.wrote:
+    changed = sum(
+        item.kind is not ChangeKind.UNCHANGED for item in output_result.changes
+    )
+    if output_result.wrote:
         typer.echo(f"Built {changed} reviewed output-contract artefact(s).")
     else:
         typer.echo("Output contracts are already byte-identical; no files changed.")
@@ -450,7 +683,7 @@ def validate_analysis_output_command(
 
 @app.command("tui")
 def tui_command(repository: RepositoryOption = Path(".")) -> None:
-    """Open the terminal workspace and guided output-review form."""
+    """Open the terminal workspace and guided layer-review forms."""
     NfSpliceApp(_service.inspect(repository), repository, _service).run()
 
 
