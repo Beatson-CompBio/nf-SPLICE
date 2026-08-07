@@ -21,7 +21,7 @@ class RenderedExecution:
     """Byte-stable execution-profile index and config payloads."""
 
     profiles: str
-    configs: tuple[tuple[str, str], ...]
+    configs: tuple[tuple[str, bytes], ...]
 
 
 def reviewed_execution_profiles(
@@ -64,7 +64,7 @@ def reviewed_execution_profiles(
     return tuple(sorted(reviewed, key=lambda item: item.id))
 
 
-def _read_config(root: Path, relative: str) -> str:
+def _read_config(root: Path, relative: str) -> bytes:
     requested = root / relative
     if requested.is_symlink():
         raise ExecutionProfileRenderError(
@@ -81,7 +81,14 @@ def _read_config(root: Path, relative: str) -> str:
         raise ExecutionProfileRenderError(
             f"execution config source is not a regular file: {relative}"
         )
-    return path.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip() + "\n"
+    payload = path.read_bytes()
+    try:
+        payload.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ExecutionProfileRenderError(
+            f"execution config source must be UTF-8: {relative}"
+        ) from error
+    return payload
 
 
 def render_execution(
@@ -97,10 +104,10 @@ def render_execution(
                 "id": item.id,
                 "name": item.name,
                 "description": item.description,
-                "use": item.use.value,
-                "engine": "nextflow",
-                "executor": item.executor,
-                "container_engine": item.container_engine,
+                "type": item.type.value,
+                "engine": item.engine.value,
+                "executor": item.executor.value,
+                "container_engine": item.container_engine.value,
                 "config": item.config_path,
             }
             for item in reviewed
@@ -108,14 +115,7 @@ def render_execution(
     }
     configs = []
     for item in reviewed:
-        sections = []
-        for source in item.config_sources:
-            content = _read_config(root, source)
-            if source == f"splice/{item.config_path}" and len(item.config_sources) == 1:
-                sections.append(content)
-            else:
-                sections.append(f"// Source: {source}\n{content}")
-        configs.append((item.config_path, "\n".join(sections)))
+        configs.append((item.config_path, _read_config(root, item.config_source)))
     return RenderedExecution(
         profiles=json.dumps(profiles, indent=2, ensure_ascii=False) + "\n",
         configs=tuple(configs),
