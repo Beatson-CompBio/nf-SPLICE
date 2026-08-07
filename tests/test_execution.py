@@ -64,8 +64,11 @@ def test_detected_profiles_require_selection_and_render_byte_identically(
     service.review_execution_profile(
         tmp_path,
         "profile:local",
-        use="development",
+        profile_type="development",
         description="Supported local execution.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/local.config",
     )
     service.reject_execution_profile(
         tmp_path, "profile:cluster", "Cluster environment is not supported."
@@ -73,7 +76,7 @@ def test_detected_profiles_require_selection_and_render_byte_identically(
     preview = service.plan_execution_profiles(tmp_path)
     assert [item.path.name for item in preview.changes] == [
         "execution-profiles.json",
-        "local.config",
+        "profile-local-6c6f63616c.config",
     ]
     assert all(item.kind is StaticChangeKind.CREATE for item in preview.changes)
 
@@ -85,16 +88,76 @@ def test_detected_profiles_require_selection_and_render_byte_identically(
     assert all(item.kind is StaticChangeKind.UNCHANGED for item in repeated.changes)
     assert profiles["profiles"] == [
         {
-            "id": "local",
+            "id": "profile-local-6c6f63616c",
             "name": "Local",
             "description": "Supported local execution.",
-            "use": "development",
+            "type": "development",
             "engine": "nextflow",
             "executor": "local",
             "container_engine": "singularity",
-            "config": "configs/local.config",
+            "config": "configs/profile-local-6c6f63616c.config",
         }
     ]
+    assert (
+        tmp_path / "splice" / "configs" / "profile-local-6c6f63616c.config"
+    ).read_bytes() == (tmp_path / "conf" / "local.config").read_bytes()
+
+
+def test_source_config_must_be_selected_explicitly(tmp_path: Path) -> None:
+    service = _repository(tmp_path)
+    service.discover_execution_profiles(tmp_path)
+
+    with pytest.raises(ExecutionProfileError, match="explicitly selected"):
+        service.review_execution_profile(
+            tmp_path,
+            "profile:local",
+            profile_type="development",
+            description="Supported local execution.",
+            executor="local",
+            container_engine="singularity",
+        )
+
+
+def test_multiple_profiles_may_share_type_and_executor_with_unique_generated_ids(
+    tmp_path: Path,
+) -> None:
+    service = _repository(tmp_path)
+    (tmp_path / "conf" / "slurm.config").write_text(
+        "process { executor = 'local' }\nsingularity.enabled = true\n",
+        encoding="utf-8",
+    )
+    service.discover_execution_profiles(tmp_path)
+    service.review_execution_profile(
+        tmp_path,
+        "profile:local",
+        profile_type="production",
+        description="Production profile for interactive workloads.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/local.config",
+    )
+    service.review_execution_profile(
+        tmp_path,
+        "profile:cluster",
+        profile_type="production",
+        description="Production profile for scheduled workloads.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/slurm.config",
+    )
+
+    service.build_execution_profiles(tmp_path)
+    profiles = json.loads(
+        (tmp_path / "splice" / "execution-profiles.json").read_text()
+    )["profiles"]
+
+    assert len(profiles) == 2
+    assert {item["type"] for item in profiles} == {"production"}
+    assert {item["executor"] for item in profiles} == {"local"}
+    assert {item["id"] for item in profiles} == {
+        "profile-cluster-636c7573746572",
+        "profile-local-6c6f63616c",
+    }
 
 
 def test_incomplete_and_conflicting_profiles_require_explicit_resolution(
@@ -111,20 +174,22 @@ def test_incomplete_and_conflicting_profiles_require_explicit_resolution(
     decisions = {item.id: item for item in document.decisions}
 
     assert decisions["profile:local"].status is DecisionStatus.CONFLICT
-    with pytest.raises(ExecutionProfileError, match="conflicting executor"):
+    with pytest.raises(ExecutionProfileError, match="explicitly selected executor"):
         service.review_execution_profile(
             tmp_path,
             "profile:local",
-            use="test",
+            profile_type="test",
             description="Resolved test environment.",
+            config_source="conf/local.config",
         )
     service.review_execution_profile(
         tmp_path,
         "profile:local",
-        use="test",
+        profile_type="test",
         description="Resolved test environment.",
         executor="local",
         container_engine="docker",
+        config_source="conf/local.config",
     )
 
 
@@ -148,8 +213,11 @@ def test_unsafe_production_config_values_block_all_writes(
     service.review_execution_profile(
         tmp_path,
         "profile:local",
-        use="production",
+        profile_type="production",
         description="Production environment.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/local.config",
     )
     service.reject_execution_profile(tmp_path, "profile:cluster", "Not supported.")
 
@@ -167,15 +235,18 @@ def test_unknown_config_siblings_are_preserved_and_recognized_targets_need_revie
     service.review_execution_profile(
         tmp_path,
         "profile:local",
-        use="development",
+        profile_type="development",
         description="Local environment.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/local.config",
     )
     service.reject_execution_profile(tmp_path, "profile:cluster", "Not supported.")
     configs = tmp_path / "splice" / "configs"
     configs.mkdir()
     unknown = configs / "notes.txt"
     unknown.write_text("preserve me\n", encoding="utf-8")
-    target = configs / "local.config"
+    target = configs / "profile-local-6c6f63616c.config"
     target.write_text("process { executor = 'other' }\n", encoding="utf-8")
 
     with pytest.raises(ExecutionProfileError, match="replace-existing"):
@@ -184,7 +255,7 @@ def test_unknown_config_siblings_are_preserved_and_recognized_targets_need_revie
 
     assert result.wrote
     assert unknown.read_text(encoding="utf-8") == "preserve me\n"
-    assert "Source: conf/local.config" in target.read_text(encoding="utf-8")
+    assert target.read_bytes() == (tmp_path / "conf" / "local.config").read_bytes()
     assert unresolved_execution_profiles(load_repository_document(tmp_path)) == ()
 
 
@@ -221,8 +292,11 @@ def test_reviewed_scientific_parameter_overrides_are_not_copied(
     service.review_execution_profile(
         tmp_path,
         "profile:local",
-        use="development",
+        profile_type="development",
         description="Local environment.",
+        executor="local",
+        container_engine="singularity",
+        config_source="conf/local.config",
     )
     service.reject_execution_profile(tmp_path, "profile:cluster", "Not supported.")
 
