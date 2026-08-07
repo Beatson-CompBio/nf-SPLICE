@@ -65,7 +65,7 @@ class DiscoveryResult:
 
 
 def _document_path(repository_root: str | Path) -> Path:
-    return Path(repository_root).resolve() / "nf-splice.yaml"
+    return Path(repository_root).resolve() / "splice" / "nf-splice.yaml"
 
 
 def _write_document(path: Path, document: AuthoringDocument) -> None:
@@ -110,9 +110,23 @@ def initialise_authoring_document(
 ) -> AuthoringDocument:
     """Create canonical state from explicit or explicitly accepted identity evidence."""
     path = _document_path(repository_root)
+    root = Path(repository_root).resolve()
+    legacy_paths = (root / "nf-splice.yaml", root / "nf-splice.lock.json")
+    legacy = next(
+        (item for item in legacy_paths if item.exists() or item.is_symlink()), None
+    )
+    if legacy is not None:
+        raise AuthoringOperationError(
+            f"legacy authoring state exists at {legacy}; preview and apply "
+            "nf-splice migrate-state before initialising"
+        )
     if path.exists():
         raise AuthoringOperationError(f"authoring state already exists: {path}")
-    inspection = inspect_pipeline_identity(path.parent)
+    if path.parent.exists() and (path.parent.is_symlink() or not path.parent.is_dir()):
+        raise AuthoringOperationError(
+            f"repository-root splice path must be a regular directory: {path.parent}"
+        )
+    inspection = inspect_pipeline_identity(root)
     explicit = {
         "name": name,
         "version": version,
@@ -181,6 +195,7 @@ def initialise_authoring_document(
             ),
         ),
     )
+    path.parent.mkdir(exist_ok=True)
     _write_document(path, document)
     return document
 
@@ -193,6 +208,18 @@ def load_repository_document(repository_root: str | Path) -> AuthoringDocument:
             f"authoring state does not exist: {path}; run nf-splice init first"
         )
     return load_authoring_document(path.read_text(encoding="utf-8"))
+
+
+def save_repository_document(
+    repository_root: str | Path, document: AuthoringDocument
+) -> None:
+    """Atomically persist already-validated canonical authoring state."""
+    path = _document_path(repository_root)
+    if not path.parent.is_dir():
+        raise AuthoringOperationError(
+            f"repository-root splice path is not a directory: {path.parent}"
+        )
+    _write_document(path, document)
 
 
 def _replace_layer(
