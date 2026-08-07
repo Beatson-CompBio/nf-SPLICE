@@ -118,6 +118,7 @@ def test_execution_profile_inspection_validates_config_relationships(
                     "id": "local",
                     "name": "Local",
                     "description": "Local execution.",
+                    "type": "development",
                     "engine": "nextflow",
                     "executor": "local",
                     "container_engine": "singularity",
@@ -134,6 +135,41 @@ def test_execution_profile_inspection_validates_config_relationships(
 
     assert profile.classification is PathClassification.MALFORMED
     assert "references invalid config" in (profile.detail or "")
+
+
+def test_execution_profile_inspection_enforces_controlled_vocabulary(
+    tmp_path: Path,
+) -> None:
+    splice = tmp_path / "splice"
+    configs = splice / "configs"
+    configs.mkdir(parents=True)
+    (configs / "local.config").write_text("process.executor = 'local'\n")
+    _write_json(
+        splice / "execution-profiles.json",
+        {
+            "schema_version": "1.0",
+            "profiles": [
+                {
+                    "id": "profile-local-6c6f63616c",
+                    "name": "Local",
+                    "description": "Local execution.",
+                    "type": "interactive",
+                    "engine": "nextflow",
+                    "executor": "local",
+                    "container_engine": "singularity",
+                    "config": "configs/local.config",
+                }
+            ],
+        },
+    )
+
+    result = inspect_splice_tree(tmp_path)
+    profile = next(
+        item for item in result.paths if item.path == "execution-profiles.json"
+    )
+
+    assert profile.classification is PathClassification.MALFORMED
+    assert "type uses unsupported value 'interactive'" in (profile.detail or "")
 
 
 def test_repository_inspection_collects_pipeline_and_git_ready_evidence(
