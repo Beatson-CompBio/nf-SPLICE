@@ -19,7 +19,6 @@ from nf_splice.domain import (
     TreeState,
     load_authoring_document,
 )
-from nf_splice.domain.provenance import ReviewedAuthor
 from nf_splice.inspectors import inspect_repository
 from nf_splice.services.authoring import (
     DiscoveryResult,
@@ -274,21 +273,21 @@ class ApplicationService:
         repository_root: str | Path,
         candidate_id: str,
         *,
-        use: str,
+        profile_type: str,
         description: str,
         executor: str | None = None,
         container_engine: str | None = None,
-        config_sources: tuple[str, ...] = (),
+        config_source: str | None = None,
     ) -> AuthoringDocument:
         """Select one supported execution environment through shared rules."""
         return review_execution_profile(
             repository_root,
             candidate_id,
-            use=use,
+            profile_type=profile_type,
             description=description,
             executor=executor,
             container_engine=container_engine,
-            config_sources=config_sources,
+            config_source=config_source,
         )
 
     def reject_execution_profile(
@@ -317,31 +316,17 @@ class ApplicationService:
     def discover_provenance(
         self,
         repository_root: str | Path = ".",
-        *,
-        supplied_file: str | Path | None = None,
     ) -> AuthoringDocument:
-        """Discover available RO-Crate strategies through the shared core."""
-        return discover_provenance(repository_root, supplied_file=supplied_file)
+        """Discover the required repository-root RO-Crate."""
+        return discover_provenance(repository_root)
 
     def review_provenance(
         self,
         repository_root: str | Path,
         candidate_id: str,
-        *,
-        authors: tuple[ReviewedAuthor, ...],
-        licenses: tuple[str, ...],
-        published_at: str,
-        source_revision: str | None = None,
     ) -> AuthoringDocument:
-        """Select and complete one RO-Crate strategy through shared rules."""
-        return review_provenance(
-            repository_root,
-            candidate_id,
-            authors=authors,
-            licenses=licenses,
-            published_at=published_at,
-            source_revision=source_revision,
-        )
+        """Approve unchanged inclusion of the root RO-Crate."""
+        return review_provenance(repository_root, candidate_id)
 
     def plan_provenance(self, repository_root: str | Path) -> StaticLayerBuildResult:
         """Preview reviewed RO-Crate metadata."""
