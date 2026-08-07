@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import difflib
-import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -23,8 +21,11 @@ from nf_splice.domain import (
     UnresolvedDecision,
 )
 from nf_splice.domain.execution import (
-    EnvironmentUse,
+    ContainerEngine,
+    ExecutionEngine,
+    ExecutionExecutor,
     ExecutionProfileCandidate,
+    ExecutionProfileType,
     ReviewedExecutionProfile,
 )
 from nf_splice.domain.inputs import InputClassification, ReviewedInput
@@ -61,7 +62,7 @@ _ENGINE_BLOCK = re.compile(
     r"\s*\{[^{}]*\benabled\s*=\s*true\b",
     re.DOTALL,
 )
-_PROFILE_ID = re.compile(r"^[a-z][a-z0-9_-]*$")
+_PROFILE_ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _SECRET_ASSIGNMENT = re.compile(
     r"(?i)\b(?:password|passwd|secret|token|credential|private[_-]?key|"
     r"access[_-]?key)\b\s*=\s*(?!null\b|System\.getenv\b)([^\n]+)"
@@ -163,19 +164,6 @@ def _safe_relative(root: Path, path: str) -> str | None:
     return relative if candidate.is_file() else None
 
 
-def _existing_profiles(root: Path) -> tuple[dict[str, Any], ...]:
-    path = root / "splice" / "execution-profiles.json"
-    if not path.is_file() or path.is_symlink():
-        return ()
-    try:
-        loaded: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return ()
-    if not isinstance(loaded, dict) or not isinstance(loaded.get("profiles"), list):
-        return ()
-    return tuple(item for item in loaded["profiles"] if isinstance(item, dict))
-
-
 def _discover(
     root: Path,
 ) -> tuple[tuple[ExecutionProfileCandidate, tuple[Evidence, ...]], ...]:
@@ -184,8 +172,7 @@ def _discover(
         raise ExecutionProfileError("nextflow.config is required for profile discovery")
     discovered: dict[str, tuple[ExecutionProfileCandidate, tuple[Evidence, ...]]] = {}
     for name, body in _profile_bodies(config.read_text(encoding="utf-8")):
-        profile_id = name.lower().replace("_", "-")
-        if not _PROFILE_ID.fullmatch(profile_id):
+        if not _PROFILE_ID.fullmatch(name):
             continue
         sources = tuple(
             sorted(
@@ -205,16 +192,14 @@ def _discover(
             )
         )
         executors, engines = _scan_environment(combined)
-        unresolved = ["review"]
-        if not sources:
-            unresolved.append("config_sources")
+        unresolved = ["review", "config_source"]
         if len(executors) != 1:
             unresolved.append("executor")
         if len(engines) != 1:
             unresolved.append("container_engine")
         locations = ("nextflow.config", *sources)
         candidate = ExecutionProfileCandidate(
-            id=f"profile:{profile_id}",
+            id=f"profile:{name}",
             name=name.replace("_", " ").replace("-", " ").title(),
             source_profile=name,
             config_sources=sources,
@@ -224,7 +209,7 @@ def _discover(
         )
         evidence = tuple(
             Evidence(
-                id=f"profile:{profile_id}:{index}",
+                id=f"{candidate.id}:{index}",
                 provenance=EvidenceProvenance(
                     source="execution_profile", location=location
                 ),
@@ -236,68 +221,6 @@ def _discover(
             for index, location in enumerate(locations, start=1)
         )
         discovered[candidate.id] = (candidate, evidence)
-
-    for item in _existing_profiles(root):
-        raw_id = item.get("id")
-        if not isinstance(raw_id, str) or not _PROFILE_ID.fullmatch(raw_id):
-            continue
-        decision_id = f"profile:{raw_id}"
-        config_path = item.get("config")
-        source = (
-            _safe_relative(root, f"splice/{config_path}")
-            if isinstance(config_path, str)
-            else None
-        )
-        existing = discovered.get(decision_id)
-        config_sources = tuple(
-            sorted(
-                set(existing[0].config_sources if existing else ())
-                | ({source} if source else set())
-            )
-        )
-        executors = tuple(
-            sorted(
-                set(existing[0].executors if existing else ())
-                | ({str(item["executor"])} if item.get("executor") else set())
-            )
-        )
-        container_engines = tuple(
-            sorted(
-                set(existing[0].container_engines if existing else ())
-                | (
-                    {str(item["container_engine"])}
-                    if item.get("container_engine")
-                    else set()
-                )
-            )
-        )
-        candidate = ExecutionProfileCandidate(
-            id=decision_id,
-            name=str(item.get("name") or raw_id),
-            source_profile=raw_id,
-            config_sources=config_sources,
-            executors=executors,
-            container_engines=container_engines,
-            unresolved_fields=(
-                "review",
-                *(() if len(config_sources) == 1 else ("config_sources",)),
-                *(() if len(executors) == 1 else ("executor",)),
-                *(() if len(container_engines) == 1 else ("container_engine",)),
-            ),
-        )
-        existing_evidence = Evidence(
-            id=f"profile:{raw_id}:existing",
-            provenance=EvidenceProvenance(
-                source="existing_execution_profiles",
-                location="splice/execution-profiles.json",
-            ),
-            observed_value=item,
-            confidence=0.9,
-        )
-        discovered[decision_id] = (
-            candidate,
-            (*(existing[1] if existing else ()), existing_evidence),
-        )
     return tuple(discovered[key] for key in sorted(discovered))
 
 
@@ -418,11 +341,11 @@ def review_execution_profile(
     repository_root: str | Path,
     candidate_id: str,
     *,
-    use: str,
+    profile_type: str,
     description: str,
     executor: str | None = None,
     container_engine: str | None = None,
-    config_sources: tuple[str, ...] = (),
+    config_source: str | None = None,
 ) -> AuthoringDocument:
     """Explicitly select and resolve one supported environment."""
     root = Path(repository_root).resolve()
@@ -435,21 +358,15 @@ def review_execution_profile(
         candidate = ExecutionProfileCandidate.model_validate(decision.value)
     except ValidationError as error:
         raise ExecutionProfileError(str(error)) from error
-    selected_executor = executor or (
-        candidate.executors[0] if len(candidate.executors) == 1 else None
-    )
-    selected_engine = container_engine or (
-        candidate.container_engines[0]
-        if len(candidate.container_engines) == 1
-        else None
-    )
+    selected_executor = executor
+    selected_engine = container_engine
     if selected_executor is None:
         raise ExecutionProfileError(
-            f"{candidate_id} has incomplete or conflicting executor evidence"
+            f"{candidate_id} requires an explicitly selected executor"
         )
     if selected_engine is None:
         raise ExecutionProfileError(
-            f"{candidate_id} has incomplete or conflicting container-engine evidence"
+            f"{candidate_id} requires an explicitly selected container engine"
         )
     if candidate.executors and selected_executor not in candidate.executors:
         raise ExecutionProfileError(
@@ -464,40 +381,49 @@ def review_execution_profile(
             f"selected container engine {selected_engine!r} is not present in "
             "detected evidence"
         )
-    if not config_sources and len(candidate.config_sources) != 1:
+    if config_source is None or not config_source.strip():
         raise ExecutionProfileError(
-            f"{candidate_id} has incomplete or conflicting config-source evidence"
+            f"{candidate_id} requires one explicitly selected source config"
         )
-    sources = config_sources or candidate.config_sources
-    normalized_sources = []
-    for source in sources:
-        safe = _safe_relative(root, source)
-        if safe is None or not safe.endswith(".config"):
-            raise ExecutionProfileError(
-                "execution config source must be a repository-local .config file: "
-                f"{source}"
-            )
-        normalized_sources.append(safe)
-    profile_id = candidate.id.removeprefix("profile:")
+    safe_source = _safe_relative(root, config_source.strip())
+    if (
+        safe_source is None
+        or not safe_source.endswith(".config")
+        or safe_source.startswith("splice/")
+    ):
+        raise ExecutionProfileError(
+            "execution config source must be a repository-local .config file "
+            f"outside splice/: {config_source}"
+        )
+    profile_slug = (
+        re.sub(r"[^a-z0-9_-]+", "-", candidate.source_profile.lower()).strip("-_")
+        or "profile"
+    )
+    profile_token = candidate.source_profile.encode("utf-8").hex()
+    profile_id = f"profile-{profile_slug}-{profile_token}"
     evidence_by_id = {item.id: item for item in document.evidence}
     locations = {
         evidence_by_id[item_id].provenance.location
         for item_id in decision.evidence_ids
         if item_id in evidence_by_id
     }
-    locations.update(normalized_sources)
-    reviewed = ReviewedExecutionProfile(
-        id=profile_id,
-        name=candidate.name,
-        description=description,
-        use=EnvironmentUse(use),
-        executor=selected_executor,
-        container_engine=selected_engine,
-        source_profile=candidate.source_profile,
-        config_sources=tuple(dict.fromkeys(normalized_sources)),
-        config_path=f"configs/{profile_id}.config",
-        evidence_locations=tuple(sorted(locations)),
-    )
+    locations.add(safe_source)
+    try:
+        reviewed = ReviewedExecutionProfile(
+            id=profile_id,
+            name=candidate.name,
+            description=description,
+            type=ExecutionProfileType(profile_type),
+            engine=ExecutionEngine.NEXTFLOW,
+            executor=ExecutionExecutor(selected_executor),
+            container_engine=ContainerEngine(selected_engine),
+            source_profile=candidate.source_profile,
+            config_source=safe_source,
+            config_path=f"configs/{profile_id}.config",
+            evidence_locations=tuple(sorted(locations)),
+        )
+    except (ValidationError, ValueError) as error:
+        raise ExecutionProfileError(str(error)) from error
     updated = _updated_profile_document(
         document,
         Decision(
@@ -567,7 +493,7 @@ def _validate_config_safety(
             issues.append(f"line {line_number}: personal absolute path")
         if _ACCOUNT_LITERAL.search(code):
             issues.append(f"line {line_number}: literal HPC account or budget")
-        if profile.use is EnvironmentUse.PRODUCTION and _DEMO_TEST.search(code):
+        if profile.type is ExecutionProfileType.PRODUCTION and _DEMO_TEST.search(code):
             issues.append(f"line {line_number}: test or demonstration setting")
         for parameter in _PARAM_ASSIGNMENT.findall(code):
             if parameter in scientific:
@@ -582,37 +508,46 @@ def _validate_config_safety(
 
 def _render_checked(
     root: Path, document: AuthoringDocument
-) -> tuple[tuple[Path, str], ...]:
+) -> tuple[tuple[Path, str | bytes], ...]:
     reviewed = reviewed_execution_profiles(document)
     for profile in reviewed:
-        for source in profile.config_sources:
-            content = (root / source).read_text(encoding="utf-8", errors="replace")
-            _validate_config_safety(document, profile, source, content)
+        try:
+            content = (root / profile.config_source).read_bytes().decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ExecutionProfileError(
+                f"execution config source must be UTF-8: {profile.config_source}"
+            ) from error
+        _validate_config_safety(document, profile, profile.config_source, content)
     rendered = render_execution(document, root)
-    files = [(root / "splice" / "execution-profiles.json", rendered.profiles)]
+    files: list[tuple[Path, str | bytes]] = [
+        (root / "splice" / "execution-profiles.json", rendered.profiles)
+    ]
     files.extend(
         (root / "splice" / relative, content) for relative, content in rendered.configs
     )
     return tuple(files)
 
 
-def _change(root: Path, path: Path, proposed: str) -> StaticLayerChange:
-    current = path.read_text(encoding="utf-8") if path.is_file() else ""
+def _change(root: Path, path: Path, proposed: str | bytes) -> StaticLayerChange:
+    proposed_bytes = proposed.encode("utf-8") if isinstance(proposed, str) else proposed
+    current_bytes = path.read_bytes() if path.is_file() else b""
     kind = (
         StaticChangeKind.UNCHANGED
-        if current == proposed
+        if current_bytes == proposed_bytes
         else StaticChangeKind.UPDATE
         if path.exists()
         else StaticChangeKind.CREATE
     )
     relative = path.relative_to(root).as_posix()
+    current = current_bytes.decode("utf-8", errors="replace")
+    proposed_text = proposed_bytes.decode("utf-8", errors="replace")
     diff = (
         ""
         if kind is StaticChangeKind.UNCHANGED
         else "".join(
             difflib.unified_diff(
                 current.splitlines(keepends=True),
-                proposed.splitlines(keepends=True),
+                proposed_text.splitlines(keepends=True),
                 fromfile=relative if current else "/dev/null",
                 tofile=relative,
             )
@@ -685,8 +620,11 @@ def build_execution_profiles(
     for change in changed:
         temporary = change.path.with_name(f".{change.path.name}.nf-splice.tmp")
         try:
-            with temporary.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(content_by_path[change.path])
+            with temporary.open("xb") as handle:
+                payload = content_by_path[change.path]
+                handle.write(
+                    payload.encode("utf-8") if isinstance(payload, str) else payload
+                )
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, change.path)
