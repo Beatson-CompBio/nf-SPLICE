@@ -192,6 +192,22 @@ def _milestone_d_repository(root: Path) -> ApplicationService:
         "profiles { local { includeConfig 'conf/local.config' } }\n",
         encoding="utf-8",
     )
+    (root / "ro-crate-metadata.json").write_text(
+        json.dumps(
+            {
+                "@context": "https://w3id.org/ro/crate/1.1/context",
+                "@graph": [
+                    {
+                        "@id": "ro-crate-metadata.json",
+                        "@type": "CreativeWork",
+                        "about": {"@id": "./"},
+                    },
+                    {"@id": "./", "@type": "Dataset"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     return service
 
 
@@ -210,8 +226,11 @@ def test_cli_and_tui_save_byte_identical_execution_and_provenance_state(
             [
                 {
                     "profile": "profile:local",
-                    "use": "development",
+                    "type": "development",
                     "description": "Supported local execution.",
+                    "executor": "local",
+                    "container_engine": "singularity",
+                    "config_source": "conf/local.config",
                 }
             ]
         ),
@@ -219,15 +238,7 @@ def test_cli_and_tui_save_byte_identical_execution_and_provenance_state(
     )
     provenance_decision = cli_root / "provenance.json"
     provenance_decision.write_text(
-        json.dumps(
-            {
-                "strategy": "minimal_internal",
-                "authors": ["Ada Example"],
-                "licenses": ["MIT"],
-                "published_at": "2026-08-07",
-                "source_revision": "abcdef",
-            }
-        ),
+        json.dumps({"include": True}),
         encoding="utf-8",
     )
     assert (
@@ -265,16 +276,12 @@ def test_cli_and_tui_save_byte_identical_execution_and_provenance_state(
 
     async def exercise() -> None:
         async with tui_app.run_test() as pilot:
-            tui_app.query_one("#profile-use", Select).value = "development"
+            tui_app.query_one("#profile-type", Select).value = "development"
             tui_app.query_one(
                 "#profile-description", Input
             ).value = "Supported local execution."
             tui_app.query_one("#select-profile", Button).press()
             await pilot.pause()
-            tui_app.query_one("#provenance-authors", Input).value = "Ada Example"
-            tui_app.query_one("#provenance-licenses", Input).value = "MIT"
-            tui_app.query_one("#provenance-published", Input).value = "2026-08-07"
-            tui_app.query_one("#provenance-revision", Input).value = "abcdef"
             tui_app.query_one("#select-provenance", Button).press()
             await pilot.pause()
 
