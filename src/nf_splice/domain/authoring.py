@@ -27,6 +27,12 @@ class PipelineIdentity(DomainModel):
     release_url: NonEmptyString | None = None
 
 
+class OutputContractSettings(DomainModel):
+    """Reviewed version boundary for generated output contracts."""
+
+    schema_version: str = Field(pattern=r"^[0-9]+\.[0-9]+\.[0-9]+$")
+
+
 class EvidenceProvenance(DomainModel):
     """Location and revision from which evidence was observed."""
 
@@ -169,6 +175,7 @@ class AuthoringDocument(DomainModel):
 
     schema_version: str = AUTHORING_SCHEMA_VERSION
     pipeline: PipelineIdentity = PipelineIdentity()
+    output_contract: OutputContractSettings | None = None
     evidence: tuple[Evidence, ...] = ()
     decisions: tuple[Decision, ...] = ()
     layers: tuple[LayerState, ...] = ()
