@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=83,<84"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nf-splice"
+dynamic = ["version"]
+description = "Assisted authoring and maintenance of SPLICE integration layers for Nextflow pipelines"
+readme = "README.md"
+requires-python = ">=3.10,<3.15"
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = [
+  "pydantic>=2.13,<3",
+  "PyYAML>=6.0,<7",
+  "textual>=8.2,<9",
+  "typer>=0.27,<0.28",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Code Generators",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.5,<2",
+  "mypy>=2.3,<3",
+  "pytest>=9,<10",
+  "ruff>=0.16,<1",
+]
+
+[project.scripts]
+nf-splice = "nf_splice.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Beatson-CompBio/nf-SPLICE"
+Issues = "https://github.com/Beatson-CompBio/nf-SPLICE/issues"
+Repository = "https://github.com/Beatson-CompBio/nf-SPLICE"
+
+[tool.setuptools.dynamic]
+version = { attr = "nf_splice.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+src = ["src", "tests"]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "RUF", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src", "tests"]
