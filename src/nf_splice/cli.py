@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Protocol
 
 import typer
 
@@ -34,6 +35,7 @@ from nf_splice.services import (
     StaticChangeKind,
     WorkspaceSnapshot,
     apply_output_decision_file,
+    plan_document,
     unresolved_component_candidates,
     unresolved_execution_profiles,
     unresolved_input_candidates,
@@ -96,6 +98,42 @@ SetFieldOption = Annotated[
         ),
     ),
 ]
+
+
+class _BuildChange(Protocol):
+    @property
+    def path(self) -> Path: ...
+
+    @property
+    def kind(self) -> ChangeKind | StaticChangeKind: ...
+
+    @property
+    def diff(self) -> str: ...
+
+
+def _layer_build_document(
+    target: str,
+    changes: Iterable[_BuildChange],
+    *,
+    wrote: bool,
+    check: bool,
+    non_interactive: bool,
+) -> dict[str, object]:
+    """Return one stable JSON envelope for every layer build target."""
+    return {
+        "target": target,
+        "changes": [
+            {
+                "path": item.path.as_posix().split("/splice/", 1)[-1],
+                "kind": item.kind.value,
+                "diff": item.diff,
+            }
+            for item in changes
+        ],
+        "wrote": wrote,
+        "check": check,
+        "non_interactive": non_interactive,
+    }
 
 
 def _version_callback(value: bool) -> None:
@@ -693,9 +731,31 @@ def _select_provenance_candidate(
 
 
 @app.command("plan")
-def plan_command() -> None:
-    """Preview proposed changes when planning support becomes available."""
-    _unavailable(Operation.PLAN)
+def plan_command(
+    target: str = typer.Argument("all", help="Complete integration target."),
+    repository: RepositoryOption = Path("."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit a stable machine-readable plan."
+    ),
+) -> None:
+    """Preview complete reviewed integration changes and blockers."""
+    try:
+        plan = _service.plan_integration(repository, target=target)
+    except (OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(json.dumps(plan_document(plan), indent=2))
+    else:
+        for blocker in plan.blockers:
+            typer.echo(f"blocked: {blocker}", err=True)
+        for change in plan.changes:
+            typer.echo(f"{change.kind.value}: {change.path}")
+            if change.diff:
+                typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+        typer.echo("Plan complete; repository was not changed.")
+    if not plan.ready:
+        raise typer.Exit(code=2)
 
 
 @app.command("build")
@@ -712,9 +772,19 @@ def build_command(
             "its diff."
         ),
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Fail on every unresolved decision or required review.",
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit a stable machine-readable build result."
+    ),
 ) -> None:
-    """Build one reviewed static integration layer."""
+    """Build one reviewed static layer or the complete integration."""
     if target not in {
+        "all",
+        "bundle",
         "outputs",
         "inputs",
         "components",
@@ -723,18 +793,82 @@ def build_command(
     }:
         _unavailable(Operation.BUILD)
     try:
+        if target in {"all", "bundle"}:
+            result = _service.build_integration(
+                repository,
+                target=target,
+                replace_existing=replace_existing,
+                check=check,
+            )
+            if json_output:
+                payload = plan_document(result.plan)
+                payload["wrote"] = result.wrote
+                payload["check"] = check
+                payload["non_interactive"] = non_interactive
+                typer.echo(json.dumps(payload, indent=2))
+            else:
+                for integration_change in result.plan.changes:
+                    typer.echo(
+                        f"{integration_change.kind.value}: {integration_change.path}"
+                    )
+                    if integration_change.diff:
+                        typer.echo(
+                            integration_change.diff,
+                            nl=not integration_change.diff.endswith("\n"),
+                        )
+                if check:
+                    typer.echo("Check complete; repository was not changed.")
+                elif result.wrote:
+                    typer.echo(f"Built reviewed {target} integration artefacts.")
+                else:
+                    typer.echo(
+                        "Integration artefacts are byte-identical; no files changed."
+                    )
+            return
         if target == "execution-profiles":
             execution_plan = _service.plan_execution_profiles(repository)
-            for change in execution_plan.changes:
-                typer.echo(f"{change.kind.value}: {change.path}")
-                if change.diff:
-                    typer.echo(change.diff, nl=not change.diff.endswith("\n"))
             if check:
-                typer.echo("Check complete; repository was not changed.")
+                if json_output:
+                    typer.echo(
+                        json.dumps(
+                            _layer_build_document(
+                                target,
+                                execution_plan.changes,
+                                wrote=False,
+                                check=True,
+                                non_interactive=non_interactive,
+                            ),
+                            indent=2,
+                        )
+                    )
+                else:
+                    for change in execution_plan.changes:
+                        typer.echo(f"{change.kind.value}: {change.path}")
+                        if change.diff:
+                            typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+                    typer.echo("Check complete; repository was not changed.")
                 return
             execution_result = _service.build_execution_profiles(
                 repository, replace_existing=replace_existing
             )
+            if json_output:
+                typer.echo(
+                    json.dumps(
+                        _layer_build_document(
+                            target,
+                            execution_result.changes,
+                            wrote=execution_result.wrote,
+                            check=False,
+                            non_interactive=non_interactive,
+                        ),
+                        indent=2,
+                    )
+                )
+                return
+            for change in execution_result.changes:
+                typer.echo(f"{change.kind.value}: {change.path}")
+                if change.diff:
+                    typer.echo(change.diff, nl=not change.diff.endswith("\n"))
             if execution_result.wrote:
                 changed = sum(
                     item.kind is not StaticChangeKind.UNCHANGED
@@ -746,20 +880,58 @@ def build_command(
             return
         if target == "provenance":
             provenance_plan = _service.plan_provenance(repository)
-            typer.echo(
-                f"{provenance_plan.change.kind.value}: {provenance_plan.change.path}"
-            )
-            if provenance_plan.change.diff:
-                typer.echo(
-                    provenance_plan.change.diff,
-                    nl=not provenance_plan.change.diff.endswith("\n"),
-                )
             if check:
-                typer.echo("Check complete; repository was not changed.")
+                if json_output:
+                    typer.echo(
+                        json.dumps(
+                            _layer_build_document(
+                                target,
+                                (provenance_plan.change,),
+                                wrote=False,
+                                check=True,
+                                non_interactive=non_interactive,
+                            ),
+                            indent=2,
+                        )
+                    )
+                else:
+                    typer.echo(
+                        f"{provenance_plan.change.kind.value}: "
+                        f"{provenance_plan.change.path}"
+                    )
+                    if provenance_plan.change.diff:
+                        typer.echo(
+                            provenance_plan.change.diff,
+                            nl=not provenance_plan.change.diff.endswith("\n"),
+                        )
+                    typer.echo("Check complete; repository was not changed.")
                 return
             provenance_result = _service.build_provenance(
                 repository, replace_existing=replace_existing
             )
+            if json_output:
+                typer.echo(
+                    json.dumps(
+                        _layer_build_document(
+                            target,
+                            (provenance_result.change,),
+                            wrote=provenance_result.wrote,
+                            check=False,
+                            non_interactive=non_interactive,
+                        ),
+                        indent=2,
+                    )
+                )
+                return
+            typer.echo(
+                f"{provenance_result.change.kind.value}: "
+                f"{provenance_result.change.path}"
+            )
+            if provenance_result.change.diff:
+                typer.echo(
+                    provenance_result.change.diff,
+                    nl=not provenance_result.change.diff.endswith("\n"),
+                )
             if provenance_result.wrote:
                 typer.echo("Built reviewed provenance artefact.")
             else:
@@ -767,18 +939,56 @@ def build_command(
             return
         if target in {"inputs", "components"}:
             static_plan = _service.plan_static_layer(repository, target)
-            typer.echo(f"{static_plan.change.kind.value}: {static_plan.change.path}")
-            if static_plan.change.diff:
-                typer.echo(
-                    static_plan.change.diff,
-                    nl=not static_plan.change.diff.endswith("\n"),
-                )
             if check:
-                typer.echo("Check complete; repository was not changed.")
+                if json_output:
+                    typer.echo(
+                        json.dumps(
+                            _layer_build_document(
+                                target,
+                                (static_plan.change,),
+                                wrote=False,
+                                check=True,
+                                non_interactive=non_interactive,
+                            ),
+                            indent=2,
+                        )
+                    )
+                else:
+                    typer.echo(
+                        f"{static_plan.change.kind.value}: {static_plan.change.path}"
+                    )
+                    if static_plan.change.diff:
+                        typer.echo(
+                            static_plan.change.diff,
+                            nl=not static_plan.change.diff.endswith("\n"),
+                        )
+                    typer.echo("Check complete; repository was not changed.")
                 return
             static_result = _service.build_static_layer(
                 repository, target, replace_existing=replace_existing
             )
+            if json_output:
+                typer.echo(
+                    json.dumps(
+                        _layer_build_document(
+                            target,
+                            (static_result.change,),
+                            wrote=static_result.wrote,
+                            check=False,
+                            non_interactive=non_interactive,
+                        ),
+                        indent=2,
+                    )
+                )
+                return
+            typer.echo(
+                f"{static_result.change.kind.value}: {static_result.change.path}"
+            )
+            if static_result.change.diff:
+                typer.echo(
+                    static_result.change.diff,
+                    nl=not static_result.change.diff.endswith("\n"),
+                )
             if static_result.wrote:
                 typer.echo(f"Built reviewed {target} artefact.")
             elif static_result.change.kind is StaticChangeKind.UNCHANGED:
@@ -787,19 +997,54 @@ def build_command(
                 )
             return
         output_plan = _service.plan_output_contracts(repository)
-        for output_change in output_plan.changes:
+        if check:
+            if json_output:
+                typer.echo(
+                    json.dumps(
+                        _layer_build_document(
+                            target,
+                            output_plan.changes,
+                            wrote=False,
+                            check=True,
+                            non_interactive=non_interactive,
+                        ),
+                        indent=2,
+                    )
+                )
+            else:
+                for output_change in output_plan.changes:
+                    typer.echo(f"{output_change.kind.value}: {output_change.path}")
+                    if output_change.diff:
+                        typer.echo(
+                            output_change.diff,
+                            nl=not output_change.diff.endswith("\n"),
+                        )
+                typer.echo("Check complete; repository was not changed.")
+            return
+        output_result = _service.build_output_contracts(
+            repository, replace_existing=replace_existing
+        )
+        if json_output:
+            typer.echo(
+                json.dumps(
+                    _layer_build_document(
+                        target,
+                        output_result.changes,
+                        wrote=output_result.wrote,
+                        check=False,
+                        non_interactive=non_interactive,
+                    ),
+                    indent=2,
+                )
+            )
+            return
+        for output_change in output_result.changes:
             typer.echo(f"{output_change.kind.value}: {output_change.path}")
             if output_change.diff:
                 typer.echo(
                     output_change.diff,
                     nl=not output_change.diff.endswith("\n"),
                 )
-        if check:
-            typer.echo("Check complete; repository was not changed.")
-            return
-        output_result = _service.build_output_contracts(
-            repository, replace_existing=replace_existing
-        )
     except (OSError, ValueError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
@@ -813,9 +1058,41 @@ def build_command(
 
 
 @app.command("validate")
-def validate_command() -> None:
-    """Validate integration files when validation support becomes available."""
-    _unavailable(Operation.VALIDATE)
+def validate_command(
+    repository: RepositoryOption = Path("."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit a stable machine-readable validation report."
+    ),
+) -> None:
+    """Validate canonical readiness and the complete static bundle."""
+    report = _service.validate_integration(repository)
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {
+                    "valid": report.valid,
+                    "checked_files": report.checked_files,
+                    "issues": [
+                        {
+                            "path": item.path,
+                            "rule": item.rule,
+                            "message": item.message,
+                        }
+                        for item in report.issues
+                    ],
+                },
+                indent=2,
+            )
+        )
+    elif report.valid:
+        typer.echo(
+            f"Valid SPLICE integration with {report.checked_files} managed files."
+        )
+    else:
+        for issue in report.issues:
+            typer.echo(f"{issue.path} [{issue.rule}]: {issue.message}", err=True)
+    if not report.valid:
+        raise typer.Exit(code=2)
 
 
 @analysis_output_app.command("generate")
