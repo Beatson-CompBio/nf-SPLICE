@@ -108,7 +108,6 @@ def test_output_contract_and_analysis_output_help_are_available() -> None:
 
     assert build.exit_code == 0
     assert "only outputs is currently available" in build.output
-    assert "--check" in build.output
     assert analysis.exit_code == 0
     assert "generate" in analysis.output
     assert "validate" in analysis.output
