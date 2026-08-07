@@ -30,10 +30,10 @@ def test_authoring_document_has_deterministic_round_trip() -> None:
         ),
         evidence=(
             Evidence(
-                id="manifest-name",
+                id="pipeline-config-name",
                 provenance=EvidenceProvenance(
                     source="nextflow.config",
-                    location="manifest.name",
+                    location="nextflow.config pipeline name",
                     repository_revision="abc123",
                 ),
                 observed_value="example-pipeline",
@@ -45,7 +45,7 @@ def test_authoring_document_has_deterministic_round_trip() -> None:
                 id="pipeline-name",
                 status=DecisionStatus.REVIEWED,
                 value="example-pipeline",
-                evidence_ids=("manifest-name",),
+                evidence_ids=("pipeline-config-name",),
             ),
             Decision(
                 id="unused-candidate",
