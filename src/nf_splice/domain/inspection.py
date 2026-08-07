@@ -61,6 +61,23 @@ class PathClassification(str, Enum):
     UNKNOWN = "unknown"
 
 
+class LegacyStateClassification(str, Enum):
+    """Compatibility of a repository-root state file from the old layout."""
+
+    RECOGNIZED = "recognized"
+    MALFORMED = "malformed"
+    INCOMPATIBLE = "incompatible"
+
+
+class LegacyStatePath(DomainModel):
+    """One detected repository-root state file awaiting explicit migration."""
+
+    path: NonEmptyString
+    destination: NonEmptyString
+    classification: LegacyStateClassification
+    detail: NonEmptyString | None = None
+
+
 class InspectedPath(DomainModel):
     """Classification of one path below the integration root."""
 
@@ -94,3 +111,4 @@ class RepositoryInspection(DomainModel):
     repository_revision: NonEmptyString | None = None
     evidence: tuple[RepositoryEvidence, ...] = ()
     splice_tree: SpliceTreeInspection
+    legacy_state: tuple[LegacyStatePath, ...] = ()
