@@ -55,9 +55,10 @@ pipeline ready for SPLICE submission
 ## Project status
 
 nf-SPLICE is currently an early development preview. The installable package,
-Python compatibility baseline, and `nf-splice --version` command are available.
-The guided inspection, authoring, build, validation, and TUI workflows are being
-delivered incrementally and are not yet available in the current release.
+Python compatibility baseline, read-only repository inspection, workspace
+status, and terminal workspace are available. Authoring, planning, build, and
+validation workflows are being delivered incrementally and are not yet
+available in the current release.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -77,6 +78,26 @@ nf-splice --version
 nf-SPLICE supports Python 3.10 through 3.14. It is designed to coexist with the
 Python environment used by nf-core tooling without depending on nf-core
 internals.
+
+## Current commands
+
+Run the current read-only workflows from a Nextflow pipeline repository:
+
+```bash
+nf-splice inspect
+nf-splice status
+nf-splice tui
+```
+
+Each command inspects the current directory by default. Use
+`--repository PATH` to inspect a different repository. `inspect` reports
+detected evidence and existing `splice/` safety warnings, `status` adds
+authoring and integration-layer readiness, and `tui` presents the same shared
+result in a keyboard-navigable terminal interface.
+
+The planned `init`, `configure`, `plan`, `build`, and `validate` command names
+are visible in command help, but they exit explicitly as unavailable until their
+reviewed application behaviour is implemented.
 
 ## Intended workflow
 
