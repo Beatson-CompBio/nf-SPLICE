@@ -69,8 +69,7 @@ def test_inspect_and_status_use_repository_service_results(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
-        (["init"], "Authoring-state initialisation"),
-        (["configure", "outputs"], "Integration-layer configuration"),
+        (["configure", "inputs"], "Integration-layer configuration"),
         (["plan"], "Change planning"),
         (["build", "all"], "Integration building"),
         (["validate"], "Integration validation"),
