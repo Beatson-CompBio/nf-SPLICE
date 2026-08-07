@@ -1,5 +1,6 @@
 """Deterministic renderers for reviewed SPLICE integration state."""
 
+from nf_splice.renderers.bundle import BundleRenderError, RenderedBundle, render_bundle
 from nf_splice.renderers.components import (
     ComponentInventoryError,
     RenderedComponentInventory,
@@ -29,16 +30,19 @@ from nf_splice.renderers.provenance import (
 )
 
 __all__ = [
+    "BundleRenderError",
     "ComponentInventoryError",
     "ExecutionProfileRenderError",
     "InputProjectionError",
     "OutputContractError",
     "ProvenanceRenderError",
+    "RenderedBundle",
     "RenderedComponentInventory",
     "RenderedExecution",
     "RenderedInputProjection",
     "RenderedOutputContracts",
     "RenderedProvenance",
+    "render_bundle",
     "render_component_inventory",
     "render_execution",
     "render_input_projection",
