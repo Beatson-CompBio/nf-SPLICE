@@ -128,6 +128,12 @@ class NfSpliceApp(App[None]):
                         variant="warning",
                     )
                 yield Static("", id="migration-summary", classes="section")
+                yield Static("Complete integration", classes="heading")
+                with Horizontal(id="integration-actions"):
+                    yield Button("Plan all", id="plan-all", variant="primary")
+                    yield Button("Build all", id="build-all", variant="success")
+                    yield Button("Validate", id="validate-all")
+                yield Static("", id="integration-summary", classes="section")
                 yield Static("Evidence", classes="heading")
                 yield Static(self._evidence_text(), id="evidence", classes="section")
                 yield Static("Output review", classes="heading")
@@ -283,6 +289,9 @@ class NfSpliceApp(App[None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Apply review actions using the same service functions as the CLI."""
+        if event.button.id in {"plan-all", "build-all", "validate-all"}:
+            self._run_integration_action(event.button.id)
+            return
         if event.button.id == "save-input":
             self._save_input_review()
             return
@@ -665,6 +674,62 @@ class NfSpliceApp(App[None]):
         self.snapshot = self.service.inspect(self.repository_root)
         self._refresh_provenance_candidates()
         self.notify("Canonical provenance review saved.")
+
+    def _run_integration_action(self, action: str) -> None:
+        """Plan, build, or validate through the shared orchestration service."""
+        if self.repository_root is None:
+            self.notify("No repository is available.", severity="error")
+            return
+        summary = self.query_one("#integration-summary", Static)
+        try:
+            if action == "validate-all":
+                report = self.service.validate_integration(self.repository_root)
+                lines = [
+                    f"{item.path} [{item.rule}]: {item.message}"
+                    for item in report.issues
+                ]
+                summary.update(
+                    f"Valid integration ({report.checked_files} files)."
+                    if report.valid
+                    else "\n".join(lines)
+                )
+                self.notify(
+                    "Complete integration is valid."
+                    if report.valid
+                    else "Integration validation failed.",
+                    severity="information" if report.valid else "error",
+                )
+                return
+            if action == "build-all":
+                result = self.service.build_integration(
+                    self.repository_root, target="all"
+                )
+                plan = result.plan
+            else:
+                plan = self.service.plan_integration(self.repository_root, target="all")
+                result = None
+            lines = [*(f"blocked: {item}" for item in plan.blockers)]
+            lines.extend(
+                f"{item.kind.value}: {item.path.relative_to(self.repository_root)}"
+                for item in plan.changes
+            )
+            summary.update("\n".join(lines) or "No integration changes.")
+            if not plan.ready:
+                self.notify(
+                    "Integration is blocked by unresolved review.", severity="error"
+                )
+            elif result is not None:
+                self.snapshot = self.service.inspect(self.repository_root)
+                self.notify(
+                    "Complete integration built."
+                    if result.wrote
+                    else "Integration is already byte-identical."
+                )
+            else:
+                self.notify("Complete integration plan prepared; no files changed.")
+        except (OSError, ValueError) as error:
+            summary.update(str(error))
+            self.notify(str(error), severity="error", timeout=5)
 
     def _show_layer(self, index: int) -> None:
         layer = self.snapshot.layers[index]
