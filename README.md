@@ -55,10 +55,10 @@ pipeline ready for SPLICE submission
 ## Project status
 
 nf-SPLICE is currently an early development preview. The installable package,
-Python compatibility baseline, read-only repository inspection, workspace
-status, and terminal workspace are available. Authoring, planning, build, and
-validation workflows are being delivered incrementally and are not yet
-available in the current release.
+Python compatibility baseline, repository inspection, reviewed pipeline
+identity, output discovery and review, workspace status, and terminal workspace
+are available. Planning, bundle generation, and validation workflows are being
+delivered incrementally and are not yet available in the current release.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -81,22 +81,48 @@ internals.
 
 ## Current commands
 
-Run the current read-only workflows from a Nextflow pipeline repository:
+Inspect a pipeline repository and initialise its reviewed identity:
 
 ```bash
 nf-splice inspect
 nf-splice status
+nf-splice init \
+  --name my-pipeline \
+  --pipeline-version 1.0.0 \
+  --repository-url https://github.com/my-org/my-pipeline
+```
+
+`init` creates the version-controlled `nf-splice.yaml`. Values can be supplied
+explicitly, or unambiguous values from `nextflow.config` and Git can be reviewed
+and accepted with `--accept-detected`. Missing values, conflicting evidence,
+and placeholder identifiers are rejected rather than silently defaulted.
+
+Discover output candidates from pipeline source and optional completed output
+evidence:
+
+```bash
+nf-splice configure outputs --publish-directory results \
+  --export-unresolved unresolved-outputs.json
 nf-splice tui
 ```
 
 Each command inspects the current directory by default. Use
-`--repository PATH` to inspect a different repository. `inspect` reports
-detected evidence and existing `splice/` safety warnings, `status` adds
-authoring and integration-layer readiness, and `tui` presents the same shared
-result in a keyboard-navigable terminal interface.
+`--repository PATH` to work with a different repository. Output discovery uses
+native workflow outputs, process declarations, `publishDir` declarations,
+module metadata, an optional example tree or publish directory, and a recognised
+existing `splice/outputs.yaml`. Candidates remain unresolved until accepted,
+rejected, merged, or split through an explicit decision file, repeatable
+`--set CANDIDATE.FIELD=VALUE` options, or the terminal review form.
 
-The planned `init`, `configure`, `plan`, `build`, and `validate` command names
-are visible in command help, but they exit explicitly as unavailable until their
+`inspect` reports detected evidence and existing `splice/` safety warnings,
+`status` adds authoring and integration-layer readiness, and `tui` presents the
+same shared result with an output candidate table, supporting evidence, and
+vocabulary-backed review fields. CLI and terminal reviews use the same
+validation and produce identical canonical state.
+
+The planned `plan`, `build`, and `validate` commands remain visible in command
+help but exit explicitly as unavailable. `configure` currently supports the
+`outputs` layer; later integration layers remain unavailable until their
 reviewed application behaviour is implemented.
 
 ## Intended workflow

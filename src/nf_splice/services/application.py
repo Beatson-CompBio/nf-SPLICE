@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from nf_splice.domain import (
     AuthoringDocument,
@@ -18,6 +20,13 @@ from nf_splice.domain import (
     load_authoring_document,
 )
 from nf_splice.inspectors import inspect_repository
+from nf_splice.services.authoring import (
+    DiscoveryResult,
+    accept_output,
+    discover_outputs,
+    initialise_authoring_document,
+    reject_output,
+)
 
 _INTEGRATION_LAYERS = (
     "identity",
@@ -41,7 +50,6 @@ class AuthoringState(str, Enum):
 class Operation(str, Enum):
     """Planned mutating or generation operations exposed by interface shells."""
 
-    INIT = "init"
     CONFIGURE = "configure"
     PLAN = "plan"
     BUILD = "build"
@@ -119,11 +127,59 @@ class ApplicationService:
             warnings=self._warnings(inspection, authoring),
         )
 
+    def initialise(
+        self,
+        repository_root: str | Path = ".",
+        *,
+        name: str | None = None,
+        version: str | None = None,
+        repository_url: str | None = None,
+        release_url: str | None = None,
+        accept_detected: bool = False,
+    ) -> AuthoringDocument:
+        """Initialise reviewed identity through the shared authoring core."""
+        return initialise_authoring_document(
+            repository_root,
+            name=name,
+            version=version,
+            repository_url=repository_url,
+            release_url=release_url,
+            accept_detected=accept_detected,
+        )
+
+    def discover_outputs(
+        self,
+        repository_root: str | Path = ".",
+        *,
+        example_output_tree: str | Path | None = None,
+        publish_directory: str | Path | None = None,
+    ) -> DiscoveryResult:
+        """Discover and persist output candidates through the shared core."""
+        return discover_outputs(
+            repository_root,
+            example_output_tree=example_output_tree,
+            publish_directory=publish_directory,
+        )
+
+    def accept_output(
+        self,
+        repository_root: str | Path,
+        candidate_id: str,
+        output: Mapping[str, Any],
+    ) -> AuthoringDocument:
+        """Accept one complete output review through shared validation."""
+        return accept_output(repository_root, candidate_id, output)
+
+    def reject_output(
+        self, repository_root: str | Path, candidate_id: str, reason: str
+    ) -> AuthoringDocument:
+        """Reject one output candidate through shared validation."""
+        return reject_output(repository_root, candidate_id, reason)
+
     @staticmethod
     def unavailable(operation: Operation) -> UnavailableOperation:
         """Describe a visible command whose application behaviour is not built yet."""
         descriptions = {
-            Operation.INIT: "Authoring-state initialisation is not available yet.",
             Operation.CONFIGURE: (
                 "Integration-layer configuration is not available yet."
             ),
