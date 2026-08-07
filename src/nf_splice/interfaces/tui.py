@@ -22,12 +22,14 @@ from textual.widgets import (
 )
 
 from nf_splice.domain import (
+    EnvironmentUse,
     InputClassification,
     OutputCategory,
     OutputEntityType,
     OutputFormat,
     OutputScope,
     OutputStage,
+    ReviewedAuthor,
     ReviewedOutput,
 )
 from nf_splice.services import (
@@ -40,8 +42,10 @@ from nf_splice.services import (
     merge_outputs,
     split_output,
     unresolved_component_candidates,
+    unresolved_execution_profiles,
     unresolved_input_candidates,
     unresolved_output_candidates,
+    unresolved_provenance_candidates,
 )
 
 
@@ -60,7 +64,9 @@ class NfSpliceApp(App[None]):
     #layers { width: 30; border-right: solid $primary; }
     #details { width: 1fr; padding: 1 2; }
     #candidate-table { height: 10; margin-bottom: 1; }
-    #input-table, #component-table { height: 8; margin-bottom: 1; }
+    #input-table, #component-table, #profile-table, #provenance-table {
+        height: 8; margin-bottom: 1;
+    }
     #review-form { height: auto; display: none; border: solid $primary; padding: 1; }
     #review-form Input, #review-form Select { margin-bottom: 1; }
     #review-actions { height: auto; }
@@ -83,6 +89,8 @@ class NfSpliceApp(App[None]):
         self._candidate_ids: list[str] = []
         self._input_candidate_ids: list[str] = []
         self._component_candidate_ids: list[str] = []
+        self._profile_candidate_ids: list[str] = []
+        self._provenance_candidate_ids: list[str] = []
 
     def compose(self) -> ComposeResult:
         """Compose a summary with keyboard-navigable integration layers."""
@@ -206,6 +214,57 @@ class NfSpliceApp(App[None]):
                     yield Button(
                         "Accept component", id="accept-component", variant="success"
                     )
+                yield Static("Execution profile review", classes="heading")
+                yield DataTable(id="profile-table")
+                with VerticalScroll(id="profile-review-form"):
+                    yield Select(
+                        [(item.value.title(), item.value) for item in EnvironmentUse],
+                        prompt="Supported use",
+                        id="profile-use",
+                    )
+                    yield Input(
+                        placeholder="Support description", id="profile-description"
+                    )
+                    yield Input(placeholder="Selected executor", id="profile-executor")
+                    yield Input(
+                        placeholder="Selected container engine", id="profile-engine"
+                    )
+                    yield Input(
+                        placeholder="Comma-separated config sources",
+                        id="profile-config-sources",
+                    )
+                    yield Input(placeholder="Unsupported reason", id="profile-reason")
+                    with Horizontal(id="profile-actions"):
+                        yield Button(
+                            "Select profile", id="select-profile", variant="success"
+                        )
+                        yield Button(
+                            "Reject profile", id="reject-profile", variant="error"
+                        )
+                yield Static("RO-Crate provenance review", classes="heading")
+                yield DataTable(id="provenance-table")
+                with VerticalScroll(id="provenance-review-form"):
+                    yield Input(
+                        placeholder="Comma-separated author names",
+                        id="provenance-authors",
+                    )
+                    yield Input(
+                        placeholder="Comma-separated licence identifiers",
+                        id="provenance-licenses",
+                    )
+                    yield Input(
+                        placeholder="Publication date (YYYY-MM-DD)",
+                        id="provenance-published",
+                    )
+                    yield Input(
+                        placeholder="Source revision (detected if blank)",
+                        id="provenance-revision",
+                    )
+                    yield Button(
+                        "Select provenance strategy",
+                        id="select-provenance",
+                        variant="success",
+                    )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -217,6 +276,8 @@ class NfSpliceApp(App[None]):
         self._refresh_candidates()
         self._refresh_input_candidates()
         self._refresh_component_candidates()
+        self._refresh_profile_candidates()
+        self._refresh_provenance_candidates()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update layer detail when keyboard navigation changes selection."""
@@ -231,6 +292,8 @@ class NfSpliceApp(App[None]):
             self._show_input_candidate(event.cursor_row)
         elif event.data_table.id == "component-table":
             self._show_component_candidate(event.cursor_row)
+        elif event.data_table.id == "profile-table":
+            self._show_profile_candidate(event.cursor_row)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Apply review actions using the same service functions as the CLI."""
@@ -239,6 +302,12 @@ class NfSpliceApp(App[None]):
             return
         if event.button.id == "accept-component":
             self._save_component_review()
+            return
+        if event.button.id in {"select-profile", "reject-profile"}:
+            self._save_profile_review(reject=event.button.id == "reject-profile")
+            return
+        if event.button.id == "select-provenance":
+            self._save_provenance_review()
             return
         if event.button.id in {"preview-migration", "apply-migration"}:
             if self.repository_root is None:
@@ -478,6 +547,164 @@ class NfSpliceApp(App[None]):
         self.snapshot = self.service.inspect(self.repository_root)
         self._refresh_component_candidates()
         self.notify("Canonical component review saved.")
+
+    def _refresh_profile_candidates(self) -> None:
+        table = self.query_one("#profile-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("Profile", "Executor", "Container", "Config")
+        self._profile_candidate_ids = []
+        if self.repository_root is None:
+            self.query_one("#profile-review-form").display = False
+            return
+        try:
+            document = load_repository_document(self.repository_root)
+        except (OSError, AuthoringOperationError):
+            self.query_one("#profile-review-form").display = False
+            return
+        candidates = unresolved_execution_profiles(document)
+        for candidate in candidates:
+            self._profile_candidate_ids.append(candidate.id)
+            table.add_row(
+                candidate.name,
+                ", ".join(candidate.executors) or "unresolved",
+                ", ".join(candidate.container_engines) or "unresolved",
+                ", ".join(candidate.config_sources) or "unresolved",
+            )
+        self.query_one("#profile-review-form").display = bool(candidates)
+        if candidates:
+            table.cursor_coordinate = Coordinate(0, 0)
+            self._show_profile_candidate(0)
+
+    def _show_profile_candidate(self, row: int) -> None:
+        if self.repository_root is None or row >= len(self._profile_candidate_ids):
+            return
+        document = load_repository_document(self.repository_root)
+        candidates = {item.id: item for item in unresolved_execution_profiles(document)}
+        candidate = candidates[self._profile_candidate_ids[row]]
+        self.query_one("#profile-use", Select).clear()
+        self.query_one("#profile-description", Input).value = ""
+        self.query_one("#profile-executor", Input).value = (
+            candidate.executors[0] if len(candidate.executors) == 1 else ""
+        )
+        self.query_one("#profile-engine", Input).value = (
+            candidate.container_engines[0]
+            if len(candidate.container_engines) == 1
+            else ""
+        )
+        self.query_one("#profile-config-sources", Input).value = ",".join(
+            candidate.config_sources
+        )
+        self.query_one("#profile-reason", Input).value = ""
+
+    def _save_profile_review(self, *, reject: bool) -> None:
+        table = self.query_one("#profile-table", DataTable)
+        if self.repository_root is None or table.cursor_row >= len(
+            self._profile_candidate_ids
+        ):
+            self.notify("No execution profile is selected.", severity="error")
+            return
+        candidate_id = self._profile_candidate_ids[table.cursor_row]
+        try:
+            if reject:
+                self.service.reject_execution_profile(
+                    self.repository_root,
+                    candidate_id,
+                    self.query_one("#profile-reason", Input).value.strip(),
+                )
+            else:
+                selected_use = self.query_one("#profile-use", Select).value
+                if selected_use is Select.NULL:
+                    raise ValueError("Select a supported profile use.")
+                sources = tuple(
+                    item.strip()
+                    for item in self.query_one(
+                        "#profile-config-sources", Input
+                    ).value.split(",")
+                    if item.strip()
+                )
+                self.service.review_execution_profile(
+                    self.repository_root,
+                    candidate_id,
+                    use=str(selected_use),
+                    description=self.query_one(
+                        "#profile-description", Input
+                    ).value.strip(),
+                    executor=self.query_one("#profile-executor", Input).value.strip()
+                    or None,
+                    container_engine=self.query_one(
+                        "#profile-engine", Input
+                    ).value.strip()
+                    or None,
+                    config_sources=sources,
+                )
+        except (OSError, ValueError) as error:
+            self.notify(str(error), severity="error", timeout=5)
+            return
+        self.snapshot = self.service.inspect(self.repository_root)
+        self._refresh_profile_candidates()
+        self.notify("Canonical execution-profile review saved.")
+
+    def _refresh_provenance_candidates(self) -> None:
+        table = self.query_one("#provenance-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("Strategy", "Source")
+        self._provenance_candidate_ids = []
+        if self.repository_root is None:
+            self.query_one("#provenance-review-form").display = False
+            return
+        try:
+            document = load_repository_document(self.repository_root)
+        except (OSError, AuthoringOperationError):
+            self.query_one("#provenance-review-form").display = False
+            return
+        candidates = unresolved_provenance_candidates(document)
+        for candidate in candidates:
+            self._provenance_candidate_ids.append(candidate.id)
+            table.add_row(
+                _display_name(candidate.strategy.value),
+                candidate.source_path or "built-in renderer",
+            )
+        self.query_one("#provenance-review-form").display = bool(candidates)
+        if candidates:
+            table.cursor_coordinate = Coordinate(0, 0)
+
+    def _save_provenance_review(self) -> None:
+        table = self.query_one("#provenance-table", DataTable)
+        if self.repository_root is None or table.cursor_row >= len(
+            self._provenance_candidate_ids
+        ):
+            self.notify("No provenance strategy is selected.", severity="error")
+            return
+        authors = tuple(
+            ReviewedAuthor(name=item.strip())
+            for item in self.query_one("#provenance-authors", Input).value.split(",")
+            if item.strip()
+        )
+        licenses = tuple(
+            item.strip()
+            for item in self.query_one("#provenance-licenses", Input).value.split(",")
+            if item.strip()
+        )
+        try:
+            self.service.review_provenance(
+                self.repository_root,
+                self._provenance_candidate_ids[table.cursor_row],
+                authors=authors,
+                licenses=licenses,
+                published_at=self.query_one(
+                    "#provenance-published", Input
+                ).value.strip(),
+                source_revision=self.query_one(
+                    "#provenance-revision", Input
+                ).value.strip()
+                or None,
+            )
+        except (OSError, ValueError) as error:
+            self.notify(str(error), severity="error", timeout=5)
+            return
+        self.snapshot = self.service.inspect(self.repository_root)
+        self._refresh_provenance_candidates()
+        self.notify("Canonical provenance review saved.")
 
     def _show_layer(self, index: int) -> None:
         layer = self.snapshot.layers[index]
