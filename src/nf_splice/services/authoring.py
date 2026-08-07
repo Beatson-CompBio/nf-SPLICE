@@ -18,6 +18,7 @@ from nf_splice.domain import (
     DecisionStatus,
     LayerState,
     OutputCandidate,
+    OutputContractSettings,
     PipelineIdentity,
     ReviewedOutput,
     UnresolvedDecision,
@@ -234,6 +235,7 @@ def discover_outputs(
     *,
     example_output_tree: str | Path | None = None,
     publish_directory: str | Path | None = None,
+    contract_version: str | None = None,
 ) -> DiscoveryResult:
     """Discover candidates idempotently while preserving all reviewed decisions."""
     root = Path(repository_root).resolve()
@@ -291,9 +293,13 @@ def discover_outputs(
         decision_ids=tuple(sorted(output_ids)),
         unresolved=tuple(unresolved),
     )
+    output_contract = document.output_contract
+    if contract_version is not None:
+        output_contract = OutputContractSettings(schema_version=contract_version)
     updated = AuthoringDocument(
         schema_version=document.schema_version,
         pipeline=document.pipeline,
+        output_contract=output_contract,
         evidence=tuple(sorted(evidence_by_id.values(), key=lambda item: item.id)),
         decisions=tuple(sorted(decisions_by_id.values(), key=lambda item: item.id)),
         layers=_replace_layer(document.layers, layer),
@@ -323,6 +329,7 @@ def _replace_decision(
     return AuthoringDocument(
         schema_version=document.schema_version,
         pipeline=document.pipeline,
+        output_contract=document.output_contract,
         evidence=document.evidence,
         decisions=tuple(sorted(decisions.values(), key=lambda item: item.id)),
         layers=_replace_layer(document.layers, layer),
@@ -461,6 +468,7 @@ def split_output(
     updated = AuthoringDocument(
         schema_version=document.schema_version,
         pipeline=document.pipeline,
+        output_contract=document.output_contract,
         evidence=document.evidence,
         decisions=tuple(sorted(decisions.values(), key=lambda item: item.id)),
         layers=_replace_layer(document.layers, replacement_layer),

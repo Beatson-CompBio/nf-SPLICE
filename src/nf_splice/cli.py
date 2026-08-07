@@ -11,9 +11,15 @@ import typer
 from nf_splice import __version__
 from nf_splice.domain import OutputCandidate
 from nf_splice.interfaces.tui import NfSpliceApp
+from nf_splice.runtime import (
+    AnalysisOutputError,
+    generate_analysis_output,
+    load_and_validate_analysis_output,
+)
 from nf_splice.services import (
     ApplicationService,
     AuthoringOperationError,
+    ChangeKind,
     Operation,
     OutputReviewError,
     WorkspaceSnapshot,
@@ -27,6 +33,11 @@ app = typer.Typer(
     add_completion=False,
     no_args_is_help=True,
 )
+analysis_output_app = typer.Typer(
+    help="Generate or validate the per-run analysis_output.json file.",
+    no_args_is_help=True,
+)
+app.add_typer(analysis_output_app, name="analysis-output")
 
 _service = ApplicationService()
 RepositoryOption = Annotated[
@@ -44,6 +55,16 @@ RepositoryOption = Annotated[
 OptionalExistingPath = Annotated[
     Path | None,
     typer.Option(exists=True, resolve_path=True),
+]
+OutputDirectoryOption = Annotated[
+    Path,
+    typer.Option(
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+        help="Directory in which to write analysis_output.json.",
+    ),
 ]
 ExportUnresolvedOption = Annotated[
     Path | None,
@@ -252,6 +273,13 @@ def configure_command(
     decision_file: OptionalExistingPath = None,
     export_unresolved: ExportUnresolvedOption = None,
     set_field: SetFieldOption = None,
+    contract_version: str | None = typer.Option(
+        None,
+        help=(
+            "Reviewed output-contract schema version (X.Y.Z), independent of "
+            "pipeline version."
+        ),
+    ),
 ) -> None:
     """Discover and explicitly review one integration layer."""
     if layer != "outputs":
@@ -261,6 +289,7 @@ def configure_command(
             repository,
             example_output_tree=example_output_tree,
             publish_directory=publish_directory,
+            contract_version=contract_version,
         )
         document = result.document
         if decision_file is not None:
@@ -295,16 +324,128 @@ def plan_command() -> None:
 @app.command("build")
 def build_command(
     target: str = typer.Argument(help="Integration layer name or 'all'."),
+    repository: RepositoryOption = Path("."),
+    check: bool = typer.Option(
+        False, help="Show deterministic output-contract changes without writing files."
+    ),
+    replace_existing: bool = typer.Option(
+        False,
+        help=(
+            "Replace differing recognized output contracts after reviewing their diff."
+        ),
+    ),
 ) -> None:
-    """Build reviewed integration files when build support becomes available."""
-    del target
-    _unavailable(Operation.BUILD)
+    """Build a reviewed integration layer; only outputs is currently available."""
+    if target != "outputs":
+        _unavailable(Operation.BUILD)
+    try:
+        plan = _service.plan_output_contracts(repository)
+        for change in plan.changes:
+            typer.echo(f"{change.kind.value}: {change.path}")
+            if change.diff:
+                typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+        if check:
+            typer.echo("Check complete; repository was not changed.")
+            return
+        result = _service.build_output_contracts(
+            repository, replace_existing=replace_existing
+        )
+    except (OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    changed = sum(item.kind is not ChangeKind.UNCHANGED for item in result.changes)
+    if result.wrote:
+        typer.echo(f"Built {changed} reviewed output-contract artefact(s).")
+    else:
+        typer.echo("Output contracts are already byte-identical; no files changed.")
 
 
 @app.command("validate")
 def validate_command() -> None:
     """Validate integration files when validation support becomes available."""
     _unavailable(Operation.VALIDATE)
+
+
+@analysis_output_app.command("generate")
+def generate_analysis_output_command(
+    repository: RepositoryOption = Path("."),
+    publish_directory: OptionalExistingPath = None,
+    native_output_index: OptionalExistingPath = None,
+    output_tree: OptionalExistingPath = None,
+    run_metadata: OptionalExistingPath = None,
+    sample_metadata: OptionalExistingPath = None,
+    output_directory: OutputDirectoryOption = Path("."),
+    checksum: str | None = typer.Option(
+        None, help="Optional hashlib algorithm for completed published files."
+    ),
+    allow_unclassified: bool = typer.Option(
+        False,
+        help="Omit produced paths outside the reviewed contract instead of failing.",
+    ),
+) -> None:
+    """Generate and schema-validate analysis_output.json for one completed run."""
+    try:
+        metadata = None
+        if run_metadata is not None:
+            loaded: object = json.loads(run_metadata.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                raise AnalysisOutputError("run metadata must contain a JSON object")
+            metadata = loaded
+        result = generate_analysis_output(
+            repository,
+            publish_directory=publish_directory,
+            native_output_index=native_output_index,
+            output_tree=output_tree,
+            run_metadata=metadata,
+            sample_metadata=sample_metadata,
+            checksum_algorithm=checksum,
+            allow_unclassified=allow_unclassified,
+            output_directory=output_directory,
+        )
+    except (OSError, UnicodeError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(
+        f"Wrote valid {result.path} with {result.validation.record_count} "
+        "output record(s)."
+    )
+    if result.unclassified:
+        typer.echo(
+            f"Omitted {len(result.unclassified)} explicitly allowed unclassified "
+            "path(s)."
+        )
+
+
+@analysis_output_app.command("validate")
+def validate_analysis_output_command(
+    analysis_output: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            resolve_path=True,
+            help="Existing analysis_output.json to validate.",
+        ),
+    ],
+    repository: RepositoryOption = Path("."),
+) -> None:
+    """Validate an existing analysis_output.json against the static contract."""
+    try:
+        report = load_and_validate_analysis_output(repository, analysis_output)
+    except (OSError, UnicodeError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if not report.valid:
+        for issue in report.issues:
+            typer.echo(
+                f"{issue.json_pointer or '/'} [{issue.rule}]: {issue.message}",
+                err=True,
+            )
+        raise typer.Exit(code=2)
+    typer.echo(
+        f"Valid analysis_output.json with {report.record_count} output record(s)."
+    )
 
 
 @app.command("tui")

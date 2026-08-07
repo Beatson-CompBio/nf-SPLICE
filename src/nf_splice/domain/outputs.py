@@ -9,6 +9,27 @@ from pydantic import Field, model_validator
 
 from nf_splice.domain.authoring import DomainModel, NonEmptyString
 
+_PATH_PLACEHOLDERS = {
+    "{sample}": r"(?P<sample_id>[^/]+)",
+    "{library}": r"(?P<library_id>[^/]+)",
+    "{aligner}": r"(?P<aligner>[^/]+)",
+    "{stage}": r"(?P<stage>[^/]+)",
+    "{read}": r"(?P<read>[^/]+)",
+    "{any}": r"[^/]+",
+    "{anypath}": r".+",
+}
+
+
+def expand_output_path_pattern(pattern: str) -> str:
+    """Expand controlled catalogue placeholders into named Python regex groups."""
+    expanded = pattern
+    for placeholder, replacement in _PATH_PLACEHOLDERS.items():
+        expanded = expanded.replace(placeholder, replacement)
+    unknown = re.findall(r"\{[A-Za-z_][A-Za-z0-9_]*\}", expanded)
+    if unknown:
+        raise ValueError(f"unknown output path placeholder {unknown[0]!r}")
+    return expanded
+
 
 class OutputScope(str, Enum):
     """Supported scientific scope for one output."""
@@ -160,7 +181,7 @@ class ReviewedOutput(DomainModel):
             if not pattern.startswith("^") or not pattern.endswith("$"):
                 raise ValueError("path patterns must be anchored with ^ and $")
             try:
-                re.compile(pattern)
+                re.compile(expand_output_path_pattern(pattern))
             except re.error as error:
                 raise ValueError(
                     f"invalid path pattern {pattern!r}: {error}"

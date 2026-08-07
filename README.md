@@ -57,8 +57,9 @@ pipeline ready for SPLICE submission
 nf-SPLICE is currently an early development preview. The installable package,
 Python compatibility baseline, repository inspection, reviewed pipeline
 identity, output discovery and review, workspace status, and terminal workspace
-are available. Planning, bundle generation, and validation workflows are being
-delivered incrementally and are not yet available in the current release.
+are available. Reviewed output contracts and per-run `analysis_output.json`
+generation and validation are also available. Other bundle layers, complete
+planning, and bundle-wide validation are being delivered incrementally.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -102,6 +103,7 @@ evidence:
 
 ```bash
 nf-splice configure outputs --publish-directory results \
+  --contract-version 1.0.0 \
   --export-unresolved unresolved-outputs.json
 nf-splice tui
 ```
@@ -120,10 +122,45 @@ same shared result with an output candidate table, supporting evidence, and
 vocabulary-backed review fields. CLI and terminal reviews use the same
 validation and produce identical canonical state.
 
-The planned `plan`, `build`, and `validate` commands remain visible in command
-help but exit explicitly as unavailable. `configure` currently supports the
-`outputs` layer; later integration layers remain unavailable until their
-reviewed application behaviour is implemented.
+After every output decision is resolved and the output-contract version is
+reviewed, preview and build the two deterministic output contracts:
+
+```bash
+nf-splice build outputs --check
+nf-splice build outputs
+```
+
+The build writes `splice/outputs.yaml` and `splice/outputs.schema.json` from
+reviewed authoring state only. `--check` prints the same file-level diff without
+writing. A repeated build is byte-identical and leaves both files unchanged.
+Differing recognised contracts require their displayed diff to be reviewed and
+an explicit `--replace-existing`; malformed or unknown target content is never
+overwritten.
+
+For each completed run, generate the separate runtime inventory from exactly
+one completed publish directory, native output index, or output-tree listing:
+
+```bash
+nf-splice analysis-output generate \
+  --publish-directory results \
+  --sample-metadata samplesheet.csv \
+  --run-metadata run-metadata.json \
+  --output-directory results
+nf-splice analysis-output validate results/analysis_output.json
+```
+
+The generator classifies only produced outputs covered by the reviewed static
+contract, handles optional outputs by omission, captures sample or library
+identity from reviewed path patterns, and validates the resulting
+`analysis_output.json` against `splice/outputs.schema.json` before writing it.
+Unclassified produced paths fail by default and can only be omitted with the
+explicit `--allow-unclassified` option. Optional checksums are available for a
+live completed publish directory.
+
+The planned `plan` and bundle-level `validate` commands remain visible in
+command help but exit explicitly as unavailable. `build` and `configure`
+currently support the `outputs` layer; later integration layers and `build all`
+remain unavailable until their reviewed application behaviour is implemented.
 
 ## Intended workflow
 
@@ -134,8 +171,8 @@ this flow:
 2. Review detected evidence and unresolved decisions.
 3. Initialise the version-controlled `nf-splice.yaml` authoring state.
 4. Configure and review each required integration layer.
-5. Preview the proposed file changes with `nf-splice plan`.
-6. Build the reviewed integration under `splice/`.
+5. Preview reviewed output-contract changes with `nf-splice build outputs --check`.
+6. Build available reviewed integration layers under `splice/`.
 7. Run `nf-splice validate` before committing and submitting the pipeline.
 
 CLI and terminal UI workflows will use the same authoring state and application
@@ -157,6 +194,16 @@ metadata, and bundle provenance.
 
 Existing files are inspected before generation. nf-SPLICE does not silently
 delete unknown content or overwrite unresolved collisions.
+
+The static output layer contains:
+
+```text
+splice/outputs.yaml         reviewed output catalogue materialisation
+splice/outputs.schema.json  validation contract for analysis_output.json
+```
+
+`analysis_output.json` belongs to one completed run and is not part of the
+static repository integration bundle or canonical authoring state.
 
 ## Authoring principles
 

@@ -27,6 +27,11 @@ from nf_splice.services.authoring import (
     initialise_authoring_document,
     reject_output,
 )
+from nf_splice.services.output_contracts import (
+    OutputContractBuildResult,
+    build_output_contracts,
+    plan_output_contracts,
+)
 
 _INTEGRATION_LAYERS = (
     "identity",
@@ -92,8 +97,8 @@ class WorkspaceSnapshot:
     authoring: AuthoringSummary
     layers: tuple[LayerSummary, ...]
     warnings: tuple[str, ...]
-    build_status: str = "not available"
-    validation_status: str = "not available"
+    build_status: str = "output contracts available"
+    validation_status: str = "runtime outputs available; bundle not available"
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,12 +158,14 @@ class ApplicationService:
         *,
         example_output_tree: str | Path | None = None,
         publish_directory: str | Path | None = None,
+        contract_version: str | None = None,
     ) -> DiscoveryResult:
         """Discover and persist output candidates through the shared core."""
         return discover_outputs(
             repository_root,
             example_output_tree=example_output_tree,
             publish_directory=publish_directory,
+            contract_version=contract_version,
         )
 
     def accept_output(
@@ -175,6 +182,23 @@ class ApplicationService:
     ) -> AuthoringDocument:
         """Reject one output candidate through shared validation."""
         return reject_output(repository_root, candidate_id, reason)
+
+    def plan_output_contracts(
+        self, repository_root: str | Path = "."
+    ) -> OutputContractBuildResult:
+        """Preview reviewed output-contract artefacts without writing them."""
+        return plan_output_contracts(repository_root)
+
+    def build_output_contracts(
+        self,
+        repository_root: str | Path = ".",
+        *,
+        replace_existing: bool = False,
+    ) -> OutputContractBuildResult:
+        """Materialise the reviewed output-contract layer."""
+        return build_output_contracts(
+            repository_root, replace_existing=replace_existing
+        )
 
     @staticmethod
     def unavailable(operation: Operation) -> UnavailableOperation:

@@ -11,6 +11,7 @@ requires-python = ">=3.10,<3.15"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+  "jsonschema[format]>=4.26,<5",
   "pydantic>=2.13,<3",
   "PyYAML>=6.0,<7",
   "textual>=8.2,<9",

@@ -33,8 +33,11 @@ class UnsupportedSchemaVersion(AuthoringDocumentError):
 
 def dump_authoring_document(document: AuthoringDocument) -> str:
     """Return a stable YAML representation of an authoring document."""
+    serialized = document.model_dump(mode="json")
+    if document.output_contract is None:
+        serialized.pop("output_contract")
     content: object = yaml.safe_dump(
-        document.model_dump(mode="json"),
+        serialized,
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=False,

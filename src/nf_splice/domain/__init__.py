@@ -10,6 +10,7 @@ from nf_splice.domain.authoring import (
     InvalidDecisionTransition,
     LayerState,
     LayerStatus,
+    OutputContractSettings,
     PipelineIdentity,
     UnresolvedDecision,
 )
@@ -33,6 +34,7 @@ from nf_splice.domain.outputs import (
     OutputScope,
     OutputStage,
     ReviewedOutput,
+    expand_output_path_pattern,
 )
 from nf_splice.domain.serialization import (
     AuthoringDocumentError,
@@ -59,6 +61,7 @@ __all__ = [
     "LayerStatus",
     "OutputCandidate",
     "OutputCategory",
+    "OutputContractSettings",
     "OutputEntityType",
     "OutputFormat",
     "OutputLabel",
@@ -75,5 +78,6 @@ __all__ = [
     "UnsafeCollision",
     "UnsupportedSchemaVersion",
     "dump_authoring_document",
+    "expand_output_path_pattern",
     "load_authoring_document",
 ]
