@@ -9,7 +9,12 @@ from typing import Annotated
 import typer
 
 from nf_splice import __version__
-from nf_splice.domain import InputCandidate, OutputCandidate
+from nf_splice.domain import (
+    InputCandidate,
+    OutputCandidate,
+    ProvenanceCandidate,
+    ReviewedAuthor,
+)
 from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.runtime import (
     AnalysisOutputError,
@@ -21,16 +26,20 @@ from nf_splice.services import (
     AuthoringOperationError,
     ChangeKind,
     ComponentReviewError,
+    ExecutionProfileError,
     InputReviewError,
     Operation,
     OutputReviewError,
+    ProvenanceReviewError,
     StateMigrationError,
     StaticChangeKind,
     WorkspaceSnapshot,
     apply_output_decision_file,
     unresolved_component_candidates,
+    unresolved_execution_profiles,
     unresolved_input_candidates,
     unresolved_output_candidates,
+    unresolved_provenance_candidates,
 )
 
 app = typer.Typer(
@@ -61,6 +70,10 @@ RepositoryOption = Annotated[
 OptionalExistingPath = Annotated[
     Path | None,
     typer.Option(exists=True, resolve_path=True),
+]
+ProvenanceSourceOption = Annotated[
+    Path | None,
+    typer.Option(help="Repository-local RO-Crate source offered for explicit review."),
 ]
 OutputDirectoryOption = Annotated[
     Path,
@@ -325,6 +338,7 @@ def configure_command(
     example_output_tree: OptionalExistingPath = None,
     publish_directory: OptionalExistingPath = None,
     decision_file: OptionalExistingPath = None,
+    provenance_source: ProvenanceSourceOption = None,
     export_unresolved: ExportUnresolvedOption = None,
     set_field: SetFieldOption = None,
     contract_version: str | None = typer.Option(
@@ -340,7 +354,13 @@ def configure_command(
     ),
 ) -> None:
     """Discover and explicitly review one integration layer."""
-    if layer not in {"inputs", "outputs", "components"}:
+    if layer not in {
+        "inputs",
+        "outputs",
+        "components",
+        "execution-profiles",
+        "provenance",
+    }:
         _unavailable(Operation.CONFIGURE)
     try:
         if layer == "inputs":
@@ -429,6 +449,125 @@ def configure_command(
                 )
                 raise typer.Exit(code=2)
             typer.echo("Component review is complete; canonical authoring state saved.")
+            return
+
+        if layer == "execution-profiles":
+            document = _service.discover_execution_profiles(repository)
+            profile_candidates = unresolved_execution_profiles(document)
+            profile_reviews: list[dict[str, object]] = []
+            if decision_file is not None:
+                loaded = json.loads(decision_file.read_text(encoding="utf-8"))
+                if not isinstance(loaded, list) or not all(
+                    isinstance(item, dict) for item in loaded
+                ):
+                    raise ExecutionProfileError(
+                        "execution-profile decision file must contain a JSON array"
+                    )
+                profile_reviews.extend(loaded)
+            profile_reviews.extend(
+                _parse_profile_reviews(profile_candidates, set_field or [])
+            )
+            for review in profile_reviews:
+                candidate_id = str(review.get("profile", ""))
+                if review.get("action") == "reject":
+                    document = _service.reject_execution_profile(
+                        repository,
+                        candidate_id,
+                        str(review.get("reason", "")),
+                    )
+                    continue
+                raw_sources = review.get("config_sources", ())
+                if isinstance(raw_sources, str):
+                    raw_sources = [
+                        item.strip() for item in raw_sources.split(",") if item.strip()
+                    ]
+                elif isinstance(raw_sources, tuple):
+                    raw_sources = list(raw_sources)
+                if not isinstance(raw_sources, list) or not all(
+                    isinstance(item, str) for item in raw_sources
+                ):
+                    raise ExecutionProfileError(
+                        "config_sources must be an array or comma-separated string"
+                    )
+                document = _service.review_execution_profile(
+                    repository,
+                    candidate_id,
+                    use=str(review.get("use", "")),
+                    description=str(review.get("description", "")),
+                    executor=(
+                        str(review["executor"])
+                        if review.get("executor") is not None
+                        else None
+                    ),
+                    container_engine=(
+                        str(review["container_engine"])
+                        if review.get("container_engine") is not None
+                        else None
+                    ),
+                    config_sources=tuple(raw_sources),
+                )
+            profile_candidates = unresolved_execution_profiles(document)
+            _export_unresolved(export_unresolved, profile_candidates)
+            if profile_candidates:
+                typer.echo(
+                    f"{len(profile_candidates)} execution profile(s) still require "
+                    "review.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            typer.echo(
+                "Execution-profile review is complete; canonical authoring state saved."
+            )
+            return
+
+        if layer == "provenance":
+            document = _service.discover_provenance(
+                repository, supplied_file=provenance_source
+            )
+            provenance_candidates = unresolved_provenance_candidates(document)
+            provenance_review_data = _provenance_review(decision_file, set_field or [])
+            if provenance_review_data is not None:
+                candidate_id = _select_provenance_candidate(
+                    provenance_candidates, provenance_review_data
+                )
+                raw_authors = provenance_review_data.get("authors", [])
+                if not isinstance(raw_authors, list):
+                    raise ProvenanceReviewError("authors must be a JSON array")
+                authors = tuple(
+                    ReviewedAuthor.model_validate(
+                        {"name": item} if isinstance(item, str) else item
+                    )
+                    for item in raw_authors
+                )
+                raw_licenses = provenance_review_data.get("licenses", [])
+                if not isinstance(raw_licenses, list) or not all(
+                    isinstance(item, str) for item in raw_licenses
+                ):
+                    raise ProvenanceReviewError("licenses must be a JSON string array")
+                document = _service.review_provenance(
+                    repository,
+                    candidate_id,
+                    authors=authors,
+                    licenses=tuple(raw_licenses),
+                    published_at=str(provenance_review_data.get("published_at", "")),
+                    source_revision=(
+                        str(provenance_review_data["source_revision"])
+                        if provenance_review_data.get("source_revision") is not None
+                        else None
+                    ),
+                )
+            provenance_candidates = unresolved_provenance_candidates(document)
+            _export_unresolved(export_unresolved, provenance_candidates)
+            if provenance_candidates:
+                typer.echo(
+                    f"{len(provenance_candidates)} provenance strategy candidate(s) "
+                    "still require review.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            typer.echo(
+                "Provenance review is complete; canonical authoring state saved."
+            )
             return
 
         result = _service.discover_outputs(
@@ -524,6 +663,84 @@ def _parse_component_reviews(
     return list(grouped.values())
 
 
+def _parse_profile_reviews(
+    candidates: tuple[object, ...], assignments: list[str]
+) -> list[dict[str, object]]:
+    """Parse repeatable profile selections against unresolved candidate IDs."""
+    identifiers = {str(item.id) for item in candidates if hasattr(item, "id")}
+    grouped: dict[str, dict[str, object]] = {}
+    for assignment in assignments:
+        left, separator, value = assignment.partition("=")
+        if not separator:
+            raise ExecutionProfileError("execution-profile --set must contain '='")
+        candidate_id = next(
+            (
+                item
+                for item in sorted(identifiers, key=len, reverse=True)
+                if left == item or left.startswith(item + ".")
+            ),
+            None,
+        )
+        if candidate_id is None:
+            raise ExecutionProfileError(
+                f"unknown execution profile candidate in {left!r}"
+            )
+        field = left[len(candidate_id) + 1 :] if left != candidate_id else "action"
+        grouped.setdefault(candidate_id, {"profile": candidate_id})[field] = value
+    return list(grouped.values())
+
+
+def _provenance_review(
+    decision_file: Path | None, assignments: list[str]
+) -> dict[str, object] | None:
+    """Load one explicit provenance decision from JSON and/or repeatable fields."""
+    review: dict[str, object] = {}
+    if decision_file is not None:
+        loaded: object = json.loads(decision_file.read_text(encoding="utf-8"))
+        if not isinstance(loaded, dict):
+            raise ProvenanceReviewError(
+                "provenance decision file must contain a JSON object"
+            )
+        review.update(loaded)
+    for assignment in assignments:
+        left, separator, value = assignment.partition("=")
+        if not separator or not left.startswith("provenance."):
+            raise ProvenanceReviewError(
+                "provenance --set must use provenance.FIELD=VALUE"
+            )
+        field = left.removeprefix("provenance.")
+        if field in {"authors", "licenses"}:
+            review[field] = [item.strip() for item in value.split(",") if item.strip()]
+        else:
+            review[field] = value
+    return review or None
+
+
+def _select_provenance_candidate(
+    candidates: tuple[ProvenanceCandidate, ...], review: dict[str, object]
+) -> str:
+    """Resolve an explicit candidate id or an unambiguous strategy/source pair."""
+    candidate_id = review.get("candidate")
+    if candidate_id is not None:
+        selected = str(candidate_id)
+        if not any(item.id == selected for item in candidates):
+            raise ProvenanceReviewError(f"unknown provenance candidate {selected!r}")
+        return selected
+    strategy = str(review.get("strategy", ""))
+    source_path = review.get("source_path")
+    matching = [
+        item
+        for item in candidates
+        if item.strategy.value == strategy
+        and (source_path is None or item.source_path == str(source_path))
+    ]
+    if len(matching) != 1:
+        raise ProvenanceReviewError(
+            "select an unambiguous provenance candidate or strategy/source_path pair"
+        )
+    return str(matching[0].id)
+
+
 @app.command("plan")
 def plan_command() -> None:
     """Preview proposed changes when planning support becomes available."""
@@ -545,10 +762,58 @@ def build_command(
         ),
     ),
 ) -> None:
-    """Build a reviewed outputs, inputs, or components integration layer."""
-    if target not in {"outputs", "inputs", "components"}:
+    """Build one reviewed static integration layer."""
+    if target not in {
+        "outputs",
+        "inputs",
+        "components",
+        "execution-profiles",
+        "provenance",
+    }:
         _unavailable(Operation.BUILD)
     try:
+        if target == "execution-profiles":
+            execution_plan = _service.plan_execution_profiles(repository)
+            for change in execution_plan.changes:
+                typer.echo(f"{change.kind.value}: {change.path}")
+                if change.diff:
+                    typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+            if check:
+                typer.echo("Check complete; repository was not changed.")
+                return
+            execution_result = _service.build_execution_profiles(
+                repository, replace_existing=replace_existing
+            )
+            if execution_result.wrote:
+                changed = sum(
+                    item.kind is not StaticChangeKind.UNCHANGED
+                    for item in execution_result.changes
+                )
+                typer.echo(f"Built {changed} reviewed execution artefact(s).")
+            else:
+                typer.echo("Execution artefacts are byte-identical; no files changed.")
+            return
+        if target == "provenance":
+            provenance_plan = _service.plan_provenance(repository)
+            typer.echo(
+                f"{provenance_plan.change.kind.value}: {provenance_plan.change.path}"
+            )
+            if provenance_plan.change.diff:
+                typer.echo(
+                    provenance_plan.change.diff,
+                    nl=not provenance_plan.change.diff.endswith("\n"),
+                )
+            if check:
+                typer.echo("Check complete; repository was not changed.")
+                return
+            provenance_result = _service.build_provenance(
+                repository, replace_existing=replace_existing
+            )
+            if provenance_result.wrote:
+                typer.echo("Built reviewed provenance artefact.")
+            else:
+                typer.echo("Provenance artefact is byte-identical; no files changed.")
+            return
         if target in {"inputs", "components"}:
             static_plan = _service.plan_static_layer(repository, target)
             typer.echo(f"{static_plan.change.kind.value}: {static_plan.change.path}")
@@ -571,10 +836,13 @@ def build_command(
                 )
             return
         output_plan = _service.plan_output_contracts(repository)
-        for change in output_plan.changes:
-            typer.echo(f"{change.kind.value}: {change.path}")
-            if change.diff:
-                typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+        for output_change in output_plan.changes:
+            typer.echo(f"{output_change.kind.value}: {output_change.path}")
+            if output_change.diff:
+                typer.echo(
+                    output_change.diff,
+                    nl=not output_change.diff.endswith("\n"),
+                )
         if check:
             typer.echo("Check complete; repository was not changed.")
             return
