@@ -15,6 +15,11 @@ from nf_splice.domain.authoring import (
     UnresolvedDecision,
 )
 from nf_splice.domain.components import ComponentCandidate, ReviewedComponent
+from nf_splice.domain.execution import (
+    EnvironmentUse,
+    ExecutionProfileCandidate,
+    ReviewedExecutionProfile,
+)
 from nf_splice.domain.inputs import (
     InputCandidate,
     InputClassification,
@@ -44,6 +49,12 @@ from nf_splice.domain.outputs import (
     ReviewedOutput,
     expand_output_path_pattern,
 )
+from nf_splice.domain.provenance import (
+    ProvenanceCandidate,
+    ProvenanceStrategy,
+    ReviewedAuthor,
+    ReviewedProvenance,
+)
 from nf_splice.domain.serialization import (
     AuthoringDocumentError,
     InvalidAuthoringDocument,
@@ -60,9 +71,11 @@ __all__ = [
     "Decision",
     "DecisionStatus",
     "EntryType",
+    "EnvironmentUse",
     "Evidence",
     "EvidenceKind",
     "EvidenceProvenance",
+    "ExecutionProfileCandidate",
     "InputCandidate",
     "InputClassification",
     "InspectedPath",
@@ -82,11 +95,16 @@ __all__ = [
     "OutputStage",
     "PathClassification",
     "PipelineIdentity",
+    "ProvenanceCandidate",
+    "ProvenanceStrategy",
     "RepositoryEvidence",
     "RepositoryInspection",
+    "ReviewedAuthor",
     "ReviewedComponent",
+    "ReviewedExecutionProfile",
     "ReviewedInput",
     "ReviewedOutput",
+    "ReviewedProvenance",
     "SpliceTreeInspection",
     "TreeState",
     "UnresolvedDecision",
