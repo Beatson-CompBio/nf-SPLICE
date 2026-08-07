@@ -60,8 +60,10 @@ identity, output discovery and review, workspace status, and terminal workspace
 are available. Reviewed output contracts and per-run `analysis_output.json`
 generation and validation are also available. Reviewed input projection,
 software-component inventory, and safe migration from the superseded root-level
-state layout are available. Execution profiles, provenance, complete planning,
-and bundle-wide validation are being delivered incrementally.
+state layout are available. Reviewed execution-profile selection, safe config
+materialisation, and deterministic workflow RO-Crate provenance are also
+available. Complete planning, bundle provenance, and bundle-wide validation are
+being delivered incrementally.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -150,6 +152,44 @@ container evidence. Conflicts stay unresolved until one detected value is
 selected. Generated `splice/components.json` deterministically deduplicates
 containers and retains source locations for every component.
 
+Select the execution environments that SPLICE officially supports, classify
+their intended use, and materialise their reviewed configuration:
+
+```bash
+nf-splice configure execution-profiles \
+  --set profile:local.use=development \
+  --set profile:local.description="Supported local execution" \
+  --export-unresolved unresolved-profiles.json
+nf-splice build execution-profiles --check
+nf-splice build execution-profiles
+```
+
+Profiles detected in `nextflow.config` or an existing integration remain
+candidates until each is explicitly selected or rejected. Conflicting or
+missing executor, container-engine, and config relationships require an
+explicit resolution. The build writes `splice/execution-profiles.json` and its
+referenced `splice/configs/*.config` files together. It blocks embedded
+credentials, personal paths, literal HPC accounts, production test/demo
+settings, and reviewed scientific parameter overrides before writing any
+target. A JSON decision file is useful when several profiles must be selected
+or rejected in one review.
+
+Review an RO-Crate strategy and release metadata, then generate workflow
+provenance:
+
+```bash
+nf-splice configure provenance --decision-file provenance-review.json
+nf-splice build provenance --check
+nf-splice build provenance
+```
+
+The decision file selects the built-in minimal renderer, a compatible existing
+RO-Crate to normalise, or an explicitly supplied repository-local source. It
+also records reviewed authors, licences, publication date, and source revision.
+The deterministic `splice/ro-crate-metadata.json` links the pipeline identity,
+release, main Nextflow workflow, and reviewed software components. Ambiguous
+sources and incomplete release metadata remain blocked.
+
 Discover output candidates from pipeline source and optional completed output
 evidence:
 
@@ -171,8 +211,10 @@ rejected, merged, or split through an explicit decision file, repeatable
 `inspect` reports detected evidence and existing `splice/` safety warnings,
 `status` adds authoring and integration-layer readiness, and `tui` presents the
 same shared result with an output candidate table, supporting evidence, and
-vocabulary-backed review fields. CLI and terminal reviews use the same
-validation and produce identical canonical state.
+vocabulary-backed review fields. The terminal workspace also exposes the same
+input, component, execution-profile, and provenance review services as the CLI.
+Equivalent CLI and terminal reviews use the same validation and produce
+identical canonical state.
 
 After every output decision is resolved and the output-contract version is
 reviewed, preview and build the two deterministic output contracts:
@@ -211,9 +253,10 @@ live completed publish directory.
 
 The planned `plan` and bundle-level `validate` commands remain visible in
 command help but exit explicitly as unavailable. `build` and `configure`
-currently support the `inputs`, `outputs`, and `components` layers; later
-integration layers and `build all` remain unavailable until their reviewed
-application behaviour is implemented.
+currently support the `inputs`, `outputs`, `components`, `execution-profiles`,
+and `provenance` layers. `build all`, lock generation, and remaining bundle
+orchestration stay unavailable until their reviewed application behaviour is
+implemented.
 
 ## Intended workflow
 
@@ -256,11 +299,15 @@ splice/outputs.yaml         reviewed output catalogue materialisation
 splice/outputs.schema.json  validation contract for analysis_output.json
 ```
 
-The currently available input and software layers contain:
+The currently available input, software, execution, and provenance layers
+contain:
 
 ```text
-splice/inputs.schema.json  reviewed user-configurable parameter projection
-splice/components.json     reviewed tools, versions, containers, and evidence
+splice/inputs.schema.json       reviewed user-configurable parameter projection
+splice/components.json          reviewed tools, versions, containers, and evidence
+splice/execution-profiles.json  officially supported execution environments
+splice/configs/*.config         validated configuration for selected profiles
+splice/ro-crate-metadata.json   reviewed workflow RO-Crate metadata
 ```
 
 `analysis_output.json` belongs to one completed run and is not part of the
