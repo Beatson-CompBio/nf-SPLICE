@@ -22,14 +22,13 @@ from textual.widgets import (
 )
 
 from nf_splice.domain import (
-    EnvironmentUse,
+    ExecutionProfileType,
     InputClassification,
     OutputCategory,
     OutputEntityType,
     OutputFormat,
     OutputScope,
     OutputStage,
-    ReviewedAuthor,
     ReviewedOutput,
 )
 from nf_splice.services import (
@@ -218,9 +217,12 @@ class NfSpliceApp(App[None]):
                 yield DataTable(id="profile-table")
                 with VerticalScroll(id="profile-review-form"):
                     yield Select(
-                        [(item.value.title(), item.value) for item in EnvironmentUse],
-                        prompt="Supported use",
-                        id="profile-use",
+                        [
+                            (item.value.title(), item.value)
+                            for item in ExecutionProfileType
+                        ],
+                        prompt="Profile type",
+                        id="profile-type",
                     )
                     yield Input(
                         placeholder="Support description", id="profile-description"
@@ -230,8 +232,8 @@ class NfSpliceApp(App[None]):
                         placeholder="Selected container engine", id="profile-engine"
                     )
                     yield Input(
-                        placeholder="Comma-separated config sources",
-                        id="profile-config-sources",
+                        placeholder="Repository-local source .config file",
+                        id="profile-config-source",
                     )
                     yield Input(placeholder="Unsupported reason", id="profile-reason")
                     with Horizontal(id="profile-actions"):
@@ -244,24 +246,8 @@ class NfSpliceApp(App[None]):
                 yield Static("RO-Crate provenance review", classes="heading")
                 yield DataTable(id="provenance-table")
                 with VerticalScroll(id="provenance-review-form"):
-                    yield Input(
-                        placeholder="Comma-separated author names",
-                        id="provenance-authors",
-                    )
-                    yield Input(
-                        placeholder="Comma-separated licence identifiers",
-                        id="provenance-licenses",
-                    )
-                    yield Input(
-                        placeholder="Publication date (YYYY-MM-DD)",
-                        id="provenance-published",
-                    )
-                    yield Input(
-                        placeholder="Source revision (detected if blank)",
-                        id="provenance-revision",
-                    )
                     yield Button(
-                        "Select provenance strategy",
+                        "Include root RO-Crate",
                         id="select-provenance",
                         variant="success",
                     )
@@ -581,7 +567,7 @@ class NfSpliceApp(App[None]):
         document = load_repository_document(self.repository_root)
         candidates = {item.id: item for item in unresolved_execution_profiles(document)}
         candidate = candidates[self._profile_candidate_ids[row]]
-        self.query_one("#profile-use", Select).clear()
+        self.query_one("#profile-type", Select).clear()
         self.query_one("#profile-description", Input).value = ""
         self.query_one("#profile-executor", Input).value = (
             candidate.executors[0] if len(candidate.executors) == 1 else ""
@@ -591,8 +577,8 @@ class NfSpliceApp(App[None]):
             if len(candidate.container_engines) == 1
             else ""
         )
-        self.query_one("#profile-config-sources", Input).value = ",".join(
-            candidate.config_sources
+        self.query_one("#profile-config-source", Input).value = (
+            candidate.config_sources[0] if len(candidate.config_sources) == 1 else ""
         )
         self.query_one("#profile-reason", Input).value = ""
 
@@ -612,20 +598,13 @@ class NfSpliceApp(App[None]):
                     self.query_one("#profile-reason", Input).value.strip(),
                 )
             else:
-                selected_use = self.query_one("#profile-use", Select).value
-                if selected_use is Select.NULL:
-                    raise ValueError("Select a supported profile use.")
-                sources = tuple(
-                    item.strip()
-                    for item in self.query_one(
-                        "#profile-config-sources", Input
-                    ).value.split(",")
-                    if item.strip()
-                )
+                selected_type = self.query_one("#profile-type", Select).value
+                if selected_type is Select.NULL:
+                    raise ValueError("Select a profile type.")
                 self.service.review_execution_profile(
                     self.repository_root,
                     candidate_id,
-                    use=str(selected_use),
+                    profile_type=str(selected_type),
                     description=self.query_one(
                         "#profile-description", Input
                     ).value.strip(),
@@ -635,7 +614,10 @@ class NfSpliceApp(App[None]):
                         "#profile-engine", Input
                     ).value.strip()
                     or None,
-                    config_sources=sources,
+                    config_source=self.query_one(
+                        "#profile-config-source", Input
+                    ).value.strip()
+                    or None,
                 )
         except (OSError, ValueError) as error:
             self.notify(str(error), severity="error", timeout=5)
@@ -647,7 +629,7 @@ class NfSpliceApp(App[None]):
     def _refresh_provenance_candidates(self) -> None:
         table = self.query_one("#provenance-table", DataTable)
         table.clear(columns=True)
-        table.add_columns("Strategy", "Source")
+        table.add_columns("Source")
         self._provenance_candidate_ids = []
         if self.repository_root is None:
             self.query_one("#provenance-review-form").display = False
@@ -660,10 +642,7 @@ class NfSpliceApp(App[None]):
         candidates = unresolved_provenance_candidates(document)
         for candidate in candidates:
             self._provenance_candidate_ids.append(candidate.id)
-            table.add_row(
-                _display_name(candidate.strategy.value),
-                candidate.source_path or "built-in renderer",
-            )
+            table.add_row(candidate.source_path)
         self.query_one("#provenance-review-form").display = bool(candidates)
         if candidates:
             table.cursor_coordinate = Coordinate(0, 0)
@@ -673,31 +652,12 @@ class NfSpliceApp(App[None]):
         if self.repository_root is None or table.cursor_row >= len(
             self._provenance_candidate_ids
         ):
-            self.notify("No provenance strategy is selected.", severity="error")
+            self.notify("No root RO-Crate is selected.", severity="error")
             return
-        authors = tuple(
-            ReviewedAuthor(name=item.strip())
-            for item in self.query_one("#provenance-authors", Input).value.split(",")
-            if item.strip()
-        )
-        licenses = tuple(
-            item.strip()
-            for item in self.query_one("#provenance-licenses", Input).value.split(",")
-            if item.strip()
-        )
         try:
             self.service.review_provenance(
                 self.repository_root,
                 self._provenance_candidate_ids[table.cursor_row],
-                authors=authors,
-                licenses=licenses,
-                published_at=self.query_one(
-                    "#provenance-published", Input
-                ).value.strip(),
-                source_revision=self.query_one(
-                    "#provenance-revision", Input
-                ).value.strip()
-                or None,
             )
         except (OSError, ValueError) as error:
             self.notify(str(error), severity="error", timeout=5)
