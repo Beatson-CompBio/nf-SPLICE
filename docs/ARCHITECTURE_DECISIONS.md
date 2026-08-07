@@ -45,7 +45,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0012 | Make rendering deterministic and idempotent | Current | — |
 | ADR-0013 | Require explicit, previewed, atomic, collision-safe writes | Current | — |
 | ADR-0014 | Put CLI and TUI over one application core | Current | — |
-| ADR-0015 | Separate static integration authoring from runtime manifests | Current | — |
+| ADR-0015 | Separate static integration authoring from per-run analysis output | Current | — |
 | ADR-0016 | Version authoring, bundle, pipeline, and generator independently | Current | — |
 | ADR-0017 | Support the nf-core environment without depending on nf-core internals | Current | — |
 | ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
@@ -414,7 +414,7 @@ reconciliation, rendering, or validation rules.
 
 ---
 
-## ADR-0015: Separate static integration authoring from runtime manifests
+## ADR-0015: Separate static integration authoring from per-run analysis output
 
 | Metadata | Value |
 |---|---|
@@ -431,6 +431,9 @@ reconciliation, rendering, or validation rules.
 Generating runtime `analysis_output.json` is a separate operation that consumes
 completed-run evidence and the static output contract. It does not mutate
 static authoring state or rebuild the integration layer.
+
+Terminology corrected on 2026-08-07 to reserve SPLICE platform vocabulary;
+the operation boundary itself is unchanged.
 
 ### Consequences
 

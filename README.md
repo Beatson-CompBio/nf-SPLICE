@@ -117,7 +117,8 @@ delete unknown content or overwrite unresolved collisions.
 - Reviewed and rejected choices survive later inspection runs.
 - Missing or conflicting decisions block only the affected layer.
 - Generated files are deterministic for the same reviewed state.
-- Static integration authoring remains separate from per-run output manifests.
+- Static integration authoring remains separate from per-run
+  `analysis_output.json` generation.
 
 ## License
 
