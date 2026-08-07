@@ -27,10 +27,26 @@ from nf_splice.services.authoring import (
     initialise_authoring_document,
     reject_output,
 )
+from nf_splice.services.components import (
+    accept_unambiguous_components,
+    discover_components,
+    review_component,
+)
+from nf_splice.services.inputs import discover_inputs, review_input
 from nf_splice.services.output_contracts import (
     OutputContractBuildResult,
     build_output_contracts,
     plan_output_contracts,
+)
+from nf_splice.services.state import (
+    StateMigrationResult,
+    apply_state_migration,
+    plan_state_migration,
+)
+from nf_splice.services.static_layers import (
+    StaticLayerBuildResult,
+    build_static_layer,
+    plan_static_layer,
 )
 
 _INTEGRATION_LAYERS = (
@@ -71,7 +87,7 @@ class EvidenceCount:
 
 @dataclass(frozen=True, slots=True)
 class AuthoringSummary:
-    """Read-only summary of ``nf-splice.yaml``."""
+    """Read-only summary of ``splice/nf-splice.yaml``."""
 
     state: AuthoringState
     unresolved_decisions: int | None
@@ -97,7 +113,7 @@ class WorkspaceSnapshot:
     authoring: AuthoringSummary
     layers: tuple[LayerSummary, ...]
     warnings: tuple[str, ...]
-    build_status: str = "output contracts available"
+    build_status: str = "inputs, outputs, and components available"
     validation_status: str = "runtime outputs available; bundle not available"
 
 
@@ -152,6 +168,18 @@ class ApplicationService:
             accept_detected=accept_detected,
         )
 
+    def plan_state_migration(
+        self, repository_root: str | Path = "."
+    ) -> StateMigrationResult:
+        """Preview explicit legacy-state reconciliation."""
+        return plan_state_migration(repository_root)
+
+    def apply_state_migration(
+        self, repository_root: str | Path = "."
+    ) -> StateMigrationResult:
+        """Apply a previously reviewable, non-destructive state migration."""
+        return apply_state_migration(repository_root)
+
     def discover_outputs(
         self,
         repository_root: str | Path = ".",
@@ -166,6 +194,74 @@ class ApplicationService:
             example_output_tree=example_output_tree,
             publish_directory=publish_directory,
             contract_version=contract_version,
+        )
+
+    def discover_inputs(self, repository_root: str | Path = ".") -> AuthoringDocument:
+        """Discover upstream parameters through the shared authoring core."""
+        return discover_inputs(repository_root)
+
+    def review_input(
+        self,
+        repository_root: str | Path,
+        candidate_id: str,
+        classification: str,
+        *,
+        type_override: str | None = None,
+        description_override: str | None = None,
+    ) -> AuthoringDocument:
+        """Classify one pipeline parameter through shared rules."""
+        return review_input(
+            repository_root,
+            candidate_id,
+            classification,
+            type_override=type_override,
+            description_override=description_override,
+        )
+
+    def discover_components(
+        self, repository_root: str | Path = "."
+    ) -> AuthoringDocument:
+        """Discover workflow software evidence through the shared core."""
+        return discover_components(repository_root)
+
+    def review_component(
+        self,
+        repository_root: str | Path,
+        candidate_id: str,
+        *,
+        version: str | None = None,
+        container_uri: str | None = None,
+    ) -> AuthoringDocument:
+        """Resolve and accept one component through shared rules."""
+        return review_component(
+            repository_root,
+            candidate_id,
+            version=version,
+            container_uri=container_uri,
+        )
+
+    def accept_unambiguous_components(
+        self, repository_root: str | Path
+    ) -> AuthoringDocument:
+        """Explicitly accept every component without conflicting evidence."""
+        return accept_unambiguous_components(repository_root)
+
+    def plan_static_layer(
+        self, repository_root: str | Path, target: str
+    ) -> StaticLayerBuildResult:
+        """Preview an input or component artefact."""
+        return plan_static_layer(repository_root, target)
+
+    def build_static_layer(
+        self,
+        repository_root: str | Path,
+        target: str,
+        *,
+        replace_existing: bool = False,
+    ) -> StaticLayerBuildResult:
+        """Materialise an input or component artefact."""
+        return build_static_layer(
+            repository_root, target, replace_existing=replace_existing
         )
 
     def accept_output(
@@ -219,7 +315,7 @@ class ApplicationService:
     def _authoring_summary(
         root: Path,
     ) -> tuple[AuthoringSummary, AuthoringDocument | None]:
-        path = root / "nf-splice.yaml"
+        path = root / "splice" / "nf-splice.yaml"
         if not path.exists():
             return (
                 AuthoringSummary(
@@ -313,5 +409,11 @@ class ApplicationService:
             for item in tree.collisions
         )
         if authoring.state is AuthoringState.INVALID:
-            warnings.append(f"nf-splice.yaml is invalid: {authoring.detail}")
+            warnings.append(f"splice/nf-splice.yaml is invalid: {authoring.detail}")
+        warnings.extend(
+            f"Legacy state at {item.path} is {item.classification.value}; "
+            f"explicit migration target is {item.destination}"
+            + (f": {item.detail}" if item.detail else "")
+            for item in inspection.legacy_state
+        )
         return tuple(warnings)

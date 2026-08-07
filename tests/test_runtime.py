@@ -90,10 +90,11 @@ def _reviewed_document() -> AuthoringDocument:
 
 
 def _contracts(root: Path) -> bytes:
-    (root / "nf-splice.yaml").write_text(
+    (root / "splice").mkdir(exist_ok=True)
+    (root / "splice" / "nf-splice.yaml").write_text(
         dump_authoring_document(_reviewed_document()), encoding="utf-8"
     )
-    authoring = (root / "nf-splice.yaml").read_bytes()
+    authoring = (root / "splice" / "nf-splice.yaml").read_bytes()
     build_output_contracts(root)
     return authoring
 
@@ -149,7 +150,7 @@ def test_publish_directory_generates_valid_inventory_without_static_mutation(
     assert by_path["quant/S1"]["entity_type"] == "directory"
     assert "checksum" in by_path["reports/report.html"]
     assert result.document["run_metadata"] == {"instrument": "NovaSeq"}
-    assert (tmp_path / "nf-splice.yaml").read_bytes() == original_authoring
+    assert (tmp_path / "splice" / "nf-splice.yaml").read_bytes() == original_authoring
     assert {
         path.name: path.read_bytes() for path in (tmp_path / "splice").iterdir()
     } == contract_bytes

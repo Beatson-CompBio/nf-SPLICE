@@ -22,6 +22,7 @@ from textual.widgets import (
 )
 
 from nf_splice.domain import (
+    InputClassification,
     OutputCategory,
     OutputEntityType,
     OutputFormat,
@@ -38,6 +39,8 @@ from nf_splice.services import (
     load_repository_document,
     merge_outputs,
     split_output,
+    unresolved_component_candidates,
+    unresolved_input_candidates,
     unresolved_output_candidates,
 )
 
@@ -47,7 +50,7 @@ def _display_name(value: str) -> str:
 
 
 class NfSpliceApp(App[None]):
-    """Navigable read-only view of repository and integration state."""
+    """Navigable workspace over shared inspection and review services."""
 
     TITLE = "nf-splice"
     SUB_TITLE = "SPLICE integration workspace"
@@ -57,6 +60,7 @@ class NfSpliceApp(App[None]):
     #layers { width: 30; border-right: solid $primary; }
     #details { width: 1fr; padding: 1 2; }
     #candidate-table { height: 10; margin-bottom: 1; }
+    #input-table, #component-table { height: 8; margin-bottom: 1; }
     #review-form { height: auto; display: none; border: solid $primary; padding: 1; }
     #review-form Input, #review-form Select { margin-bottom: 1; }
     #review-actions { height: auto; }
@@ -77,6 +81,8 @@ class NfSpliceApp(App[None]):
         )
         self.service = service or ApplicationService()
         self._candidate_ids: list[str] = []
+        self._input_candidate_ids: list[str] = []
+        self._component_candidate_ids: list[str] = []
 
     def compose(self) -> ComposeResult:
         """Compose a summary with keyboard-navigable integration layers."""
@@ -107,6 +113,14 @@ class NfSpliceApp(App[None]):
                 yield Static("", id="layer-detail", classes="section")
                 yield Static("Warnings", classes="heading")
                 yield Static(self._warnings_text(), id="warnings", classes="section")
+                with Horizontal(id="migration-actions"):
+                    yield Button("Preview legacy migration", id="preview-migration")
+                    yield Button(
+                        "Apply legacy migration",
+                        id="apply-migration",
+                        variant="warning",
+                    )
+                yield Static("", id="migration-summary", classes="section")
                 yield Static("Evidence", classes="heading")
                 yield Static(self._evidence_text(), id="evidence", classes="section")
                 yield Static("Output review", classes="heading")
@@ -162,6 +176,36 @@ class NfSpliceApp(App[None]):
                         yield Button("Merge", id="merge-output")
                         yield Button("Split patterns", id="split-output")
                     yield Static("", id="review-summary", classes="section")
+                yield Static("Input review", classes="heading")
+                yield DataTable(id="input-table")
+                with VerticalScroll(id="input-review-form"):
+                    yield Select(
+                        [
+                            (_display_name(item.value), item.value)
+                            for item in InputClassification
+                        ],
+                        prompt="Parameter classification",
+                        id="input-classification",
+                    )
+                    yield Input(placeholder="Type override", id="input-type")
+                    yield Input(
+                        placeholder="Description override", id="input-description"
+                    )
+                    yield Button(
+                        "Save input classification",
+                        id="save-input",
+                        variant="success",
+                    )
+                yield Static("Component review", classes="heading")
+                yield DataTable(id="component-table")
+                with VerticalScroll(id="component-review-form"):
+                    yield Input(placeholder="Selected version", id="component-version")
+                    yield Input(
+                        placeholder="Selected container URI", id="component-container"
+                    )
+                    yield Button(
+                        "Accept component", id="accept-component", variant="success"
+                    )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -171,6 +215,8 @@ class NfSpliceApp(App[None]):
         layer_list.focus()
         self._show_layer(0)
         self._refresh_candidates()
+        self._refresh_input_candidates()
+        self._refresh_component_candidates()
 
     def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
         """Update layer detail when keyboard navigation changes selection."""
@@ -181,9 +227,53 @@ class NfSpliceApp(App[None]):
         """Populate the shared review form from the highlighted candidate."""
         if event.data_table.id == "candidate-table":
             self._show_candidate(event.cursor_row)
+        elif event.data_table.id == "input-table":
+            self._show_input_candidate(event.cursor_row)
+        elif event.data_table.id == "component-table":
+            self._show_component_candidate(event.cursor_row)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Apply review actions using the same service functions as the CLI."""
+        if event.button.id == "save-input":
+            self._save_input_review()
+            return
+        if event.button.id == "accept-component":
+            self._save_component_review()
+            return
+        if event.button.id in {"preview-migration", "apply-migration"}:
+            if self.repository_root is None:
+                self.notify(
+                    "No repository is available for migration.", severity="error"
+                )
+                return
+            try:
+                result = (
+                    self.service.apply_state_migration(self.repository_root)
+                    if event.button.id == "apply-migration"
+                    else self.service.plan_state_migration(self.repository_root)
+                )
+            except (OSError, ValueError) as error:
+                self.notify(str(error), severity="error", timeout=5)
+                return
+            lines = [
+                f"{item.kind.value}: {item.source.name} -> "
+                f"splice/{item.destination.name}"
+                for item in result.changes
+            ]
+            self.query_one("#migration-summary", Static).update(
+                "\n".join(lines) if lines else "No legacy state detected."
+            )
+            if event.button.id == "apply-migration":
+                self.snapshot = self.service.inspect(self.repository_root)
+                self.query_one("#warnings", Static).update(self._warnings_text())
+                self.notify(
+                    "Legacy migration applied; source files were preserved."
+                    if result.wrote
+                    else "Canonical state is already byte-identical."
+                )
+            else:
+                self.notify("Migration preview prepared; no files changed.")
+            return
         if event.button.id not in {
             "preview-output",
             "accept-output",
@@ -250,6 +340,144 @@ class NfSpliceApp(App[None]):
         self.notify("Canonical output review saved.")
         self.snapshot = self.service.inspect(self.repository_root)
         self._refresh_candidates()
+
+    def _refresh_input_candidates(self) -> None:
+        table = self.query_one("#input-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("Parameter", "Group", "Needs review")
+        self._input_candidate_ids = []
+        if self.repository_root is None:
+            self.query_one("#input-review-form").display = False
+            return
+        try:
+            document = load_repository_document(self.repository_root)
+        except (OSError, AuthoringOperationError):
+            self.query_one("#input-review-form").display = False
+            return
+        candidates = unresolved_input_candidates(document)
+        for candidate in candidates:
+            self._input_candidate_ids.append(candidate.id)
+            table.add_row(
+                candidate.name,
+                candidate.group,
+                ", ".join(candidate.unresolved_fields),
+            )
+        self.query_one("#input-review-form").display = bool(candidates)
+        if candidates:
+            table.cursor_coordinate = Coordinate(0, 0)
+            self._show_input_candidate(0)
+
+    def _show_input_candidate(self, row: int) -> None:
+        if self.repository_root is None or row >= len(self._input_candidate_ids):
+            return
+        document = load_repository_document(self.repository_root)
+        candidates = {item.id: item for item in unresolved_input_candidates(document)}
+        candidate = candidates[self._input_candidate_ids[row]]
+        parameter_type = candidate.schema_fragment.get("type")
+        description = candidate.schema_fragment.get("description")
+        self.query_one("#input-type", Input).value = (
+            parameter_type if isinstance(parameter_type, str) else ""
+        )
+        self.query_one("#input-description", Input).value = (
+            description if isinstance(description, str) else ""
+        )
+        self.query_one("#input-classification", Select).clear()
+
+    def _save_input_review(self) -> None:
+        table = self.query_one("#input-table", DataTable)
+        if self.repository_root is None or table.cursor_row >= len(
+            self._input_candidate_ids
+        ):
+            self.notify("No input parameter is selected.", severity="error")
+            return
+        selected = self.query_one("#input-classification", Select).value
+        if selected is Select.NULL:
+            self.notify("Select an input classification.", severity="error")
+            return
+        try:
+            self.service.review_input(
+                self.repository_root,
+                self._input_candidate_ids[table.cursor_row],
+                str(selected),
+                type_override=self.query_one("#input-type", Input).value.strip()
+                or None,
+                description_override=self.query_one(
+                    "#input-description", Input
+                ).value.strip()
+                or None,
+            )
+        except (OSError, ValueError) as error:
+            self.notify(str(error), severity="error", timeout=5)
+            return
+        self.snapshot = self.service.inspect(self.repository_root)
+        self._refresh_input_candidates()
+        self.notify("Canonical input classification saved.")
+
+    def _refresh_component_candidates(self) -> None:
+        table = self.query_one("#component-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("Component", "Versions", "Containers")
+        self._component_candidate_ids = []
+        if self.repository_root is None:
+            self.query_one("#component-review-form").display = False
+            return
+        try:
+            document = load_repository_document(self.repository_root)
+        except (OSError, AuthoringOperationError):
+            self.query_one("#component-review-form").display = False
+            return
+        candidates = unresolved_component_candidates(document)
+        for candidate in candidates:
+            self._component_candidate_ids.append(candidate.id)
+            table.add_row(
+                candidate.name,
+                ", ".join(candidate.versions) or "not detected",
+                str(len(candidate.container_uris)),
+            )
+        self.query_one("#component-review-form").display = bool(candidates)
+        if candidates:
+            table.cursor_coordinate = Coordinate(0, 0)
+            self._show_component_candidate(0)
+
+    def _show_component_candidate(self, row: int) -> None:
+        if self.repository_root is None or row >= len(self._component_candidate_ids):
+            return
+        document = load_repository_document(self.repository_root)
+        candidates = {
+            item.id: item for item in unresolved_component_candidates(document)
+        }
+        candidate = candidates[self._component_candidate_ids[row]]
+        self.query_one("#component-version", Input).value = (
+            candidate.versions[0] if len(candidate.versions) == 1 else ""
+        )
+        self.query_one("#component-container", Input).value = (
+            candidate.container_uris[0] if len(candidate.container_uris) == 1 else ""
+        )
+
+    def _save_component_review(self) -> None:
+        table = self.query_one("#component-table", DataTable)
+        if self.repository_root is None or table.cursor_row >= len(
+            self._component_candidate_ids
+        ):
+            self.notify("No component is selected.", severity="error")
+            return
+        try:
+            self.service.review_component(
+                self.repository_root,
+                self._component_candidate_ids[table.cursor_row],
+                version=self.query_one("#component-version", Input).value.strip()
+                or None,
+                container_uri=self.query_one(
+                    "#component-container", Input
+                ).value.strip()
+                or None,
+            )
+        except (OSError, ValueError) as error:
+            self.notify(str(error), severity="error", timeout=5)
+            return
+        self.snapshot = self.service.inspect(self.repository_root)
+        self._refresh_component_candidates()
+        self.notify("Canonical component review saved.")
 
     def _show_layer(self, index: int) -> None:
         layer = self.snapshot.layers[index]

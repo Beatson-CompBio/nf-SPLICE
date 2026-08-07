@@ -49,7 +49,8 @@ def test_workspace_snapshot_reads_existing_authoring_state(tmp_path: Path) -> No
             ),
         ),
     )
-    (tmp_path / "nf-splice.yaml").write_text(
+    (tmp_path / "splice").mkdir()
+    (tmp_path / "splice" / "nf-splice.yaml").write_text(
         dump_authoring_document(document), encoding="utf-8"
     )
 
@@ -66,13 +67,16 @@ def test_workspace_snapshot_reads_existing_authoring_state(tmp_path: Path) -> No
 def test_invalid_authoring_and_unavailable_operations_are_explicit(
     tmp_path: Path,
 ) -> None:
-    (tmp_path / "nf-splice.yaml").write_text("schema_version: '99'\n", encoding="utf-8")
+    (tmp_path / "splice").mkdir()
+    (tmp_path / "splice" / "nf-splice.yaml").write_text(
+        "schema_version: '99'\n", encoding="utf-8"
+    )
     service = ApplicationService()
 
     snapshot = service.inspect(tmp_path)
 
     assert snapshot.authoring.state is AuthoringState.INVALID
-    assert any("nf-splice.yaml is invalid" in item for item in snapshot.warnings)
+    assert any("splice/nf-splice.yaml is invalid" in item for item in snapshot.warnings)
     for operation in Operation:
         result = service.unavailable(operation)
         assert result.operation is operation

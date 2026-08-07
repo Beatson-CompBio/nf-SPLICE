@@ -112,7 +112,8 @@ def reviewed_document(
 
 
 def write_document(root: Path, document: AuthoringDocument) -> None:
-    (root / "nf-splice.yaml").write_text(
+    (root / "splice").mkdir(exist_ok=True)
+    (root / "splice" / "nf-splice.yaml").write_text(
         dump_authoring_document(document), encoding="utf-8"
     )
 
@@ -164,7 +165,7 @@ def test_output_contract_build_is_visible_collision_safe_and_idempotent(
     tmp_path: Path,
 ) -> None:
     write_document(tmp_path, reviewed_document())
-    (tmp_path / "splice").mkdir()
+    (tmp_path / "splice").mkdir(exist_ok=True)
     unknown = tmp_path / "splice" / "developer-notes.txt"
     unknown.write_text("preserve\n", encoding="utf-8")
 
@@ -212,7 +213,7 @@ def test_output_contract_build_is_visible_collision_safe_and_idempotent(
 def test_malformed_recognized_contract_is_never_overwritten(tmp_path: Path) -> None:
     write_document(tmp_path, reviewed_document())
     splice = tmp_path / "splice"
-    splice.mkdir()
+    splice.mkdir(exist_ok=True)
     malformed = splice / "outputs.yaml"
     malformed.write_text("outputs: not-a-list\n", encoding="utf-8")
 

@@ -171,7 +171,7 @@ class LayerState(DomainModel):
 
 
 class AuthoringDocument(DomainModel):
-    """Versioned canonical content of ``nf-splice.yaml``."""
+    """Versioned canonical content of ``splice/nf-splice.yaml``."""
 
     schema_version: str = AUTHORING_SCHEMA_VERSION
     pipeline: PipelineIdentity = PipelineIdentity()
