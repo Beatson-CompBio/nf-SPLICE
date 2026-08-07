@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install package and test tools
+        run: python -m pip install -e '.[dev]'
+      - name: Run tests
+        run: pytest
+      - name: Smoke-test CLI
+        run: nf-splice --version
+
+  quality:
+    name: Quality and distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install package and development tools
+        run: python -m pip install -e '.[dev]'
+      - name: Lint
+        run: ruff check .
+      - name: Check formatting
+        run: ruff format --check .
+      - name: Type-check
+        run: mypy
+      - name: Build distributions
+        run: python -m build
+      - name: Verify wheel installation
+        run: |
+          python -m venv /tmp/nf-splice-wheel
+          /tmp/nf-splice-wheel/bin/python -m pip install dist/*.whl
+          /tmp/nf-splice-wheel/bin/nf-splice --version
+
+  nf-core-coexistence:
+    name: nf-core 4.0.2 coexistence
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install nf-splice and nf-core
+        run: python -m pip install -e . nf-core==4.0.2
+      - name: Verify dependency consistency
+        run: python -m pip check
+      - name: Smoke-test both entry points
+        run: |
+          nf-splice --version
+          nf-core --version

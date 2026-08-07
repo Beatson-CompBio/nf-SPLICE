@@ -48,6 +48,9 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0015 | Separate static integration authoring from runtime manifests | Current | — |
 | ADR-0016 | Version authoring, bundle, pipeline, and generator independently | Current | — |
 | ADR-0017 | Support the nf-core environment without depending on nf-core internals | Current | — |
+| ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
+| ADR-0019 | Use compatible runtime framework release families | Current | — |
+| ADR-0020 | Package with setuptools and a source layout | Current | — |
 
 ---
 
@@ -484,3 +487,82 @@ architecture.
 - Step 1 must verify installation coexistence in a clean environment.
 - Integration with nf-core must use stable public boundaries or isolated
   adapters.
+
+---
+
+## ADR-0018: Support Python 3.10 through 3.14
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-08-07 |
+| Source | Step 1 user requirement and package metadata review, 2026-08-07 |
+| Scope | Python compatibility |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0017, ADR-0019, ADR-0020 |
+
+### Decision
+
+Support nf-splice on Python 3.10 through 3.14. Test coexistence with nf-core
+4.0.2 on Python 3.10, the minimum version supported by both packages. Keep
+nf-core tooling outside the nf-splice runtime dependency graph.
+
+### Consequences
+
+- Package metadata and CI define and enforce the supported Python range.
+- Python 3.9 is not supported.
+- nf-core coexistence is verified without coupling to nf-core internals.
+
+---
+
+## ADR-0019: Use compatible runtime framework release families
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-08-07 |
+| Source | Step 1 dependency metadata review, 2026-08-07 |
+| Scope | Runtime dependencies |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0014, ADR-0018 |
+
+### Decision
+
+Use Typer 0.27.x, Textual 8.x, Pydantic 2.x, and PyYAML 6.x as the initial
+runtime framework families. These provide the CLI, TUI, model, and YAML
+foundations within the supported Python range.
+
+### Consequences
+
+- Upper bounds prevent accidental major-version contract changes.
+- Upgrading beyond these families requires compatibility evidence and a new or
+  superseding ADR when the supported range or architecture changes.
+
+---
+
+## ADR-0020: Package with setuptools and a source layout
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-08-07 |
+| Source | Step 1 packaging compatibility review, 2026-08-07 |
+| Scope | Packaging |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0016, ADR-0018 |
+
+### Decision
+
+Use the PEP 517 setuptools build backend, declarative project metadata in
+pyproject.toml, and a src/nf_splice package layout. Keep one package version
+constant and expose it through both installed metadata and the CLI.
+
+### Consequences
+
+- Tests exercise the installed package instead of importing accidentally from
+  the repository root.
+- Build-backend compatibility is part of the Python support contract.
+- Changing the backend or source layout is an architectural change.
