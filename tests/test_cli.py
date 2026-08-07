@@ -4,7 +4,6 @@ import json
 from importlib.metadata import metadata, version
 from pathlib import Path
 
-import pytest
 from typer.testing import CliRunner
 
 from nf_splice import __version__
@@ -80,11 +79,11 @@ def test_inspect_and_status_use_repository_service_results(tmp_path: Path) -> No
     assert "Authoring state: not initialized" in status_result.output
     assert "identity: not_configured; unresolved=not available" in status_result.output
     assert (
-        "Build: inputs, outputs, components, execution, and provenance available"
+        "Build: reviewed layer and complete integration builds available"
         in status_result.output
     )
     assert (
-        "Validation: runtime outputs available; bundle not available"
+        "Validation: static bundle and runtime output validation available"
         in status_result.output
     )
 
@@ -310,22 +309,11 @@ def test_cli_reviews_and_builds_execution_profiles(tmp_path: Path) -> None:
     assert "Built 2 reviewed execution artefact(s)" in built.output
 
 
-@pytest.mark.parametrize(
-    ("arguments", "message"),
-    [
-        (["configure", "profiles"], "Integration-layer configuration"),
-        (["plan"], "Change planning"),
-        (["build", "all"], "Integration building"),
-        (["validate"], "Integration validation"),
-    ],
-)
-def test_planned_command_shells_fail_truthfully(
-    arguments: list[str], message: str
-) -> None:
-    result = runner.invoke(app, arguments)
+def test_unsupported_configuration_alias_fails_truthfully() -> None:
+    result = runner.invoke(app, ["configure", "profiles"])
 
     assert result.exit_code == 2
-    assert f"{message} is not available yet." in result.output
+    assert "Integration-layer configuration is not available yet." in result.output
 
 
 def test_output_contract_and_analysis_output_help_are_available() -> None:
@@ -333,7 +321,6 @@ def test_output_contract_and_analysis_output_help_are_available() -> None:
     analysis = runner.invoke(app, ["analysis-output", "--help"])
 
     assert build.exit_code == 0
-    assert "one reviewed static integration layer" in build.output
     assert analysis.exit_code == 0
     assert "generate" in analysis.output
     assert "validate" in analysis.output

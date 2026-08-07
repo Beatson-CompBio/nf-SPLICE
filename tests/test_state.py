@@ -44,7 +44,22 @@ def test_initialisation_creates_and_inspection_recognizes_control_files(
         repository_url="https://github.com/org/pipeline",
     )
     lock = tmp_path / "splice" / "nf-splice.lock.json"
-    lock.write_text(json.dumps({"schema_version": "1.0"}), encoding="utf-8")
+    lock.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "generator": {"name": "nf-splice", "version": "0.1.0"},
+                "repository": {
+                    "url": "https://github.com/org/pipeline",
+                    "revision": None,
+                },
+                "selected_evidence": [],
+                "sources": {},
+                "managed_files": {},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     result = inspect_splice_tree(tmp_path)
     paths = {item.path: item for item in result.paths}
@@ -52,6 +67,32 @@ def test_initialisation_creates_and_inspection_recognizes_control_files(
     assert paths["nf-splice.yaml"].classification is PathClassification.RECOGNIZED
     assert paths["nf-splice.lock.json"].classification is PathClassification.RECOGNIZED
     assert result.collisions == ()
+
+
+def test_lock_inspection_rejects_invalid_hash_inventory(tmp_path: Path) -> None:
+    splice = tmp_path / "splice"
+    splice.mkdir()
+    (splice / "nf-splice.lock.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "generator": {"name": "nf-splice", "version": "0.1.0"},
+                "repository": {
+                    "url": "https://github.com/org/pipeline",
+                    "revision": None,
+                },
+                "selected_evidence": [],
+                "sources": {"nf-splice.yaml": {"sha256": "not-a-hash"}},
+                "managed_files": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    lock = inspect_splice_tree(tmp_path).paths[0]
+
+    assert lock.classification is PathClassification.MALFORMED
+    assert "lowercase SHA-256" in (lock.detail or "")
 
 
 def test_legacy_migration_is_previewed_atomic_non_destructive_and_idempotent(

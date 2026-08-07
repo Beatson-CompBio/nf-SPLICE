@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,16 @@ from nf_splice.domain.serialization import (
 LayerNames = tuple[str, ...]
 Validator = Callable[[Path], str | None]
 
+_BUNDLE_FILES = {
+    "inputs_schema",
+    "outputs_catalogue",
+    "outputs_schema",
+    "ro_crate",
+    "components",
+    "execution_profiles",
+}
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
 
 def _require_mapping_keys(path: Path, keys: tuple[str, ...]) -> str | None:
     try:
@@ -59,6 +70,44 @@ def _require_bundle(path: Path) -> str | None:
         return f"invalid JSON: {parse_error}"
     if content.get("bundle_format") != "splice-pipeline-bundle":
         return "bundle_format must be 'splice-pipeline-bundle'"
+    files = content.get("files")
+    if not isinstance(files, dict):
+        return "files must be an object"
+    missing = sorted(_BUNDLE_FILES - files.keys())
+    extra = sorted(files.keys() - _BUNDLE_FILES)
+    if missing:
+        return f"files is missing required references: {', '.join(missing)}"
+    if extra:
+        return f"files has unsupported references: {', '.join(extra)}"
+    for key, relative in files.items():
+        if not isinstance(key, str) or not isinstance(relative, str):
+            return "bundle file references must be strings"
+        target = path.parent / relative
+        if (
+            Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+            or target.is_symlink()
+            or not target.is_file()
+        ):
+            return f"bundle references invalid file {relative!r}"
+    return None
+
+
+def _require_hash_inventory(value: object, field: str) -> str | None:
+    if not isinstance(value, dict):
+        return f"{field} must be an object"
+    for relative, record in value.items():
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+        ):
+            return f"{field} contains invalid path {relative!r}"
+        if not isinstance(record, dict) or not _SHA256.fullmatch(
+            str(record.get("sha256", ""))
+        ):
+            return f"{field}[{relative!r}] must contain a lowercase SHA-256 hash"
     return None
 
 
@@ -159,7 +208,7 @@ def validate_authoring_state(path: Path) -> tuple[str, str | None]:
 
 
 def validate_lock_state(path: Path) -> tuple[str, str | None]:
-    """Validate the reserved JSON provenance envelope without inventing its body."""
+    """Validate the generated bundle-provenance envelope."""
     try:
         content: Any = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
@@ -171,6 +220,41 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
         return "incompatible", (
             f"unsupported lock schema version {version!r}; expected '1.0'"
         )
+    required = (
+        "generator",
+        "repository",
+        "selected_evidence",
+        "sources",
+        "managed_files",
+    )
+    missing = [field for field in required if field not in content]
+    if missing:
+        return "malformed", f"missing required keys: {', '.join(missing)}"
+    generator = content.get("generator")
+    if not isinstance(generator, dict) or not all(
+        isinstance(generator.get(field), str) and generator[field]
+        for field in ("name", "version")
+    ):
+        return "malformed", "generator must contain non-empty name and version"
+    repository = content.get("repository")
+    if (
+        not isinstance(repository, dict)
+        or not isinstance(repository.get("url"), str)
+        or not repository["url"]
+        or (
+            repository.get("revision") is not None
+            and not isinstance(repository.get("revision"), str)
+        )
+    ):
+        return "malformed", "repository must contain url and optional revision"
+    if not isinstance(content.get("selected_evidence"), list):
+        return "malformed", "selected_evidence must be an array"
+    for field in ("sources", "managed_files"):
+        inventory_error = _require_hash_inventory(content.get(field), field)
+        if inventory_error is not None:
+            return "malformed", inventory_error
+    if "nf-splice.lock.json" in content["managed_files"]:
+        return "malformed", "lock file must not hash itself"
     return "recognized", None
 
 

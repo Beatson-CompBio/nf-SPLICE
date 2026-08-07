@@ -41,6 +41,14 @@ from nf_splice.services.execution import (
     review_execution_profile,
 )
 from nf_splice.services.inputs import discover_inputs, review_input
+from nf_splice.services.orchestration import (
+    IntegrationBuildResult,
+    IntegrationPlan,
+    IntegrationValidationReport,
+    build_integration,
+    plan_integration,
+    validate_integration,
+)
 from nf_splice.services.output_contracts import (
     OutputContractBuildResult,
     build_output_contracts,
@@ -127,10 +135,8 @@ class WorkspaceSnapshot:
     authoring: AuthoringSummary
     layers: tuple[LayerSummary, ...]
     warnings: tuple[str, ...]
-    build_status: str = (
-        "inputs, outputs, components, execution, and provenance available"
-    )
-    validation_status: str = "runtime outputs available; bundle not available"
+    build_status: str = "reviewed layer and complete integration builds available"
+    validation_status: str = "static bundle and runtime output validation available"
 
 
 @dataclass(frozen=True, slots=True)
@@ -390,6 +396,34 @@ class ApplicationService:
         return build_output_contracts(
             repository_root, replace_existing=replace_existing
         )
+
+    def plan_integration(
+        self, repository_root: str | Path = ".", *, target: str = "all"
+    ) -> IntegrationPlan:
+        """Preview the complete reviewed integration without writes."""
+        return plan_integration(repository_root, target=target)
+
+    def build_integration(
+        self,
+        repository_root: str | Path = ".",
+        *,
+        target: str = "all",
+        replace_existing: bool = False,
+        check: bool = False,
+    ) -> IntegrationBuildResult:
+        """Materialise a complete reviewed integration after one preflight."""
+        return build_integration(
+            repository_root,
+            target=target,
+            replace_existing=replace_existing,
+            check=check,
+        )
+
+    def validate_integration(
+        self, repository_root: str | Path = "."
+    ) -> IntegrationValidationReport:
+        """Validate the complete static integration and its provenance."""
+        return validate_integration(repository_root)
 
     @staticmethod
     def unavailable(operation: Operation) -> UnavailableOperation:

@@ -62,8 +62,8 @@ generation and validation are also available. Reviewed input projection,
 software-component inventory, and safe migration from the superseded root-level
 state layout are available. Reviewed execution-profile selection, safe config
 materialisation, and deterministic workflow RO-Crate provenance are also
-available. Complete planning, bundle provenance, and bundle-wide validation are
-being delivered incrementally.
+available. Complete read-only planning, bundle and lock generation, controlled
+whole-integration builds, and bundle-wide validation are available.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -269,25 +269,41 @@ Unclassified produced paths fail by default and can only be omitted with the
 explicit `--allow-unclassified` option. Optional checksums are available for a
 live completed publish directory.
 
-The planned `plan` and bundle-level `validate` commands remain visible in
-command help but exit explicitly as unavailable. `build` and `configure`
-currently support the `inputs`, `outputs`, `components`, `execution-profiles`,
-and `provenance` layers. `build all`, lock generation, and remaining bundle
-orchestration stay unavailable until their reviewed application behaviour is
-implemented.
+Preview the complete desired integration, build it only from reviewed state,
+and validate every managed file and source relationship:
+
+```bash
+nf-splice plan all
+nf-splice plan all --json
+nf-splice build all --check --non-interactive
+nf-splice build all --non-interactive
+nf-splice validate
+```
+
+`plan` and `--check` never write. `build all` preflights every target before
+the first write and refuses unresolved decisions, malformed recognised files,
+unknown target content, and unreviewed replacement of differing generated
+files. After reviewing a displayed diff, use `--replace-existing` only for
+differing recognised generated artefacts. `--json` emits a stable result for
+planning, every layer build, complete builds, and validation. A second complete
+build from unchanged reviewed state is byte-identical.
+
+`build bundle` refreshes only `bundle.json`, `README.md`, and
+`nf-splice.lock.json`, and succeeds only when all referenced layer artefacts
+already match current reviewed state. Normally, prefer `build all`.
 
 ## Intended workflow
 
-As the authoring commands become available, a typical integration will follow
-this flow:
+A typical integration follows this flow:
 
 1. Run `nf-splice inspect` in the pipeline repository.
 2. Review detected evidence and unresolved decisions.
 3. Initialise the version-controlled `splice/nf-splice.yaml` authoring state.
 4. Configure and review each required integration layer.
 5. Preview each reviewed layer with `nf-splice build LAYER --check`.
-6. Build available reviewed integration layers under `splice/`.
-7. Run `nf-splice validate` before committing and submitting the pipeline.
+6. Preview with `nf-splice plan all` and `nf-splice build all --check`.
+7. Build all reviewed integration layers under `splice/`.
+8. Run `nf-splice validate` before committing and submitting the pipeline.
 
 CLI and terminal UI workflows will use the same authoring state and application
 rules, so developers can choose the interface that suits their workflow.
@@ -298,9 +314,17 @@ nf-SPLICE separates reviewed developer choices from generated platform files:
 
 ```text
 splice/
-├── nf-splice.yaml       reviewed, version-controlled authoring state
-├── nf-splice.lock.json  future generator provenance and generated-file hashes
-└── …                    materialised SPLICE integration harness
+├── nf-splice.yaml              reviewed, version-controlled authoring state
+├── bundle.json                 platform bundle entry point
+├── README.md                   generated bundle inventory and ownership guide
+├── nf-splice.lock.json         generator, Git, source, and managed-file hashes
+├── inputs.schema.json          reviewed configurable input projection
+├── outputs.yaml                reviewed output catalogue
+├── outputs.schema.json         runtime analysis-output contract
+├── components.json             reviewed component and container inventory
+├── execution-profiles.json     reviewed platform profile registrations
+├── configs/*.config            byte-identical developer source-config copies
+└── ro-crate-metadata.json      byte-identical developer root RO-Crate copy
 ```
 
 The completed `splice/` bundle will describe the pipeline's inputs, outputs,
@@ -309,6 +333,9 @@ metadata, and bundle provenance.
 
 Existing files are inspected before generation. nf-SPLICE does not silently
 delete unknown content or overwrite unresolved collisions.
+
+For a complete tutorial, command reference, TUI walkthrough, file ownership
+contracts, and recovery procedures, see the [authoring and operation guide](docs/USAGE.md).
 
 The static output layer contains:
 
