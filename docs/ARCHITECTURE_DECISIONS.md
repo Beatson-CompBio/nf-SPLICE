@@ -52,6 +52,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0019 | Use compatible runtime framework release families | Current | — |
 | ADR-0020 | Package with setuptools and a source layout | Current | — |
 | ADR-0021 | Keep all static integration-harness state inside `splice/` | Current | — |
+| ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Current | — |
 
 ---
 
@@ -623,3 +624,74 @@ runtime boundary in ADR-0015.
   safe legacy reconciliation before adding further authoring layers.
 - Public documentation and examples must show only the Current paths after the
   migration behaviour is available.
+
+---
+
+## ADR-0022: Include developer-supplied provenance and execution configs unchanged
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-08-07 |
+| Source | Milestone D pull-request review correction, 2026-08-07 |
+| Scope | RO-Crate and execution-profile source authority |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0002, ADR-0005, ADR-0006, ADR-0012, ADR-0013, ADR-0017, ADR-0021 |
+
+### Decision
+
+Treat workflow provenance and execution configuration as developer-owned source
+artefacts. nf-splice may validate, register, and copy these artefacts into the
+`splice/` integration harness, but it must not invent their contents.
+
+The only RO-Crate source is the regular file `ro-crate-metadata.json` at the
+pipeline repository root. If it is absent, provenance configuration stops and
+instructs the developer to generate it with the public nf-core command
+`nf-core pipelines rocrate .`, then retry. nf-splice does not provide a minimal
+internal generator, accept an arbitrary alternate path, or use a previously
+materialised `splice/ro-crate-metadata.json` as source. After explicit review,
+the root file is structurally validated and copied byte-for-byte to
+`splice/ro-crate-metadata.json`; the root source is never modified.
+
+Each selected execution profile must register exactly one explicitly chosen,
+repository-local `.config` source outside `splice/`. Detection may offer
+repository evidence, but it does not implicitly select even an unambiguous
+source. The selected file is safety-checked and copied byte-for-byte to the
+profile's path under `splice/configs/`; nf-splice does not concatenate sources,
+add headers, or synthesise config content.
+
+The developer must explicitly confirm `type`, `description`, `executor`,
+`container_engine`, and `config_source` for each selected profile. Detected
+values are review evidence and may prefill an interactive form, but the shared
+core does not silently accept them as registration decisions.
+
+The platform profile record uses the keys `id`, `name`, `description`, `type`,
+`engine`, `executor`, `container_engine`, and `config`. The controlled `type`
+vocabulary is `test`, `development`, and `production`; `engine` is `nextflow`;
+executor values use Nextflow's public executor names; and container-engine
+values use one canonical lower-case value per supported runtime. Both authoring
+and inspection validate these vocabularies.
+
+nf-splice, not the developer, assigns the profile `id`. It derives a stable,
+filesystem-safe ID from the exact detected Nextflow profile name and a
+reversible hexadecimal token of that name, so distinct source profile names
+cannot collapse to the same platform ID. IDs remain stable when descriptions,
+types, executors, or source config contents change.
+
+There is no cardinality constraint by `type` or `executor`: any number of
+platform-relevant profiles may be selected, including multiple profiles with
+the same type and executor. Their generated IDs remain unique, and the required
+description records the developer's distinction between otherwise similar
+profiles.
+
+### Consequences
+
+- Missing provenance is a developer-action blocker, not a generation fallback.
+- Source files remain reviewable in their native pipeline locations and can be
+  regenerated or edited with their owning tools.
+- The materialised RO-Crate and config files can be compared byte-for-byte with
+  their reviewed sources.
+- CLI and TUI review forms collect the platform registration values while
+  keeping IDs out of developer input.
+- Vocabulary changes require an explicit schema and compatibility review.
