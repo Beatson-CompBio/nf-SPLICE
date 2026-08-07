@@ -10,6 +10,12 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from nf_splice.domain.execution import (
+    ContainerEngine,
+    ExecutionEngine,
+    ExecutionExecutor,
+    ExecutionProfileType,
+)
 from nf_splice.domain.inspection import (
     EntryType,
     InspectedPath,
@@ -103,6 +109,7 @@ def _require_execution_profiles(path: Path) -> str | None:
                 "id",
                 "name",
                 "description",
+                "type",
                 "engine",
                 "executor",
                 "container_engine",
@@ -112,6 +119,18 @@ def _require_execution_profiles(path: Path) -> str | None:
         ]
         if missing:
             return f"profiles[{index}] has invalid fields: {', '.join(missing)}"
+        vocabularies = {
+            "type": {item.value for item in ExecutionProfileType},
+            "engine": {item.value for item in ExecutionEngine},
+            "executor": {item.value for item in ExecutionExecutor},
+            "container_engine": {item.value for item in ContainerEngine},
+        }
+        for field, vocabulary in vocabularies.items():
+            if profile[field] not in vocabulary:
+                return (
+                    f"profiles[{index}].{field} uses unsupported value "
+                    f"{profile[field]!r}"
+                )
         identifiers.append(profile["id"])
         config = profile["config"]
         config_path = path.parent / config
