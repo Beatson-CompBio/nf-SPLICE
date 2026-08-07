@@ -13,7 +13,6 @@ from nf_splice.domain import (
     InputCandidate,
     OutputCandidate,
     ProvenanceCandidate,
-    ReviewedAuthor,
 )
 from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.runtime import (
@@ -70,10 +69,6 @@ RepositoryOption = Annotated[
 OptionalExistingPath = Annotated[
     Path | None,
     typer.Option(exists=True, resolve_path=True),
-]
-ProvenanceSourceOption = Annotated[
-    Path | None,
-    typer.Option(help="Repository-local RO-Crate source offered for explicit review."),
 ]
 OutputDirectoryOption = Annotated[
     Path,
@@ -338,7 +333,6 @@ def configure_command(
     example_output_tree: OptionalExistingPath = None,
     publish_directory: OptionalExistingPath = None,
     decision_file: OptionalExistingPath = None,
-    provenance_source: ProvenanceSourceOption = None,
     export_unresolved: ExportUnresolvedOption = None,
     set_field: SetFieldOption = None,
     contract_version: str | None = typer.Option(
@@ -476,23 +470,10 @@ def configure_command(
                         str(review.get("reason", "")),
                     )
                     continue
-                raw_sources = review.get("config_sources", ())
-                if isinstance(raw_sources, str):
-                    raw_sources = [
-                        item.strip() for item in raw_sources.split(",") if item.strip()
-                    ]
-                elif isinstance(raw_sources, tuple):
-                    raw_sources = list(raw_sources)
-                if not isinstance(raw_sources, list) or not all(
-                    isinstance(item, str) for item in raw_sources
-                ):
-                    raise ExecutionProfileError(
-                        "config_sources must be an array or comma-separated string"
-                    )
                 document = _service.review_execution_profile(
                     repository,
                     candidate_id,
-                    use=str(review.get("use", "")),
+                    profile_type=str(review.get("type", "")),
                     description=str(review.get("description", "")),
                     executor=(
                         str(review["executor"])
@@ -504,7 +485,11 @@ def configure_command(
                         if review.get("container_engine") is not None
                         else None
                     ),
-                    config_sources=tuple(raw_sources),
+                    config_source=(
+                        str(review["config_source"])
+                        if review.get("config_source") is not None
+                        else None
+                    ),
                 )
             profile_candidates = unresolved_execution_profiles(document)
             _export_unresolved(export_unresolved, profile_candidates)
@@ -521,41 +506,14 @@ def configure_command(
             return
 
         if layer == "provenance":
-            document = _service.discover_provenance(
-                repository, supplied_file=provenance_source
-            )
+            document = _service.discover_provenance(repository)
             provenance_candidates = unresolved_provenance_candidates(document)
             provenance_review_data = _provenance_review(decision_file, set_field or [])
             if provenance_review_data is not None:
                 candidate_id = _select_provenance_candidate(
                     provenance_candidates, provenance_review_data
                 )
-                raw_authors = provenance_review_data.get("authors", [])
-                if not isinstance(raw_authors, list):
-                    raise ProvenanceReviewError("authors must be a JSON array")
-                authors = tuple(
-                    ReviewedAuthor.model_validate(
-                        {"name": item} if isinstance(item, str) else item
-                    )
-                    for item in raw_authors
-                )
-                raw_licenses = provenance_review_data.get("licenses", [])
-                if not isinstance(raw_licenses, list) or not all(
-                    isinstance(item, str) for item in raw_licenses
-                ):
-                    raise ProvenanceReviewError("licenses must be a JSON string array")
-                document = _service.review_provenance(
-                    repository,
-                    candidate_id,
-                    authors=authors,
-                    licenses=tuple(raw_licenses),
-                    published_at=str(provenance_review_data.get("published_at", "")),
-                    source_revision=(
-                        str(provenance_review_data["source_revision"])
-                        if provenance_review_data.get("source_revision") is not None
-                        else None
-                    ),
-                )
+                document = _service.review_provenance(repository, candidate_id)
             provenance_candidates = unresolved_provenance_candidates(document)
             _export_unresolved(export_unresolved, provenance_candidates)
             if provenance_candidates:
@@ -709,36 +667,29 @@ def _provenance_review(
                 "provenance --set must use provenance.FIELD=VALUE"
             )
         field = left.removeprefix("provenance.")
-        if field in {"authors", "licenses"}:
-            review[field] = [item.strip() for item in value.split(",") if item.strip()]
-        else:
-            review[field] = value
+        review[field] = value
     return review or None
 
 
 def _select_provenance_candidate(
     candidates: tuple[ProvenanceCandidate, ...], review: dict[str, object]
 ) -> str:
-    """Resolve an explicit candidate id or an unambiguous strategy/source pair."""
+    """Resolve explicit approval of the sole repository-root source."""
+    if str(review.get("include", "")).lower() not in {"true", "yes", "1"}:
+        raise ProvenanceReviewError(
+            'approve inclusion with provenance.include=true or JSON {"include": true}'
+        )
     candidate_id = review.get("candidate")
     if candidate_id is not None:
         selected = str(candidate_id)
         if not any(item.id == selected for item in candidates):
             raise ProvenanceReviewError(f"unknown provenance candidate {selected!r}")
         return selected
-    strategy = str(review.get("strategy", ""))
-    source_path = review.get("source_path")
-    matching = [
-        item
-        for item in candidates
-        if item.strategy.value == strategy
-        and (source_path is None or item.source_path == str(source_path))
-    ]
-    if len(matching) != 1:
+    if len(candidates) != 1:
         raise ProvenanceReviewError(
-            "select an unambiguous provenance candidate or strategy/source_path pair"
+            "repository-root RO-Crate candidate is missing or ambiguous"
         )
-    return str(matching[0].id)
+    return str(candidates[0].id)
 
 
 @app.command("plan")
