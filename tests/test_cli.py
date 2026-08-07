@@ -1,5 +1,6 @@
 """CLI and package metadata smoke tests."""
 
+import json
 from importlib.metadata import metadata, version
 from pathlib import Path
 
@@ -53,6 +54,7 @@ def test_help_option() -> None:
     for command in (
         "inspect",
         "init",
+        "migrate-state",
         "status",
         "configure",
         "plan",
@@ -77,17 +79,163 @@ def test_inspect_and_status_use_repository_service_results(tmp_path: Path) -> No
     assert status_result.exit_code == 0
     assert "Authoring state: not initialized" in status_result.output
     assert "identity: not_configured; unresolved=not available" in status_result.output
-    assert "Build: output contracts available" in status_result.output
+    assert "Build: inputs, outputs, and components available" in status_result.output
     assert (
         "Validation: runtime outputs available; bundle not available"
         in status_result.output
     )
 
 
+def test_cli_previews_and_applies_legacy_state_migration(tmp_path: Path) -> None:
+    document = AuthoringDocument(
+        pipeline=PipelineIdentity(
+            name="pipeline",
+            version="1.0.0",
+            repository_url="https://github.com/org/pipeline",
+        )
+    )
+    source = tmp_path / "nf-splice.yaml"
+    source.write_text(dump_authoring_document(document), encoding="utf-8")
+
+    preview = runner.invoke(app, ["migrate-state", "--repository", str(tmp_path)])
+    applied = runner.invoke(
+        app, ["migrate-state", "--repository", str(tmp_path), "--apply"]
+    )
+
+    assert preview.exit_code == 0
+    assert "repository was not changed" in preview.output
+    assert applied.exit_code == 0
+    assert "source files were preserved" in applied.output
+    assert source.is_file()
+    assert (tmp_path / "splice" / "nf-splice.yaml").read_bytes() == source.read_bytes()
+
+
+def test_cli_reviews_and_builds_inputs(tmp_path: Path) -> None:
+    init = runner.invoke(
+        app,
+        [
+            "init",
+            "--repository",
+            str(tmp_path),
+            "--name",
+            "pipeline",
+            "--pipeline-version",
+            "1.0.0",
+            "--repository-url",
+            "https://github.com/org/pipeline",
+        ],
+    )
+    schema = {
+        "$defs": {
+            "analysis": {
+                "title": "Analysis",
+                "type": "object",
+                "properties": {
+                    "threshold": {
+                        "type": "number",
+                        "description": "Threshold.",
+                        "default": 0.8,
+                    },
+                    "work_dir": {
+                        "type": "string",
+                        "description": "Work directory.",
+                    },
+                },
+            }
+        }
+    }
+    (tmp_path / "nextflow_schema.json").write_text(json.dumps(schema), encoding="utf-8")
+
+    configured = runner.invoke(
+        app,
+        [
+            "configure",
+            "inputs",
+            "--repository",
+            str(tmp_path),
+            "--set",
+            "threshold=user-configurable",
+            "--set",
+            "work_dir=execution-environment-managed",
+        ],
+    )
+    checked = runner.invoke(
+        app, ["build", "inputs", "--repository", str(tmp_path), "--check"]
+    )
+    built = runner.invoke(app, ["build", "inputs", "--repository", str(tmp_path)])
+
+    assert init.exit_code == 0
+    assert configured.exit_code == 0
+    assert checked.exit_code == 0
+    assert "repository was not changed" in checked.output
+    assert built.exit_code == 0
+    assert "Built reviewed inputs artefact" in built.output
+
+
+def test_cli_reviews_and_builds_components(tmp_path: Path) -> None:
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--repository",
+            str(tmp_path),
+            "--name",
+            "pipeline",
+            "--pipeline-version",
+            "1.0.0",
+            "--repository-url",
+            "https://github.com/org/pipeline",
+        ],
+    )
+    module = tmp_path / "modules" / "local" / "tool"
+    module.mkdir(parents=True)
+    (module / "meta.yml").write_text(
+        "name: tool\ntools:\n  - tool:\n      description: Tool\n",
+        encoding="utf-8",
+    )
+    (module / "main.nf").write_text(
+        "process TOOL {\n  container 'quay.io/example/tool:1.0'\n\n  input:\n}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "modules.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "module",
+                        "path": "modules/local/tool",
+                        "namespace": "local",
+                        "tool": "tool",
+                        "name": "tool",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    configured = runner.invoke(
+        app,
+        [
+            "configure",
+            "components",
+            "--repository",
+            str(tmp_path),
+            "--accept-detected",
+        ],
+    )
+    built = runner.invoke(app, ["build", "components", "--repository", str(tmp_path)])
+
+    assert configured.exit_code == 0
+    assert "Component review is complete" in configured.output
+    assert built.exit_code == 0
+    assert "Built reviewed components artefact" in built.output
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
-        (["configure", "inputs"], "Integration-layer configuration"),
+        (["configure", "profiles"], "Integration-layer configuration"),
         (["plan"], "Change planning"),
         (["build", "all"], "Integration building"),
         (["validate"], "Integration validation"),
@@ -107,7 +255,7 @@ def test_output_contract_and_analysis_output_help_are_available() -> None:
     analysis = runner.invoke(app, ["analysis-output", "--help"])
 
     assert build.exit_code == 0
-    assert "only outputs is currently available" in build.output
+    assert "outputs, inputs, or components" in build.output
     assert analysis.exit_code == 0
     assert "generate" in analysis.output
     assert "validate" in analysis.output
@@ -147,7 +295,8 @@ def test_cli_builds_contract_then_generates_and_validates_analysis_output(
             ),
         ),
     )
-    (tmp_path / "nf-splice.yaml").write_text(
+    (tmp_path / "splice").mkdir()
+    (tmp_path / "splice" / "nf-splice.yaml").write_text(
         dump_authoring_document(document), encoding="utf-8"
     )
     publish = tmp_path / "published"
