@@ -60,8 +60,10 @@ identity, output discovery and review, workspace status, and terminal workspace
 are available. Reviewed output contracts and per-run `analysis_output.json`
 generation and validation are also available. Reviewed input projection,
 software-component inventory, and safe migration from the superseded root-level
-state layout are available. Execution profiles, provenance, complete planning,
-and bundle-wide validation are being delivered incrementally.
+state layout are available. Reviewed execution-profile selection, safe config
+materialisation, and deterministic workflow RO-Crate provenance are also
+available. Complete planning, bundle provenance, and bundle-wide validation are
+being delivered incrementally.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -150,6 +152,62 @@ container evidence. Conflicts stay unresolved until one detected value is
 selected. Generated `splice/components.json` deterministically deduplicates
 containers and retains source locations for every component.
 
+Select the execution environments that SPLICE officially supports, classify
+their platform type, and select the source config to register for each one:
+
+```bash
+nf-splice configure execution-profiles \
+  --set profile:local.type=development \
+  --set profile:local.description="Supported local execution" \
+  --set profile:local.executor=local \
+  --set profile:local.container_engine=singularity \
+  --set profile:local.config_source=conf/local.config \
+  --export-unresolved unresolved-profiles.json
+nf-splice build execution-profiles --check
+nf-splice build execution-profiles
+```
+
+Profiles detected in `nextflow.config` remain candidates until each is
+explicitly selected or rejected. Every selected profile requires explicit
+`type`, `description`, `executor`, `container_engine`, and `config_source`
+values. Detected executor and container-engine evidence is shown as guidance
+and constrains inconsistent selections; it is not silently accepted. Every
+selected profile also requires exactly one explicitly chosen,
+repository-local source `.config` outside `splice/`. The tool copies that file
+byte-for-byte; it never combines configs or generates their content. The build
+writes `splice/execution-profiles.json` and its referenced
+`splice/configs/*.config` files together. It blocks embedded
+credentials, personal paths, literal HPC accounts, production test/demo
+settings, and reviewed scientific parameter overrides before writing any
+target. A JSON decision file is useful when several profiles must be selected
+or rejected in one review.
+
+There is no limit on the number of selected profiles or on how many share the
+same `type` or `executor`. Use the required description to distinguish profiles
+with otherwise similar registrations. nf-splice assigns every selected profile
+a deterministic unique `id` derived from its exact Nextflow source-profile name;
+developers do not supply IDs. The platform document uses the stable keys `id`,
+`name`, `description`, `type`, `engine`, `executor`, `container_engine`, and
+`config`. `type`, `engine`, `executor`, and `container_engine` use controlled
+vocabularies validated by both authoring and inspection.
+
+Generate the pipeline RO-Crate with nf-core tooling, explicitly approve it, and
+include it in the integration:
+
+```bash
+nf-core pipelines rocrate .
+nf-splice configure provenance --set provenance.include=true
+nf-splice build provenance --check
+nf-splice build provenance
+```
+
+`ro-crate-metadata.json` must already be a regular file at the pipeline
+repository root. If it is absent, nf-splice stops and instructs the developer to
+run `nf-core pipelines rocrate .`, then retry. nf-splice does not create,
+complete, or normalise RO-Crate metadata. After explicit inclusion review it
+validates the RO-Crate structure and copies the root file byte-for-byte to
+`splice/ro-crate-metadata.json`, leaving the developer-owned source unchanged.
+
 Discover output candidates from pipeline source and optional completed output
 evidence:
 
@@ -171,8 +229,10 @@ rejected, merged, or split through an explicit decision file, repeatable
 `inspect` reports detected evidence and existing `splice/` safety warnings,
 `status` adds authoring and integration-layer readiness, and `tui` presents the
 same shared result with an output candidate table, supporting evidence, and
-vocabulary-backed review fields. CLI and terminal reviews use the same
-validation and produce identical canonical state.
+vocabulary-backed review fields. The terminal workspace also exposes the same
+input, component, execution-profile, and provenance review services as the CLI.
+Equivalent CLI and terminal reviews use the same validation and produce
+identical canonical state.
 
 After every output decision is resolved and the output-contract version is
 reviewed, preview and build the two deterministic output contracts:
@@ -211,9 +271,10 @@ live completed publish directory.
 
 The planned `plan` and bundle-level `validate` commands remain visible in
 command help but exit explicitly as unavailable. `build` and `configure`
-currently support the `inputs`, `outputs`, and `components` layers; later
-integration layers and `build all` remain unavailable until their reviewed
-application behaviour is implemented.
+currently support the `inputs`, `outputs`, `components`, `execution-profiles`,
+and `provenance` layers. `build all`, lock generation, and remaining bundle
+orchestration stay unavailable until their reviewed application behaviour is
+implemented.
 
 ## Intended workflow
 
@@ -256,11 +317,15 @@ splice/outputs.yaml         reviewed output catalogue materialisation
 splice/outputs.schema.json  validation contract for analysis_output.json
 ```
 
-The currently available input and software layers contain:
+The currently available input, software, execution, and provenance layers
+contain:
 
 ```text
-splice/inputs.schema.json  reviewed user-configurable parameter projection
-splice/components.json     reviewed tools, versions, containers, and evidence
+splice/inputs.schema.json       reviewed user-configurable parameter projection
+splice/components.json          reviewed tools, versions, containers, and evidence
+splice/execution-profiles.json  officially supported execution environments
+splice/configs/*.config         validated configuration for selected profiles
+splice/ro-crate-metadata.json   reviewed workflow RO-Crate metadata
 ```
 
 `analysis_output.json` belongs to one completed run and is not part of the

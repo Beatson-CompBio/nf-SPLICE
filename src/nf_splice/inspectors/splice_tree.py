@@ -10,6 +10,12 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from nf_splice.domain.execution import (
+    ContainerEngine,
+    ExecutionEngine,
+    ExecutionExecutor,
+    ExecutionProfileType,
+)
 from nf_splice.domain.inspection import (
     EntryType,
     InspectedPath,
@@ -82,6 +88,65 @@ def _require_nonempty_text(path: Path) -> str | None:
     return "file is empty"
 
 
+def _require_execution_profiles(path: Path) -> str | None:
+    error = _require_mapping_keys(path, ("schema_version", "profiles"))
+    if error is not None:
+        return error
+    try:
+        content: Any = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as parse_error:
+        return f"invalid JSON: {parse_error}"
+    profiles = content.get("profiles")
+    if not isinstance(profiles, list) or not profiles:
+        return "profiles must be a non-empty array"
+    identifiers: list[str] = []
+    for index, profile in enumerate(profiles):
+        if not isinstance(profile, dict):
+            return f"profiles[{index}] must be an object"
+        missing = [
+            key
+            for key in (
+                "id",
+                "name",
+                "description",
+                "type",
+                "engine",
+                "executor",
+                "container_engine",
+                "config",
+            )
+            if not isinstance(profile.get(key), str) or not profile[key]
+        ]
+        if missing:
+            return f"profiles[{index}] has invalid fields: {', '.join(missing)}"
+        vocabularies = {
+            "type": {item.value for item in ExecutionProfileType},
+            "engine": {item.value for item in ExecutionEngine},
+            "executor": {item.value for item in ExecutionExecutor},
+            "container_engine": {item.value for item in ContainerEngine},
+        }
+        for field, vocabulary in vocabularies.items():
+            if profile[field] not in vocabulary:
+                return (
+                    f"profiles[{index}].{field} uses unsupported value "
+                    f"{profile[field]!r}"
+                )
+        identifiers.append(profile["id"])
+        config = profile["config"]
+        config_path = path.parent / config
+        if (
+            not config.startswith("configs/")
+            or not config.endswith(".config")
+            or ".." in Path(config).parts
+            or config_path.is_symlink()
+            or not config_path.is_file()
+        ):
+            return f"profiles[{index}] references invalid config {config!r}"
+    if len(identifiers) != len(set(identifiers)):
+        return "execution profile ids must be unique"
+    return None
+
+
 def validate_authoring_state(path: Path) -> tuple[str, str | None]:
     """Return compatibility and detail for a canonical authoring document."""
     try:
@@ -131,7 +196,7 @@ _FIXED_ARTIFACTS: dict[str, tuple[LayerNames, Validator]] = {
     ),
     "execution-profiles.json": (
         ("execution_profiles",),
-        lambda path: _require_mapping_keys(path, ("schema_version", "profiles")),
+        _require_execution_profiles,
     ),
     "inputs.schema.json": (
         ("inputs",),

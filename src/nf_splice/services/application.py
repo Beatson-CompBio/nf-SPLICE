@@ -32,11 +32,25 @@ from nf_splice.services.components import (
     discover_components,
     review_component,
 )
+from nf_splice.services.execution import (
+    ExecutionBuildResult,
+    build_execution_profiles,
+    discover_execution_profiles,
+    plan_execution_profiles,
+    reject_execution_profile,
+    review_execution_profile,
+)
 from nf_splice.services.inputs import discover_inputs, review_input
 from nf_splice.services.output_contracts import (
     OutputContractBuildResult,
     build_output_contracts,
     plan_output_contracts,
+)
+from nf_splice.services.provenance import (
+    build_provenance,
+    discover_provenance,
+    plan_provenance,
+    review_provenance,
 )
 from nf_splice.services.state import (
     StateMigrationResult,
@@ -113,7 +127,9 @@ class WorkspaceSnapshot:
     authoring: AuthoringSummary
     layers: tuple[LayerSummary, ...]
     warnings: tuple[str, ...]
-    build_status: str = "inputs, outputs, and components available"
+    build_status: str = (
+        "inputs, outputs, components, execution, and provenance available"
+    )
     validation_status: str = "runtime outputs available; bundle not available"
 
 
@@ -245,6 +261,85 @@ class ApplicationService:
     ) -> AuthoringDocument:
         """Explicitly accept every component without conflicting evidence."""
         return accept_unambiguous_components(repository_root)
+
+    def discover_execution_profiles(
+        self, repository_root: str | Path = "."
+    ) -> AuthoringDocument:
+        """Discover execution environments through the shared authoring core."""
+        return discover_execution_profiles(repository_root)
+
+    def review_execution_profile(
+        self,
+        repository_root: str | Path,
+        candidate_id: str,
+        *,
+        profile_type: str,
+        description: str,
+        executor: str | None = None,
+        container_engine: str | None = None,
+        config_source: str | None = None,
+    ) -> AuthoringDocument:
+        """Select one supported execution environment through shared rules."""
+        return review_execution_profile(
+            repository_root,
+            candidate_id,
+            profile_type=profile_type,
+            description=description,
+            executor=executor,
+            container_engine=container_engine,
+            config_source=config_source,
+        )
+
+    def reject_execution_profile(
+        self, repository_root: str | Path, candidate_id: str, reason: str
+    ) -> AuthoringDocument:
+        """Mark one detected environment unsupported through shared rules."""
+        return reject_execution_profile(repository_root, candidate_id, reason)
+
+    def plan_execution_profiles(
+        self, repository_root: str | Path
+    ) -> ExecutionBuildResult:
+        """Preview selected execution profiles and configs."""
+        return plan_execution_profiles(repository_root)
+
+    def build_execution_profiles(
+        self,
+        repository_root: str | Path,
+        *,
+        replace_existing: bool = False,
+    ) -> ExecutionBuildResult:
+        """Materialise selected execution profiles and safe configs."""
+        return build_execution_profiles(
+            repository_root, replace_existing=replace_existing
+        )
+
+    def discover_provenance(
+        self,
+        repository_root: str | Path = ".",
+    ) -> AuthoringDocument:
+        """Discover the required repository-root RO-Crate."""
+        return discover_provenance(repository_root)
+
+    def review_provenance(
+        self,
+        repository_root: str | Path,
+        candidate_id: str,
+    ) -> AuthoringDocument:
+        """Approve unchanged inclusion of the root RO-Crate."""
+        return review_provenance(repository_root, candidate_id)
+
+    def plan_provenance(self, repository_root: str | Path) -> StaticLayerBuildResult:
+        """Preview reviewed RO-Crate metadata."""
+        return plan_provenance(repository_root)
+
+    def build_provenance(
+        self,
+        repository_root: str | Path,
+        *,
+        replace_existing: bool = False,
+    ) -> StaticLayerBuildResult:
+        """Materialise reviewed RO-Crate metadata."""
+        return build_provenance(repository_root, replace_existing=replace_existing)
 
     def plan_static_layer(
         self, repository_root: str | Path, target: str

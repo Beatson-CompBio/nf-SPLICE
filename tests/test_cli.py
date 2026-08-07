@@ -79,7 +79,10 @@ def test_inspect_and_status_use_repository_service_results(tmp_path: Path) -> No
     assert status_result.exit_code == 0
     assert "Authoring state: not initialized" in status_result.output
     assert "identity: not_configured; unresolved=not available" in status_result.output
-    assert "Build: inputs, outputs, and components available" in status_result.output
+    assert (
+        "Build: inputs, outputs, components, execution, and provenance available"
+        in status_result.output
+    )
     assert (
         "Validation: runtime outputs available; bundle not available"
         in status_result.output
@@ -232,6 +235,81 @@ def test_cli_reviews_and_builds_components(tmp_path: Path) -> None:
     assert "Built reviewed components artefact" in built.output
 
 
+def test_cli_reviews_and_builds_execution_profiles(tmp_path: Path) -> None:
+    runner.invoke(
+        app,
+        [
+            "init",
+            "--repository",
+            str(tmp_path),
+            "--name",
+            "pipeline",
+            "--pipeline-version",
+            "1.0.0",
+            "--repository-url",
+            "https://github.com/org/pipeline",
+        ],
+    )
+    (tmp_path / "conf").mkdir()
+    (tmp_path / "conf" / "local.config").write_text(
+        "process { executor = 'local' }\nsingularity.enabled = true\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "nextflow.config").write_text(
+        "profiles { local { includeConfig 'conf/local.config' } }\n",
+        encoding="utf-8",
+    )
+    decisions = tmp_path / "profiles.json"
+    decisions.write_text(
+        json.dumps(
+            [
+                {
+                    "profile": "profile:local",
+                    "type": "development",
+                    "description": "Supported local execution.",
+                    "executor": "local",
+                    "container_engine": "singularity",
+                    "config_source": "conf/local.config",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    configured = runner.invoke(
+        app,
+        [
+            "configure",
+            "execution-profiles",
+            "--repository",
+            str(tmp_path),
+            "--decision-file",
+            str(decisions),
+        ],
+    )
+    checked = runner.invoke(
+        app,
+        [
+            "build",
+            "execution-profiles",
+            "--repository",
+            str(tmp_path),
+            "--check",
+        ],
+    )
+    built = runner.invoke(
+        app,
+        ["build", "execution-profiles", "--repository", str(tmp_path)],
+    )
+
+    assert configured.exit_code == 0
+    assert "Execution-profile review is complete" in configured.output
+    assert checked.exit_code == 0
+    assert "repository was not changed" in checked.output
+    assert built.exit_code == 0
+    assert "Built 2 reviewed execution artefact(s)" in built.output
+
+
 @pytest.mark.parametrize(
     ("arguments", "message"),
     [
@@ -255,7 +333,7 @@ def test_output_contract_and_analysis_output_help_are_available() -> None:
     analysis = runner.invoke(app, ["analysis-output", "--help"])
 
     assert build.exit_code == 0
-    assert "outputs, inputs, or components" in build.output
+    assert "one reviewed static integration layer" in build.output
     assert analysis.exit_code == 0
     assert "generate" in analysis.output
     assert "validate" in analysis.output
