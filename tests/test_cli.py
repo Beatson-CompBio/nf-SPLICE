@@ -265,8 +265,11 @@ def test_cli_reviews_and_builds_execution_profiles(tmp_path: Path) -> None:
             [
                 {
                     "profile": "profile:local",
-                    "use": "development",
+                    "type": "development",
                     "description": "Supported local execution.",
+                    "executor": "local",
+                    "container_engine": "singularity",
+                    "config_source": "conf/local.config",
                 }
             ]
         ),
