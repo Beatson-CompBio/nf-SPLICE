@@ -33,11 +33,11 @@ platform-contract change, or Current ADR that triggered the new decision.
 |---|---|---|---|
 | ADR-0001 | Maintain an append-only decision history | Current | — |
 | ADR-0002 | Build an assisted authoring and maintenance tool | Current | — |
-| ADR-0003 | Materialise the platform integration at repository-root `splice/` | Current | — |
-| ADR-0004 | Use `nf-splice.yaml` as canonical authoring state | Current | — |
+| ADR-0003 | Materialise the platform integration at repository-root `splice/` | Superseded | ADR-0021 |
+| ADR-0004 | Use `nf-splice.yaml` as canonical authoring state | Superseded | ADR-0021 |
 | ADR-0005 | Keep evidence, candidates, and decisions distinct | Current | — |
 | ADR-0006 | Render only reviewed state and block affected unresolved layers | Current | — |
-| ADR-0007 | Record generation provenance in `nf-splice.lock.json` | Current | — |
+| ADR-0007 | Record generation provenance in `nf-splice.lock.json` | Superseded | ADR-0021 |
 | ADR-0008 | Treat a recognised existing `splice/` tree as a returning workflow | Current | — |
 | ADR-0009 | Inspect the complete tree and establish ownership per path | Current | — |
 | ADR-0010 | Treat direct generated-file edits as drift requiring reconciliation | Current | — |
@@ -51,6 +51,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
 | ADR-0019 | Use compatible runtime framework release families | Current | — |
 | ADR-0020 | Package with setuptools and a source layout | Current | — |
+| ADR-0021 | Keep all static integration-harness state inside `splice/` | Current | — |
 
 ---
 
@@ -109,12 +110,12 @@ one automatic operation.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | Integration location and ownership |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0021 |
 | Related | ADR-0004, ADR-0007, ADR-0008, ADR-0009 |
 
 ### Decision
@@ -135,12 +136,12 @@ only by an explicit build after the required choices have been reviewed.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | State authority |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0021 |
 | Related | ADR-0005, ADR-0006, ADR-0007, ADR-0010, ADR-0011 |
 
 ### Decision
@@ -210,12 +211,12 @@ layer, without unnecessarily blocking unrelated reviewed layers.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | Provenance and reproducibility |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0021 |
 | Related | ADR-0003, ADR-0004, ADR-0008, ADR-0010, ADR-0012, ADR-0016 |
 
 ### Decision
@@ -569,3 +570,56 @@ constant and expose it through both installed metadata and the CLI.
   the repository root.
 - Build-backend compatibility is part of the Python support contract.
 - Changing the backend or source layout is an architectural change.
+
+---
+
+## ADR-0021: Keep all static integration-harness state inside `splice/`
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-08-07 |
+| Source | Post-Milestone B user architecture correction, 2026-08-07 |
+| Scope | Integration location, authoring state, and generation provenance |
+| Supersedes | ADR-0003, ADR-0004, ADR-0007 |
+| Superseded by | — |
+| Related | ADR-0008, ADR-0009, ADR-0010, ADR-0013, ADR-0015 |
+
+### Decision
+
+Keep every static file that nf-SPLICE adds to a pipeline repository as part of
+its integration harness inside the repository-root `splice/` directory.
+
+The canonical reviewed authoring state is `splice/nf-splice.yaml`. Generator
+provenance and managed-file hashes will be recorded in
+`splice/nf-splice.lock.json`; the lock remains JSON, not YAML. Generated
+platform contracts and supporting integration files remain below the same
+`splice/` root.
+
+`nf-splice init` may therefore create `splice/` before generated bundle layers
+exist. Canonical state remains distinct from generated materialisations by its
+model and ownership rules, not by being stored outside the harness directory.
+
+Existing repository-root `nf-splice.yaml` or `nf-splice.lock.json` files are
+legacy state from the superseded layout. A later command may migrate recognised
+compatible legacy state only through an explicit, previewed, collision-safe,
+atomic operation. It must not silently move, replace, or delete either source
+or destination content.
+
+The separate per-run `analysis_output.json` remains outside the static pipeline
+integration harness. It belongs to a completed run and continues to follow the
+runtime boundary in ADR-0015.
+
+### Consequences
+
+- Repository inspection and returning-workflow recognition must classify
+  `splice/nf-splice.yaml` and `splice/nf-splice.lock.json` as owned control
+  files with their own validation rules.
+- All authoring document reads and writes, CLI/TUI initialisation, status,
+  configuration, rendering, and tests must use `splice/nf-splice.yaml`.
+- Bundle provenance must use `splice/nf-splice.lock.json` without creating a
+  self-referential content hash.
+- The next delivery milestone must implement and test the location change and
+  safe legacy reconciliation before adding further authoring layers.
+- Public documentation and examples must show only the Current paths after the
+  migration behaviour is available.
