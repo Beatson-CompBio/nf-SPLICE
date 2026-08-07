@@ -1,12 +1,18 @@
 """Textual Pilot tests for the shared workspace application shell."""
 
 import asyncio
+import json
 from pathlib import Path
 
-from textual.widgets import ListView, Static
+from textual.widgets import Button, ListView, Select, Static
 
 from nf_splice.interfaces.tui import NfSpliceApp
-from nf_splice.services import ApplicationService
+from nf_splice.services import (
+    ApplicationService,
+    load_repository_document,
+    unresolved_component_candidates,
+    unresolved_input_candidates,
+)
 
 
 def test_tui_starts_with_shared_snapshot_and_navigates_layers(
@@ -35,3 +41,103 @@ def test_tui_starts_with_shared_snapshot_and_navigates_layers(
             assert "Inputs" in str(layer_detail.content)
 
     asyncio.run(exercise())
+
+
+def test_tui_applies_the_same_input_and_component_review_services(
+    tmp_path: Path,
+) -> None:
+    service = ApplicationService()
+    service.initialise(
+        tmp_path,
+        name="pipeline",
+        version="1.0.0",
+        repository_url="https://github.com/org/pipeline",
+    )
+    (tmp_path / "nextflow_schema.json").write_text(
+        json.dumps(
+            {
+                "$defs": {
+                    "analysis": {
+                        "title": "Analysis",
+                        "properties": {
+                            "threshold": {
+                                "type": "number",
+                                "description": "Threshold.",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    module_path = tmp_path / "modules" / "local" / "tool"
+    module_path.mkdir(parents=True)
+    (module_path / "meta.yml").write_text(
+        "name: tool\ntools:\n  - tool:\n      description: Tool\n",
+        encoding="utf-8",
+    )
+    (module_path / "main.nf").write_text(
+        "process TOOL {\n  container 'quay.io/example/tool:1.0'\n\n  input:\n}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "modules.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "kind": "module",
+                        "path": "modules/local/tool",
+                        "namespace": "local",
+                        "tool": "tool",
+                        "name": "tool",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    service.discover_inputs(tmp_path)
+    service.discover_components(tmp_path)
+    app = NfSpliceApp(service.inspect(tmp_path), tmp_path, service)
+
+    async def exercise() -> None:
+        async with app.run_test() as pilot:
+            app.query_one("#input-classification", Select).value = "user-configurable"
+            app.query_one("#save-input", Button).press()
+            await pilot.pause()
+            app.query_one("#accept-component", Button).press()
+            await pilot.pause()
+
+    asyncio.run(exercise())
+    document = load_repository_document(tmp_path)
+
+    assert unresolved_input_candidates(document) == ()
+    assert unresolved_component_candidates(document) == ()
+
+
+def test_tui_previews_then_applies_legacy_migration(tmp_path: Path) -> None:
+    source = tmp_path / "nf-splice.yaml"
+    source.write_text(
+        "schema_version: '1.0'\n"
+        "pipeline: {}\n"
+        "evidence: []\n"
+        "decisions: []\n"
+        "layers: []\n",
+        encoding="utf-8",
+    )
+    service = ApplicationService()
+    app = NfSpliceApp(service.inspect(tmp_path), tmp_path, service)
+
+    async def exercise() -> None:
+        async with app.run_test() as pilot:
+            app.query_one("#preview-migration", Button).press()
+            await pilot.pause()
+            assert not (tmp_path / "splice").exists()
+            app.query_one("#apply-migration", Button).press()
+            await pilot.pause()
+
+    asyncio.run(exercise())
+
+    assert source.is_file()
+    assert (tmp_path / "splice" / "nf-splice.yaml").is_file()
