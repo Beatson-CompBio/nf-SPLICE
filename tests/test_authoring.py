@@ -103,7 +103,7 @@ def test_initialise_uses_explicitly_accepted_complete_config_metadata(
     assert document.pipeline.version == "2.3.4"
     assert document.pipeline.release_url is None
     assert {item.status for item in document.decisions} == {DecisionStatus.REVIEWED}
-    assert (tmp_path / "nf-splice.yaml").is_file()
+    assert (tmp_path / "splice" / "nf-splice.yaml").is_file()
 
 
 def test_initialise_requires_missing_values_and_rejects_placeholders(
@@ -233,7 +233,7 @@ def test_example_tree_and_existing_output_catalogue_are_discovery_evidence(
         encoding="utf-8",
     )
     splice = tmp_path / "splice"
-    splice.mkdir()
+    splice.mkdir(exist_ok=True)
     (splice / "outputs.yaml").write_text(
         """schema_version: '1.0'
 pipeline: {}
