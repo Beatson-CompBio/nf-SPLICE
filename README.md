@@ -58,8 +58,10 @@ nf-SPLICE is currently an early development preview. The installable package,
 Python compatibility baseline, repository inspection, reviewed pipeline
 identity, output discovery and review, workspace status, and terminal workspace
 are available. Reviewed output contracts and per-run `analysis_output.json`
-generation and validation are also available. Other bundle layers, complete
-planning, and bundle-wide validation are being delivered incrementally.
+generation and validation are also available. Reviewed input projection,
+software-component inventory, and safe migration from the superseded root-level
+state layout are available. Execution profiles, provenance, complete planning,
+and bundle-wide validation are being delivered incrementally.
 
 This README tracks user-visible functionality as it becomes available. Commands
 will only move into the usage guide after their behaviour is implemented and
@@ -93,10 +95,60 @@ nf-splice init \
   --repository-url https://github.com/my-org/my-pipeline
 ```
 
-`init` creates the version-controlled `nf-splice.yaml`. Values can be supplied
+`init` creates the version-controlled `splice/nf-splice.yaml` and creates the
+`splice/` directory if needed. Values can be supplied
 explicitly, or unambiguous values from `nextflow.config` and Git can be reviewed
 and accepted with `--accept-detected`. Missing values, conflicting evidence,
 and placeholder identifiers are rejected rather than silently defaulted.
+
+If an earlier preview created repository-root `nf-splice.yaml` or
+`nf-splice.lock.json`, inspect and reconcile it explicitly:
+
+```bash
+nf-splice migrate-state
+nf-splice migrate-state --apply
+```
+
+The first command is a read-only preview. Application validates compatible
+state, refuses source/destination conflicts, writes atomically, and preserves
+the legacy source files. A repeated migration is byte-identical and makes no
+changes.
+
+Classify upstream parameters into their reviewed ownership boundary and build
+the configurable projection:
+
+```bash
+nf-splice configure inputs \
+  --set threshold=user-configurable \
+  --export-unresolved unresolved-inputs.json
+nf-splice build inputs --check
+nf-splice build inputs
+```
+
+Input decisions classify each `nextflow_schema.json` parameter as
+`user-configurable`, `platform-managed`, `execution-environment-managed`, or
+`hidden-or-unsupported`. Only reviewed user-configurable parameters appear in
+`splice/inputs.schema.json`. Existing upstream defaults are preserved;
+ambiguous types and missing descriptions require explicit review, and the tool
+does not invent scientific defaults.
+
+Discover and review pipeline modules, tools, versions, containers, and Conda
+evidence, then build the software inventory:
+
+```bash
+nf-splice configure components --accept-detected \
+  --export-unresolved unresolved-components.json
+nf-splice configure components \
+  --set component:modules__local__tool.version=1.0 \
+  --set component:modules__local__tool.container_uri=quay.io/example/tool:1.0
+nf-splice build components --check
+nf-splice build components
+```
+
+`--accept-detected` accepts only components without competing version or
+container evidence. Conflicts stay unresolved until one detected value is
+selected. Generated `splice/components.json` deterministically deduplicates
+containers and retains source locations for every component.
 
 Discover output candidates from pipeline source and optional completed output
 evidence:
@@ -159,8 +211,9 @@ live completed publish directory.
 
 The planned `plan` and bundle-level `validate` commands remain visible in
 command help but exit explicitly as unavailable. `build` and `configure`
-currently support the `outputs` layer; later integration layers and `build all`
-remain unavailable until their reviewed application behaviour is implemented.
+currently support the `inputs`, `outputs`, and `components` layers; later
+integration layers and `build all` remain unavailable until their reviewed
+application behaviour is implemented.
 
 ## Intended workflow
 
@@ -169,9 +222,9 @@ this flow:
 
 1. Run `nf-splice inspect` in the pipeline repository.
 2. Review detected evidence and unresolved decisions.
-3. Initialise the version-controlled `nf-splice.yaml` authoring state.
+3. Initialise the version-controlled `splice/nf-splice.yaml` authoring state.
 4. Configure and review each required integration layer.
-5. Preview reviewed output-contract changes with `nf-splice build outputs --check`.
+5. Preview each reviewed layer with `nf-splice build LAYER --check`.
 6. Build available reviewed integration layers under `splice/`.
 7. Run `nf-splice validate` before committing and submitting the pipeline.
 
@@ -183,9 +236,10 @@ rules, so developers can choose the interface that suits their workflow.
 nf-SPLICE separates reviewed developer choices from generated platform files:
 
 ```text
-nf-splice.yaml       reviewed, version-controlled authoring state
-nf-splice.lock.json  generator provenance and generated-file hashes
-splice/              materialised SPLICE integration harness
+splice/
+├── nf-splice.yaml       reviewed, version-controlled authoring state
+├── nf-splice.lock.json  future generator provenance and generated-file hashes
+└── …                    materialised SPLICE integration harness
 ```
 
 The completed `splice/` bundle will describe the pipeline's inputs, outputs,
@@ -200,6 +254,13 @@ The static output layer contains:
 ```text
 splice/outputs.yaml         reviewed output catalogue materialisation
 splice/outputs.schema.json  validation contract for analysis_output.json
+```
+
+The currently available input and software layers contain:
+
+```text
+splice/inputs.schema.json  reviewed user-configurable parameter projection
+splice/components.json     reviewed tools, versions, containers, and evidence
 ```
 
 `analysis_output.json` belongs to one completed run and is not part of the
