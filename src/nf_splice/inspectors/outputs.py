@@ -466,7 +466,9 @@ def discover_output_candidates(
         grouped.setdefault((item.key, item.path_pattern), []).append(item)
 
     discovered: list[DiscoveredOutput] = []
-    for (key, pattern), group in sorted(grouped.items()):
+    for (key, pattern), group in sorted(
+        grouped.items(), key=lambda item: (item[0][0], item[0][1] or "")
+    ):
         evidence: list[Evidence] = []
         for item in sorted(group, key=lambda value: (value.source, value.location)):
             evidence.append(
