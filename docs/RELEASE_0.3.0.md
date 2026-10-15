@@ -87,7 +87,7 @@ checks that every ADR exists, every path exists and every test file exists.
 
 ### Fixed during this release
 
-- `d092090`: assignments inside a single-line Nextflow metadata block
+- `558a18d`: assignments inside a single-line Nextflow metadata block
   (`{ name = 'x'; version = 'y' }`) are now read, with correct evidence line
   numbers.
 
@@ -273,37 +273,51 @@ The two skipped tests are opt-in by design:
 
 | Commit | Summary |
 | --- | --- |
-| `0994986` | chore(gitignore): ignore in-repository local development workspace |
-| `bc432da` | build(dev): add in-repository workspace setup and staged-path guard |
-| `e562333` | style(outputs): document intentional character-wise suffix comparison |
-| `82d4e7a` | test(fixtures): freeze nf-splice 0.1.0 legacy bundle and job output |
-| `7d087af` | docs(adr): ADR-0023 incremental decisions with a checked release ledger |
-| `994d020` | feat(contracts): five workflow-bundle contract families and registry |
-| `3ca73cc` | feat(vocabulary): reserve the upstream Nextflow metadata word and define bundle/job/sample/run terms (subject paraphrased; the reserved word is kept out of these docs) |
-| `80c435e` | feat(drafts): restricted YAML 1.2 drafts with three-way patches |
-| `0dbe791` | feat(outputs): SPLICE job/sample/run scopes and catalogue-backed runtime |
-| `bb8a13a` | feat(audit): public review events and private local audit store |
-| `9839681` | feat(layers): file-first layer base and bundle.draft.yaml identity layer |
-| `df71549` | feat(layers): single authoritative outputs.draft.yaml |
-| `6eecd57` | feat(inputs): engine-neutral input contract with per-parameter access |
-| `9bed1eb` | feat(components): container sources, variants and verified distributions |
-| `645429a` | feat(execution): reviewed default profile and generated config route |
-| `fdfa3c3` | feat(provenance): reviewed RO-Crate analysis, enrichment and generation |
-| `5b2caef` | feat(lifecycle): per-layer promotion and transactional bundle publication |
-| `a4eefe6` | feat(migration): preview and apply 0.1.0 state migration into drafts |
-| `0b35703` | feat(cli): switch the CLI to file-first drafts |
-| `3ed7080` | feat(tui): guided Textual wizard replacing the dashboard |
-| `1406e7d` | refactor: retire monolithic nf-splice.yaml services and renderers |
-| `b0efd4a` | docs(adr): ADR-0030..0038 Current; supersede ADR-0021 and ADR-0022 |
-| `4265411` | feat(agents): optional provider-neutral, approval-gated agent tools |
-| `80c7aea` | docs: 0.3.0 user, contract, migration and component references |
-| `eaa8a31` | ci: Python 3.10-3.14 matrix, packaging and hygiene gates |
-| `d092090` | fix(inspectors): read single-line Nextflow metadata blocks |
-| `379b27e` | test: cross-cutting acceptance scenarios S03, S04, S08, S09, S10, S13 |
-| `eef65fb` | build(scripts): fall back to uv pip check in pip-less environments |
+| `4abc414` | chore(gitignore): ignore in-repository local development workspace |
+| `2cfea1f` | build(dev): add in-repository workspace setup and staged-path guard |
+| `6464f0c` | style(outputs): document intentional character-wise suffix comparison |
+| `46b6239` | test(fixtures): freeze nf-splice 0.1.0 legacy bundle and job output |
+| `460e55a` | docs(adr): ADR-0023 incremental decisions with a checked release ledger |
+| `73d2ad9` | feat(contracts): five workflow-bundle contract families and registry |
+| `fe5fc40` | feat(vocabulary): reserve the upstream Nextflow metadata word and define bundle/job/sample/run terms (subject paraphrased; the reserved word is kept out of these docs) |
+| `c7e2ae9` | feat(drafts): restricted YAML 1.2 drafts with three-way patches |
+| `aece560` | feat(outputs): SPLICE job/sample/run scopes and catalogue-backed runtime |
+| `4cb67e0` | feat(audit): public review events and private local audit store |
+| `4907dd2` | feat(layers): file-first layer base and bundle.draft.yaml identity layer |
+| `f3cbd68` | feat(layers): single authoritative outputs.draft.yaml |
+| `5e64686` | feat(inputs): engine-neutral input contract with per-parameter access |
+| `4746161` | feat(components): container sources, variants and verified distributions |
+| `af06453` | feat(execution): reviewed default profile and generated config route |
+| `cb6d510` | feat(provenance): reviewed RO-Crate analysis, enrichment and generation |
+| `9c75ff0` | feat(lifecycle): per-layer promotion and transactional bundle publication |
+| `2aaf1f7` | feat(migration): preview and apply 0.1.0 state migration into drafts |
+| `2b7f18d` | feat(cli): switch the CLI to file-first drafts |
+| `2ec880d` | feat(tui): guided Textual wizard replacing the dashboard |
+| `9b6fd89` | refactor: retire monolithic nf-splice.yaml services and renderers |
+| `3566e4e` | docs(adr): ADR-0030..0038 Current; supersede ADR-0021 and ADR-0022 |
+| `21f4185` | feat(agents): optional provider-neutral, approval-gated agent tools |
+| `14bb8d1` | docs: 0.3.0 user, contract, migration and component references |
+| `cb61dfb` | ci: Python 3.10-3.14 matrix, packaging and hygiene gates |
+| `558a18d` | fix(inspectors): read single-line Nextflow metadata blocks |
+| `1122da7` | test: cross-cutting acceptance scenarios S03, S04, S08, S09, S10, S13 |
+| `debc27a` | build(scripts): fall back to uv pip check in pip-less environments |
+| `188aeaa` | docs(release): 0.3.0 handover, acceptance checklist and flagged decisions |
+| `6bf17c4` | chore(gitignore): ignore personal Claude Code local settings |
+| `035f7c1` | chore(gitignore): anchor build directories and ignore secrets and local files |
+| `375b5d4` | test: use a reserved example domain for the fictional maintainer address |
 
-The commit that adds this handover follows these. Run `git log 9ad15c1..`
+The commit that updates this list follows these. Run `git log 9ad15c1..`
 to see the full list.
+
+### Commit identity rewrite
+
+Before anything was pushed, every commit after `9ad15c1` was rewritten
+locally with `git filter-branch`. The rewrite replaced an author and
+committer email that Git had derived from the machine's hostname with the
+maintainer's own identity, and removed AI co-author trailers. File content
+(the final tree), commit order, subjects and dates did not change. The IDs
+above are the rewritten ones. A repository-local `user.name` and
+`user.email` are now set, so Git no longer derives an identity from the host.
 
 ## Clean staging evidence
 
