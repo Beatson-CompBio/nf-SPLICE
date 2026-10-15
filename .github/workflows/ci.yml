@@ -1,9 +1,15 @@
 name: CI
 
 on:
+  # Every push to main (including direct merges) and to review branches.
   push:
-    branches: [main]
+    branches: [main, "wip/**"]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

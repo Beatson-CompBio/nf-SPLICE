@@ -1887,6 +1887,8 @@ AI extra and committed byte-exact fixtures.
 
 ### Decision
 
+- CI runs on every push to `main` (including direct merges), on pushes to
+  `wip/**` review branches, on pull requests and on demand.
 - CI runs the offline test suite, ruff, ruff format, mypy, the generated
   contract-reference check and the installed CLI on Python 3.10, 3.11, 3.12,
   3.13 and 3.14. Live Nextflow and live AI tests are markers that CI excludes.
