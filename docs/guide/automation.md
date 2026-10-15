@@ -16,6 +16,16 @@ These commands never write files. Each exits with a non-zero status when
 something is wrong, so a CI job fails on any open review, invalid draft or
 inconsistent published bundle.
 
+To also check example results from a test run and report route coverage:
+
+```bash
+nf-splice assess --example-output test-results --json
+```
+
+`assess` exits with a non-zero status when the bundle is invalid or the
+example contains files the catalogue does not classify. See
+[Output routes and evidence](output-coverage.md).
+
 ## Machine-readable output
 
 Most commands accept `--json` and then print stable JSON instead of text.

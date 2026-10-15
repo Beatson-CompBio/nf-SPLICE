@@ -30,6 +30,7 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | --- | --- |
 | [Publishing and updating](guide/publishing.md) | Publishing, new releases, hand edits, recovery |
 | [Job outputs](guide/job-outputs.md) | The `analysis_output.json` of each completed job |
+| [Output routes and evidence](guide/output-coverage.md) | Alternative routes, example results and `nf-splice assess` |
 
 ## Ways of working
 
@@ -38,6 +39,14 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | [The guided wizard](guide/wizard.md) | Reviewing everything step by step in the terminal |
 | [Automation and CI](guide/automation.md) | Checks, JSON output and reproducible review in CI |
 | [AI assistance](guide/ai-assistant.md) | Optional suggestions, always approved by a person |
+
+## Tutorials
+
+| Tutorial | Page |
+| --- | --- |
+| Several Nextflow routes, one example run | [Output routes and evidence](guide/output-coverage.md#tutorial-several-routes-one-example) |
+| No example results | [Output routes and evidence](guide/output-coverage.md#tutorial-no-example-results) |
+| Optional nf-core checks | [Output routes and evidence](guide/output-coverage.md#tutorial-optional-nf-core-checks) |
 
 ## Reference
 

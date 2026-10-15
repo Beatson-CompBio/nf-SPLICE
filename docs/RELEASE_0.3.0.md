@@ -68,6 +68,9 @@ checks that every ADR exists, every path exists and every test file exists.
 | File-first CLI | ADR-0030, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
 | Guided Textual wizard and CLI/TUI equivalence | ADR-0038 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |
 | Optional approval-gated agents (scripted + Claude providers) | ADR-0039 | `src/nf_splice/agents/`, `docs/AGENTS.md` | `tests/test_agents.py` | Current |
+| Publication-route analysis and published-only output discovery | ADR-0042 | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `tests/fixtures/multi-route-0.3.0/` | `tests/test_routes.py`, `tests/test_output_discovery.py` | Current |
+| Separate contract, observed-output and coverage assessments (`nf-splice assess`) | ADR-0042 | `src/nf_splice/services/coverage.py`, `src/nf_splice/cli.py` | `tests/test_coverage.py` | Current |
+| Optional nf-core checks behind explicit permissions | ADR-0043 | `src/nf_splice/services/checks.py` | `tests/test_coverage.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |

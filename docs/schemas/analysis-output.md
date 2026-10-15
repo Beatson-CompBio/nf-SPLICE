@@ -2,8 +2,13 @@
 
 The inventory of everything one completed job published. Each job of a
 workflow produces exactly one `analysis_output.json`. It lists every output
-file or directory, says what kind of output it is and says whether it
-belongs to the job, a sample or a sequencing run.
+file or directory the job published, says what kind of output it is and says
+whether it belongs to the job, a sample or a sequencing run.
+
+It lists only what the job actually produced. The workflow's output catalogue
+describes every output type the workflow *may* publish across its routes
+(alternative aligners, optional steps); output types from routes this job
+did not take are simply absent, and the document is still valid.
 
 | | |
 | --- | --- |

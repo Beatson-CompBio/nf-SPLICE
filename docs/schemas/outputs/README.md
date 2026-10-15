@@ -43,7 +43,7 @@ keys says so.
 | `$id` | non-empty string | yes | Identifier of this workflow's schema. It is specific to the workflow and is not the contract family URI. |
 | `type` | always `"object"` | yes | Type of the instance this schema validates. Always `object`. |
 | `x-splice-contract` | object | yes | Contract family and revision of this JSON Schema document, kept separate from the standard `$schema` and `$id` keys. |
-| `x-output-catalog` | object | yes | Output catalogue of the workflow. |
+| `x-output-catalog` | object | yes | Output catalogue of the workflow: every kind of output it may publish across its supported routes. A job publishes a subset. |
 | `x-splice-draft` | must not appear | no | Draft marker used while authoring. A published file never contains it; validation rejects files that do. |
 
 ### `x-splice-contract`

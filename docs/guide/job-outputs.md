@@ -3,6 +3,8 @@
 After each job finishes, the platform needs an inventory of what the job
 published: `analysis_output.json`. nf-splice generates it from the job's
 results and the published output catalogue, and validates it before writing.
+It lists only the files this job produced; catalogue outputs from routes the
+job did not take are simply absent, which is valid.
 
 This step usually runs on the platform, not on a developer's machine.
 

@@ -1,9 +1,11 @@
 # Outputs
 
-The outputs layer is the catalogue of everything the pipeline can publish:
-what each output is, how to recognise it by path and whether it belongs to
-the job, a sample or a run. The platform uses it to classify and display the
-results of every job.
+The outputs layer is the catalogue of everything the pipeline can publish,
+across all its routes: what each output is, how to recognise it by path and
+whether it belongs to the job, a sample or a run. The platform uses it to
+classify and display the results of every job. See
+[Output routes and evidence](output-coverage.md) for how alternative and
+optional routes are found and checked.
 
 - **Draft:** `splice/drafts/outputs.draft.yaml`, the only output draft
 - **Published:** `outputs.schema.json` (with the catalogue) and
@@ -13,9 +15,11 @@ results of every job.
 
 ## 1. Discover candidates
 
-`nf-splice init` finds outputs from the `publishDir` directives in your
-pipeline. Real results find more. Point nf-splice at an example results
-directory, or a saved `ls -R` listing of one:
+`nf-splice init` finds the outputs your pipeline publishes by tracing its
+publication rules (`publishDir` in processes and configuration). Outputs a
+process declares but nothing publishes are not offered. Results from a real
+run add evidence such as per-sample file names. Point nf-splice at an
+example results directory, or a saved `ls -R` listing of one:
 
 ```bash
 nf-splice configure outputs --example-output-tree example-results

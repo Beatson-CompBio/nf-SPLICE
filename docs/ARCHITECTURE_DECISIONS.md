@@ -72,6 +72,8 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Current | — |
 | ADR-0040 | Gate releases on a Python 3.10-3.14 matrix, packaging and repository hygiene | Current | — |
 | ADR-0041 | Support only 0.3.0 contracts and remove pre-release 0.1.0 compatibility | Current | — |
+| ADR-0042 | Trace output publication routes and assess contract validity, observed outputs and coverage separately | Current | — |
+| ADR-0043 | Run optional external checkers only when installed, applicable and explicitly permitted | Current | — |
 
 ---
 
@@ -1969,3 +1971,116 @@ that new users and integrators had to read past.
   migration) no longer apply; mixed job/sample/run granularity from S14
   stays covered by `tests/test_output_scopes.py`.
 - ADR-0027, ADR-0028, ADR-0033 and ADR-0038 carry amendment notes.
+
+---
+
+## ADR-0042: Trace output publication routes and assess contract validity, observed outputs and coverage separately
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's three-mode agentic implementation instructions for 0.3.0, section 6 |
+| Scope | Output discovery, examples and assessment |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0027, ADR-0028 |
+| Implementation | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/services/coverage.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `tests/fixtures/multi-route-0.3.0/` |
+| Tests | `tests/test_routes.py`, `tests/test_coverage.py`, `tests/test_output_discovery.py` |
+
+### Context
+
+nf-splice does not run pipelines. A pipeline has alternative routes
+(aligners, optional steps, conditional QC) and one completed run exercises
+only some of them. A process `output:` declaration does not prove that a file
+is published. The output catalogue must describe what the pipeline may
+publish, while each job's `analysis_output.json` lists only what it did
+publish.
+
+### Decision
+
+- A static route analyser separates declared from published outputs. It
+  follows `publishDir` in processes, configuration `withName` selectors
+  (regular expressions, aliases, qualified names) and the configuration's
+  default rule, including nf-core's process-name idiom; applies `pattern`
+  filters, `enabled` flags and `saveAs`; and records the `if`/`else`
+  conditions on every invocation path from the entry workflow. Each
+  published route has a status: `confirmed_from_code`, `inferred_unverified`,
+  `unresolved` or `not_reachable`; declared-only outputs are
+  `not_published`. Comments and strings never create routes.
+- Output candidates come only from published routes, with the publication
+  rule as evidence, per-sample captures for `meta` outputs and
+  process-qualified keys where emit names collide.
+- An example output (directory, saved listing or output index) is enumerated
+  without following symbolic links or leaving its root, and each entry is
+  classified, unclassified or ambiguous against the catalogue. Catalogue
+  types an example lacks are `not_observed` and never a failure. Empty files,
+  partial files and skipped links are reported as limitations.
+- `nf-splice assess` reports three independent results: contract validity
+  (the bundle validators), observed-output compatibility (per example,
+  including a real `analysis_output.json` generated from observed paths and
+  validated, with a nil-UUID placeholder job identity) and a coverage
+  assessment (routes covered by the catalogue, excluded by review, not
+  covered or unresolved). Coverage is never claimed complete; the statement
+  names what static analysis cannot see.
+- The catalogue's `optional` field keeps its reserved meaning; presence in a
+  run is not required by the catalogue.
+
+### Alternatives rejected
+
+- Treating one example run as the catalogue: drops supported routes.
+- Requiring every catalogue type in every run: invalidates normal runs.
+- Running Nextflow to observe outputs: outside nf-splice's scope and
+  permissions.
+
+### Consequences
+
+- Intermediates such as unpublished sort steps are no longer offered as
+  output candidates; module metadata enriches descriptions instead.
+- A multi-route fixture (STAR or HISAT2, optional Salmon, conditional QC,
+  MultiQC, an unpublished samtools step) and a STAR-only example back the
+  tests.
+
+---
+
+## ADR-0043: Run optional external checkers only when installed, applicable and explicitly permitted
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's three-mode agentic implementation instructions for 0.3.0, section 5 |
+| Scope | Optional nf-core and Nextflow checks |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0017, ADR-0042 |
+| Implementation | `src/nf_splice/services/checks.py`, `src/nf_splice/services/coverage.py` |
+| Tests | `tests/test_coverage.py` |
+
+### Context
+
+nf-core is not a runtime dependency (ADR-0017); CI only checks that nf-core
+4.0.2 can be installed alongside. nf-core lint runs `nextflow config` and can
+contact the network, so it is not a read-only check.
+
+### Decision
+
+- A checker registry detects nf-core and Nextflow by `PATH` lookup only.
+  nf-core lint runs only for nf-core pipelines (`.nf-core.yml` or an
+  `nf-core/` pipeline name), with nf-core 3.x or 4.x, Nextflow on `PATH`, and
+  the `external_tools`, `run_nextflow` and `network` permissions granted.
+- Results are `passed`, `passed_with_warnings`, `failed`, `error`,
+  `not_applicable` or `not_run`, with the tool version, the command and the
+  reason. A check that did not run is never reported as passed. nf-core's
+  own version check is disabled.
+
+### Alternatives rejected
+
+- Bundling nf-core: a large dependency most users do not need.
+- Running nf-core lint whenever it is installed: hides its side effects.
+
+### Consequences
+
+- Against nf-core 4.0.2 without Nextflow the check reports `not_run` with the
+  reason; with Nextflow and the permissions it runs and its counts are
+  recorded.
