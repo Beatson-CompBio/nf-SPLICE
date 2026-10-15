@@ -210,3 +210,34 @@ def test_every_guide_page_is_in_the_user_guide_index() -> None:
     index = (ROOT / "docs" / "USAGE.md").read_text(encoding="utf-8")
     for page in sorted((ROOT / "docs" / "guide").glob("*.md")):
         assert f"(guide/{page.name})" in index, page.name
+
+
+def test_commands_suggested_in_messages_exist() -> None:
+    """Every `nf-splice ...` command quoted in source messages must parse."""
+    quoted = re.compile(r"`(nf-splice [^`]+)`")
+    for path in sorted((ROOT / "src" / "nf_splice").rglob("*.py")):
+        for command in quoted.findall(path.read_text(encoding="utf-8")):
+            arguments = [
+                token for token in shlex.split(command)[1:] if not token.startswith("<")
+            ]
+            resolved, remaining = _resolve(arguments)
+            names = [
+                parameter
+                for parameter in resolved.params
+                if parameter.param_type_name == "argument"
+            ]
+            takes_value = {
+                name
+                for parameter in resolved.params
+                if parameter.param_type_name == "option"
+                and not getattr(parameter, "is_flag", False)
+                for name in parameter.opts
+            }
+            positional, tokens = [], iter(remaining)
+            for token in tokens:
+                if token.startswith("-"):
+                    if token in takes_value:
+                        next(tokens, None)
+                else:
+                    positional.append(token)
+            assert len(positional) <= len(names), (path.name, command)

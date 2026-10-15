@@ -486,8 +486,8 @@ def validate_inputs_draft(repository_root: str | Path) -> LayerValidation:
                 LAYER,
                 "/x-splice-pipeline",
                 "identity_mismatch",
-                "identity envelope or $id differs from bundle.draft.yaml; review "
-                "`nf-splice draft sync-identity inputs`",
+                "pipeline identity differs from bundle.draft.yaml; run "
+                "`nf-splice draft sync-identity` to copy it",
             )
         )
     for name, pointers in _collisions(document):
