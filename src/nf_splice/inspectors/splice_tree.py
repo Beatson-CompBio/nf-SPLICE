@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from nf_splice.contracts import validate_contract_document
 from nf_splice.domain.execution import (
     ContainerEngine,
     ExecutionEngine,
@@ -68,6 +69,11 @@ def _require_bundle(path: Path) -> str | None:
         content: Any = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as parse_error:
         return f"invalid JSON: {parse_error}"
+    if content.get("schema_version") != "1.0":
+        report = validate_contract_document(content, filename="bundle.json")
+        if not report.valid:
+            first = report.issues[0]
+            return f"{first.json_pointer or '/'}: {first.message}"
     if content.get("bundle_format") != "splice-pipeline-bundle":
         return "bundle_format must be 'splice-pipeline-bundle'"
     files = content.get("files")
@@ -216,16 +222,14 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
     if not isinstance(content, dict):
         return "malformed", "lock state must be a JSON object"
     version = content.get("schema_version")
-    if version != "1.0":
+    if version not in {"1.0", "2.0"}:
         return "incompatible", (
-            f"unsupported lock schema version {version!r}; expected '1.0'"
+            f"unsupported lock schema version {version!r}; expected '1.0' or '2.0'"
         )
     required = (
-        "generator",
-        "repository",
-        "selected_evidence",
-        "sources",
-        "managed_files",
+        ("generator", "repository", "selected_evidence", "sources", "managed_files")
+        if version == "1.0"
+        else ("generator", "repository", "contracts", "sources", "managed_files")
     )
     missing = [field for field in required if field not in content]
     if missing:
@@ -247,7 +251,7 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
         )
     ):
         return "malformed", "repository must contain url and optional revision"
-    if not isinstance(content.get("selected_evidence"), list):
+    if version == "1.0" and not isinstance(content.get("selected_evidence"), list):
         return "malformed", "selected_evidence must be an array"
     for field in ("sources", "managed_files"):
         inventory_error = _require_hash_inventory(content.get(field), field)
@@ -320,8 +324,72 @@ def _walk_without_following_links(root: Path) -> list[Path]:
     return sorted(entries, key=lambda path: path.relative_to(root).as_posix())
 
 
+_DRAFT_FILES = frozenset(
+    {
+        "drafts/bundle.draft.yaml",
+        "drafts/inputs.schema.draft.yaml",
+        "drafts/outputs.draft.yaml",
+        "drafts/components.draft.yaml",
+        "drafts/execution-profiles.draft.yaml",
+        "drafts/ro-crate-metadata.draft.yaml",
+        "drafts/README.draft.md",
+    }
+)
+_TRANSIENT = (".nf-splice-staging", ".nf-splice-backup")
+
+
+def _classify_draft(path: Path, relative: str, entry_type: EntryType) -> InspectedPath:
+    recognized = (
+        (
+            relative in {"drafts", "drafts/configs", "drafts/.reviews"}
+            and entry_type is EntryType.DIRECTORY
+        )
+        or (relative in _DRAFT_FILES and entry_type is EntryType.FILE)
+        or (
+            entry_type is EntryType.FILE
+            and re.fullmatch(
+                r"drafts/configs/[a-z][a-z0-9_-]*\.draft\.config", relative
+            )
+            is not None
+        )
+        or (
+            entry_type is EntryType.FILE
+            and re.fullmatch(r"drafts/\.reviews/[a-z-]+\.review\.json", relative)
+            is not None
+        )
+    )
+    return InspectedPath(
+        path=relative,
+        entry_type=entry_type,
+        classification=(
+            PathClassification.RECOGNIZED if recognized else PathClassification.UNKNOWN
+        ),
+        detail=None if recognized else "unknown content in the drafts work area",
+    )
+
+
 def _classify(path: Path, relative: str) -> InspectedPath:
     entry_type = _entry_type(path)
+
+    if relative == "drafts" or relative.startswith("drafts/"):
+        return _classify_draft(path, relative, entry_type)
+
+    if relative.split("/", 1)[0] in _TRANSIENT:
+        return InspectedPath(
+            path=relative,
+            entry_type=entry_type,
+            classification=PathClassification.MALFORMED,
+            affected_layers=("bundle",),
+            detail="leftover publication staging; run nf-splice draft recover",
+        )
+    if relative == ".nf-splice-publish.json":
+        return InspectedPath(
+            path=relative,
+            entry_type=entry_type,
+            classification=PathClassification.MALFORMED,
+            affected_layers=("bundle",),
+            detail="interrupted publication; run nf-splice draft recover",
+        )
 
     if relative == "configs" and entry_type is EntryType.DIRECTORY:
         return InspectedPath(

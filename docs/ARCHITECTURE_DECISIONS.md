@@ -66,6 +66,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Proposed | — |
 | ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Proposed | — |
 | ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Proposed | — |
+| ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Proposed | — |
 
 ---
 
@@ -1590,3 +1591,65 @@ unchanged and a pipeline without an RO-Crate could not be integrated.
 
 - Together with ADR-0034 this replaces ADR-0022's "copy unchanged only"
   rule; ADR-0022 is superseded when these layers become Current.
+
+---
+
+## ADR-0036: Promote layers independently and publish the bundle through a recoverable transaction
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 10.6, 3.2 and 0.4 (invariant 6) |
+| Scope | Promotion, publication, lock and whole-bundle validation |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0009, ADR-0010, ADR-0012, ADR-0013, ADR-0024, ADR-0030 |
+| Implementation | `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/inspectors/splice_tree.py` |
+| Tests | `tests/test_lifecycle.py` |
+
+### Context
+
+0.1.0 replaced each file with an individual `os.replace`, so an interrupted
+build could leave a mixed bundle that looked complete.
+
+### Decision
+
+- Layer readiness is computed from current draft bytes. A ready layer may be
+  promoted to its final names while other layers remain drafts. The whole
+  bundle (`bundle.json`, `README.md`, `nf-splice.lock.json`) is published
+  only when every layer is ready.
+- Writes are staged under `splice/.nf-splice-staging/`, verified, the
+  existing files are backed up under `splice/.nf-splice-backup/`, a journal
+  `splice/.nf-splice-publish.json` is written, and files are replaced with the
+  lock and `bundle.json` last. Any failure restores the previous files and
+  removes created ones; a leftover journal blocks further publication until
+  `recover` restores the previous coherent release.
+- Promotion never overwrites unknown or non-regular paths. A published file
+  whose bytes differ from the hash recorded when it was promoted (review
+  sidecar, or the lock for older bundles) is drifted: it is preserved and
+  blocks promotion unless the reviewer names it explicitly for overwriting
+  after reconciling. Updating an unchanged recognised file still requires
+  `--replace-existing` after reviewing the diff.
+- `bundle.json` 0.3.0 carries `schema_id`/`schema_version`/`generated_by`,
+  the ordered reviewed identity, opt-in maintainers, the five-family
+  `schemas` map, the unchanged six-entry `files` index (no `outputs.json`)
+  and `default_execution_profile`. The lock (format 2.0) records generator,
+  repository URL and informational revision, contract revisions, source
+  hashes (input-schema evidence, RO-Crate source, adopted configs),
+  RO-Crate strategy/transformation hashes and managed-file hashes; it never
+  hashes itself or drafts. A lock differing only in the informational
+  revision is not rewritten, so committing the bundle does not cause churn.
+- Whole-bundle validation checks every family document against its
+  contract, the `schemas` map, cross-file identity envelopes, the YAML/JSON
+  output projection, forbidden artefacts, draft markers, lock hashes and
+  source freshness, and warns about unpromoted draft changes. Bundle schema
+  1.0 is reported as legacy needing migration.
+
+### Alternatives rejected
+
+- Per-file replacement without journal: partial bundles.
+
+### Consequences
+
+- Repeated publication with unchanged reviewed state writes nothing.
