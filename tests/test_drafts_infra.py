@@ -85,6 +85,7 @@ def test_dumped_drafts_round_trip_for_yaml_1_1_and_1_2_readers() -> None:
     assert load_yaml_draft(text).data == data
     assert yaml.safe_load(text) == data
     assert dump_yaml_data(data) == dump_yaml_data(json.loads(json.dumps(data)))
+    assert "absent: null" in dump_yaml_data({"absent": None})
 
 
 def test_diff_and_merge_are_three_way() -> None:

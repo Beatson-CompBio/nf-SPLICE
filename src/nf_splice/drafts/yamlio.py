@@ -85,7 +85,13 @@ def _yaml() -> YAML:
     parser.allow_duplicate_keys = False
     parser.width = 4096
     parser.indent(mapping=2, sequence=4, offset=2)
+    parser.representer.add_representer(type(None), _represent_null)
     return parser
+
+
+def _represent_null(representer: Any, _value: None) -> Any:
+    """Write absence explicitly as ``null`` rather than an empty scalar."""
+    return representer.represent_scalar("tag:yaml.org,2002:null", "null")
 
 
 def _mark(error: MarkedYAMLError) -> tuple[int | None, int | None]:

@@ -60,6 +60,8 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0027 | Classify outputs by SPLICE job, sample and run with free-text scientific labels | Current | — |
 | ADR-0028 | Generate one analysis output per job from the embedded output catalogue | Current | — |
 | ADR-0029 | Attribute review events publicly by label and keep contact details in a private local audit | Current | — |
+| ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Proposed | — |
+| ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Proposed | — |
 
 ---
 
@@ -1181,3 +1183,124 @@ unset.
 
 - No secrets or e-mail addresses enter public events; redaction is applied
   to exports.
+
+---
+
+## ADR-0030: Make one YAML draft per layer the authoritative, file-first authoring source
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 10 (requirements 3 and 6) |
+| Scope | Authoring authority and storage |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0011, ADR-0013, ADR-0021, ADR-0026, ADR-0029 |
+| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py` |
+| Tests | `tests/test_layer_bundle.py`, `tests/test_drafts_infra.py` |
+
+### Context
+
+ADR-0021 made `splice/nf-splice.yaml` the single canonical authoring state.
+Developers cannot edit the real artefacts directly, every interface must
+round-trip through one monolithic object, and externally edited content has
+to be "imported". 0.3.0 requires independent, directly editable drafts.
+
+### Decision
+
+- Each layer has exactly one authoritative editable draft below
+  `splice/drafts/`: `bundle.draft.yaml`, `inputs.schema.draft.yaml`,
+  `outputs.draft.yaml` (the only output draft, compiling to both
+  `outputs.yaml` and `outputs.schema.json`), `components.draft.yaml`,
+  `execution-profiles.draft.yaml`, `ro-crate-metadata.draft.yaml`, plus native
+  `configs/<id>.draft.config`. The lock is generated only. New 0.3.0
+  integrations never create `nf-splice.yaml`.
+- YAML drafts carry an `x-splice-draft` marker (`layer`, `status: draft`,
+  `format`), represent absence explicitly as `null`, and are created only
+  when absent: discovery, the CLI, the TUI or an agent never overwrite an
+  existing draft.
+- A per-layer review sidecar `splice/drafts/.reviews/<layer>.json` records
+  evidence, the hashes of evidence-seeded values, explicit confirmations,
+  discovery candidates, conflicting evidence, review events and promoted file
+  hashes. It never stores authoritative values; readiness is computed from
+  the current draft bytes on every inspection.
+- A seeded value is pending while the draft still holds exactly that value
+  and no confirmation matches it. A developer's direct edit changes the value
+  and therefore counts as authored; `confirm` records deliberate acceptance
+  of an unchanged detected value. Pending values and unresolved conflicting
+  evidence block promotion.
+- All interface mutations are targeted three-way-merged patches (ADR-0026)
+  applied only with explicit approval and recorded as review events
+  (ADR-0029); a proposal can be planned and diffed without writing.
+
+### Alternatives rejected
+
+- Keeping `nf-splice.yaml` as a hidden store behind the drafts: two copies of
+  reviewed values that can drift.
+- Recording review status inside the drafts: clutters developer-edited files
+  and makes direct edits error-prone.
+
+### Consequences
+
+- Status is Proposed until every layer, the promotion lifecycle and the CLI/
+  TUI have moved to drafts; it then supersedes ADR-0021's authoring-state
+  clause.
+
+---
+
+## ADR-0031: Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 3 |
+| Scope | Pipeline identity and descriptive metadata |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0005, ADR-0025, ADR-0029, ADR-0030 |
+| Implementation | `src/nf_splice/domain/identity.py`, `src/nf_splice/inspectors/identity.py`, `src/nf_splice/layers/bundle.py` |
+| Tests | `tests/test_layer_bundle.py`, `tests/test_vocabulary.py` |
+
+### Context
+
+0.1.0 reviewed only name, version, repository URL and release URL, and
+derived the bundle id from the name on every render.
+
+### Decision
+
+- `PipelineMetadata` has a documented canonical field order: `id`, `name`,
+  `version`, `engine`, `title`, `description`, `long_description`, `readme`,
+  `repository_url`, `project_url`, `release_url`, structured `authors`
+  (name, person/organisation, affiliation, ORCID, role), `funders` (name,
+  award id/title, URL), structured `citation` (DOI, URL, text, CFF path),
+  `licence`, `licence_url`, `documentation_url`, `support_url`,
+  `engine_version_min`, `engine_versions_tested`, free-text `keywords`,
+  `pipeline_type`, `modality` and `released_at`. Required for ingestion:
+  `id`, `name`, `version`, `engine`, `repository_url`; a description is
+  recommended. No ambiguous `github` alias exists.
+- The `id` is derived once from the name when the draft is seeded and is
+  stored; later name changes never re-identify the bundle.
+- Evidence comes from the Nextflow metadata scope (including
+  `nextflowVersion`, `description`, `doi`, `license` and `contributors`),
+  Git remote/tags, `CITATION.cff`, the README title and the root RO-Crate.
+  Unanimous evidence is seeded but unconfirmed; disagreeing evidence leaves
+  the field null with a recorded conflict.
+- Validation reports field-addressed issues: missing required fields,
+  placeholders, invalid URLs/ORCIDs/DOIs, duplicate authors or funders,
+  repository URL differing from the Git remote, a release URL not
+  referencing the version, and a minimum Nextflow version contradicting
+  `nextflowVersion`.
+- Public `maintainers` contacts are opt-in and require
+  `maintainers_publication_approved: true` before promotion.
+
+### Alternatives rejected
+
+- Choosing among conflicting evidence by source priority: silently decides
+  facts the developer must review.
+
+### Consequences
+
+- Detached contracts receive the identity envelope from this one reviewed
+  draft at compilation time.
