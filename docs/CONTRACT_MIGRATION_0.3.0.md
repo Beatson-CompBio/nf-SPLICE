@@ -1,10 +1,13 @@
 # Contract migration: nf-splice 0.1.0 → 0.3.0
 
-This guide is for SPLICE ingestion and DEX developers and for pipeline
-maintainers. It cannot describe the current ingestion code (not in this
-repository); it specifies what changed in the published contracts. Frozen
-0.1.0 artefacts live in `tests/fixtures/legacy-0.1.0/`; 0.3.0 examples in
-`docs/schemas/*/v0.3.0/example.json`.
+> nf-splice 0.1.0 was a pre-release test version. Its files were never a
+> supported contract, and integrations should implement 0.3.0 only, starting
+> from [Building on SPLICE bundles](CONTRACTS.md). This note records how the
+> 0.1.0 test files map to 0.3.0, for anyone converting leftover test bundles
+> with `nf-splice migrate drafts`.
+
+Frozen 0.1.0 test files live in `tests/fixtures/legacy-0.1.0/`; 0.3.0
+examples in `docs/schemas/*/v0.3.0/example.json`.
 
 ## Summary of changes
 
