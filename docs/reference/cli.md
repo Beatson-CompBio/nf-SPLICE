@@ -26,6 +26,7 @@ Global options go before the command name, for example
 | [`nf-splice plan`](#nf-splice-plan) | Preview promotion/publication changes and blockers (read-only). |
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
 | [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
+| [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
 | [`nf-splice tui`](#nf-splice-tui) | Open the guided terminal wizard (works fully without AI). |
 | [`nf-splice analysis-output generate`](#nf-splice-analysis-output-generate) | Generate and schema-validate analysis_output.json for one completed job. |
 | [`nf-splice analysis-output validate`](#nf-splice-analysis-output-validate) | Validate an existing analysis_output.json against the static contract. |
@@ -182,6 +183,22 @@ nf-splice validate [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice assess
+
+Report contract validity, observed outputs and route coverage separately.
+
+```text
+nf-splice assess [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--example-output` | `<path>` |  | Results of one completed run: a directory, a saved 'ls -R'/'tree' listing or an output index. Repeatable; read-only evidence. |
+| `--allow` | `<str>` |  | Permit an optional check's side effects: external_tools, run_nextflow or network. Repeatable. |
+| `--write-analysis-output` | `<directory>` |  | Directory for the analysis_output.json generated from each example. |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice tui

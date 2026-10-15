@@ -1074,6 +1074,116 @@ def validate_command(
         raise typer.Exit(code=2)
 
 
+@app.command("assess")
+def assess_command(
+    repository: RepositoryOption = Path("."),
+    example_output: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--example-output",
+            exists=True,
+            resolve_path=True,
+            help="Results of one completed run: a directory, a saved 'ls -R'/'tree' "
+            "listing or an output index. Repeatable; read-only evidence.",
+        ),
+    ] = None,
+    allow: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--allow",
+            help="Permit an optional check's side effects: external_tools, "
+            "run_nextflow or network. Repeatable.",
+        ),
+    ] = None,
+    write_analysis_output: Annotated[
+        Path | None,
+        typer.Option(
+            file_okay=False,
+            resolve_path=True,
+            help="Directory for the analysis_output.json generated from each example.",
+        ),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Report contract validity, observed outputs and route coverage separately."""
+    from nf_splice.services.coverage import assess
+    from nf_splice.services.coverage import dumps as dump_assessment
+
+    permitted = set(allow or [])
+    unknown = permitted - {"external_tools", "run_nextflow", "network"}
+    if unknown:
+        raise typer.BadParameter(f"unknown permission(s): {', '.join(sorted(unknown))}")
+    if write_analysis_output is not None:
+        write_analysis_output.mkdir(parents=True, exist_ok=True)
+    result = _run(
+        lambda: assess(
+            repository,
+            examples=example_output or [],
+            permitted=permitted,
+            analysis_output_directory=write_analysis_output,
+        )
+    )
+    document = result.to_json()
+    observed = document["observed_output_compatibility"]
+    failed = result.contract.get("status") == "invalid" or observed["status"] == (
+        "incompatible"
+    )
+    if json_output:
+        typer.echo(dump_assessment(result), nl=False)
+        if failed:
+            raise typer.Exit(code=2)
+        return
+    contract = document["contract_validity"]
+    typer.echo(f"Contract validity: {contract['status']}")
+    for item in contract.get("issues", [])[:20]:
+        typer.echo(f"  {item if isinstance(item, str) else item['message']}")
+    typer.echo(f"Observed-output compatibility: {observed['status']}")
+    for example in observed["examples"]:
+        reconciliation = example["reconciliation"]
+        typer.echo(
+            f"  {reconciliation['example']}: {reconciliation['entries']} entries, "
+            f"{sum(reconciliation['classified'].values())} classified, "
+            f"{len(reconciliation['unclassified'])} unclassified, "
+            f"{len(reconciliation['ambiguous'])} ambiguous; "
+            f"analysis_output.json {example['analysis_output']['status']}"
+        )
+        for path in reconciliation["unclassified"][:20]:
+            typer.echo(f"    unclassified: {path}")
+        for item in reconciliation["ambiguous"][:20]:
+            typer.echo(
+                f"    ambiguous: {item['path']} -> {', '.join(item['output_types'])}"
+            )
+        for item in reconciliation["identifier_issues"][:20]:
+            typer.echo(f"    identifier: {item}")
+        if reconciliation["not_observed"]:
+            typer.echo(
+                "    not observed (allowed): "
+                + ", ".join(reconciliation["not_observed"])
+            )
+        for item in reconciliation["limitations"]:
+            typer.echo(f"    limitation: {item}")
+    if not observed["examples"]:
+        typer.echo(f"  {observed['note']}")
+    coverage = document["coverage_assessment"]
+    typer.echo("Coverage assessment:")
+    typer.echo(f"  {coverage['statement']}")
+    for route in coverage["routes"]:
+        if route["catalogue"] != "covered" or route["status"] in {
+            "unresolved",
+            "not_reachable",
+        }:
+            typer.echo(
+                f"  {route['instance']}.{route['emit'] or '-'} "
+                f"{route['published_glob'] or '?'}: {route['status']}, "
+                f"{route['catalogue'].replace('_', ' ')}"
+            )
+    typer.echo("Optional checks:")
+    for check in document["optional_checks"]:
+        typer.echo(f"  {check['name']}: {check['status']} ({check['reason']})")
+    if failed:
+        raise typer.Exit(code=2)
+
+
 @preview_app.command("outputs")
 def preview_outputs_command(
     repository: RepositoryOption = Path("."),

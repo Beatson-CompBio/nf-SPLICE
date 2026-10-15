@@ -308,6 +308,26 @@ def _runtime_entries(
     return _entries_from_tree(source), None
 
 
+def read_output_listing(path: str | Path) -> list[tuple[str, bool]]:
+    """Entries of a saved listing or output index as ``(path, is_directory)``.
+
+    ``.json``, ``.yaml``, ``.yml``, ``.csv`` and ``.tsv`` files are output
+    indexes; anything else is a saved ``ls -R`` or ``tree`` listing. Every
+    path must be safely relative.
+    """
+    source = Path(path)
+    if source.suffix.lower() in {".json", ".yaml", ".yml", ".csv", ".tsv"}:
+        entries = _records_from_index(source)
+    else:
+        entries = _entries_from_tree(source)
+    return [(item.path, item.is_directory) for item in entries]
+
+
+def output_type_order(outputs: tuple[dict[str, Any], ...]) -> list[str]:
+    """Output keys in the order the runtime tries their patterns."""
+    return [str(item["key"]) for item in sorted(outputs, key=_specificity)]
+
+
 def _specificity(output: Mapping[str, Any]) -> tuple[bool, int, str]:
     patterns = [str(item) for item in output.get("path_patterns", [])]
     return (

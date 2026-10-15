@@ -9,6 +9,8 @@ from nf_splice.runtime.analysis_output import (
     generate_analysis_output,
     load_and_validate_analysis_output,
     load_output_catalogue,
+    output_type_order,
+    read_output_listing,
 )
 
 __all__ = [
@@ -20,4 +22,6 @@ __all__ = [
     "generate_analysis_output",
     "load_and_validate_analysis_output",
     "load_output_catalogue",
+    "output_type_order",
+    "read_output_listing",
 ]
