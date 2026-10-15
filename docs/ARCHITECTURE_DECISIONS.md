@@ -1197,8 +1197,8 @@ unset.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0011, ADR-0013, ADR-0021, ADR-0026, ADR-0029 |
-| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py` |
-| Tests | `tests/test_layer_bundle.py`, `tests/test_drafts_infra.py` |
+| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/drafts/store.py` |
+| Tests | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py`, `tests/test_drafts_infra.py` |
 
 ### Context
 
@@ -1220,7 +1220,7 @@ to be "imported". 0.3.0 requires independent, directly editable drafts.
   `format`), represent absence explicitly as `null`, and are created only
   when absent: discovery, the CLI, the TUI or an agent never overwrite an
   existing draft.
-- A per-layer review sidecar `splice/drafts/.reviews/<layer>.json` records
+- A per-layer review sidecar `splice/drafts/.reviews/<layer>.review.json` records
   evidence, the hashes of evidence-seeded values, explicit confirmations,
   discovery candidates, conflicting evidence, review events and promoted file
   hashes. It never stores authoritative values; readiness is computed from
@@ -1233,6 +1233,11 @@ to be "imported". 0.3.0 requires independent, directly editable drafts.
 - All interface mutations are targeted three-way-merged patches (ADR-0026)
   applied only with explicit approval and recorded as review events
   (ADR-0029); a proposal can be planned and diffed without writing.
+- Discovery candidates live in the sidecar under stable IDs with a status
+  (`pending`, `accepted`, `rejected`, `merged`, `split`); rediscovery never
+  changes a decided candidate, and an unknown candidate ID is an error.
+  Reviewed outputs are appended to `outputs.draft.yaml` by stable key; JSON
+  previews of the compiled files are derived and never written.
 
 ### Alternatives rejected
 

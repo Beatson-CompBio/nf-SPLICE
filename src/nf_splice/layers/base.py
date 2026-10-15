@@ -433,6 +433,64 @@ def confirm_values(
     return event
 
 
+@dataclass(frozen=True, slots=True)
+class LayerValidation:
+    """Readiness of one layer derived from current draft bytes.
+
+    ``files`` holds the compiled final payloads (relative to ``splice/``)
+    only when the layer has no blocking issue.
+    """
+
+    layer: str
+    issues: tuple[DraftIssue, ...]
+    files: Mapping[str, bytes] = field(default_factory=dict)
+
+    @property
+    def errors(self) -> tuple[DraftIssue, ...]:
+        return tuple(item for item in self.issues if item.severity is Severity.ERROR)
+
+    @property
+    def ready(self) -> bool:
+        return not self.errors and bool(self.files)
+
+
+def issue(
+    layer: str,
+    pointer: str,
+    code: str,
+    message: str,
+    severity: Severity = Severity.ERROR,
+    *,
+    path: str | None = None,
+) -> DraftIssue:
+    """Build an issue addressed to a layer draft (or another path)."""
+    return DraftIssue(
+        layer, path or layer_spec(layer).draft, pointer, severity, code, message
+    )
+
+
+def record_decision(
+    root: Path,
+    layer: str,
+    action: str,
+    context: ChangeContext,
+    pointers: tuple[str, ...],
+    mutate: Callable[[ReviewState], None],
+) -> ReviewEvent:
+    """Record a review decision that changes only the sidecar (e.g. reject)."""
+    if not context.approved:
+        raise LayerError(f"{action} requires explicit approval")
+    current = read_layer(root, layer).file.sha256
+    event = _record(root, layer, action, context, pointers, current, current)
+
+    def apply(state: ReviewState) -> None:
+        mutate(state)
+        state.events.append(event.model_dump(mode="json"))
+
+    update_review_state(root, layer, apply)
+    return event
+
+
 def ops_for(data: Any, changes: Mapping[str, Any]) -> list[PatchOp]:
     """Build expected-value operations that set pointers to new values."""
     operations = []
@@ -455,15 +513,18 @@ __all__ = [
     "EditResult",
     "LayerError",
     "LayerSpec",
+    "LayerValidation",
     "ReviewState",
     "Severity",
     "confirm_values",
     "draft_marker",
     "edit_draft",
+    "issue",
     "layer_spec",
     "load_review_state",
     "ops_for",
     "read_layer",
+    "record_decision",
     "save_review_state",
     "seed_draft",
     "strip_marker",

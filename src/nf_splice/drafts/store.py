@@ -261,7 +261,7 @@ def canonical_json(value: Any) -> bytes:
 
 def sidecar_path(layer: str) -> str:
     """Return the review-sidecar path for one layer."""
-    return f"{REVIEWS_DIR}/{layer}.json"
+    return f"{REVIEWS_DIR}/{layer}.review.json"
 
 
 def read_sidecar(root: Path, layer: str) -> tuple[dict[str, Any], str | None]:

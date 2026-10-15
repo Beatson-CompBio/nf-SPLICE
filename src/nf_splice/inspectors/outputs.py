@@ -349,15 +349,47 @@ def _tree_entries(path: Path) -> list[tuple[str, bool]]:
 
 def _tree_candidates(path: Path, source: str) -> list[_RawCandidate]:
     entries = [(item, is_dir) for item, is_dir in _tree_entries(path) if item]
+    found: list[_RawCandidate] = []
+    # Identical file names below two or more sibling directories are one
+    # per-sample output: quant/S1/counts.tsv + quant/S2/counts.tsv.
+    siblings: dict[tuple[str, str], set[str]] = {}
+    for relative, is_dir in entries:
+        item = Path(relative)
+        if not is_dir and len(item.parts) >= 2:
+            key = (item.parent.parent.as_posix(), item.name)
+            siblings.setdefault(key, set()).add(item.parent.name)
+    per_sample = {key for key, parents in siblings.items() if len(parents) > 1}
+    for grandparent, name in sorted(per_sample):
+        prefix = "" if grandparent == "." else re.escape(grandparent) + "/"
+        found.append(
+            _RawCandidate(
+                key=_safe_key(f"{grandparent}_{name}"),
+                path_pattern=f"^{prefix}{{sample}}/{re.escape(name)}$",
+                location=f"{path}:{grandparent}/{{sample}}/{name}",
+                source=source,
+                output_format=_format_for(name),
+                scope=OutputScope.SAMPLE,
+                entity_type=OutputEntityType.FILE,
+                confidence=0.9,
+            )
+        )
     grouped: dict[tuple[str, str], list[str]] = {}
     for relative, is_dir in entries:
         if is_dir:
             continue
         item = Path(relative)
+        if (
+            len(item.parts) >= 2
+            and (
+                item.parent.parent.as_posix(),
+                item.name,
+            )
+            in per_sample
+        ):
+            continue
         grouped.setdefault((item.parent.as_posix(), item.suffix.lower()), []).append(
             item.name
         )
-    found: list[_RawCandidate] = []
     for (parent, _), names in sorted(grouped.items()):
         if len(names) > 1:
             # Character-wise on reversed names: the shared filename suffix.
