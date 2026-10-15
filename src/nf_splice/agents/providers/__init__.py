@@ -60,6 +60,13 @@ PROVIDERS: dict[str, ProviderInfo] = {
         "remote",
         "as for openai: ChatGPT plan usage, or metered API usage in API-key mode",
     ),
+    "opencode": ProviderInfo(
+        "opencode",
+        "OpenCode 2.0.x server, deny-all permissions (install OpenCode yourself)",
+        "the model providers and credentials configured in OpenCode",
+        "local (loopback model endpoint) or remote, classified per model",
+        "the configured model provider; none for local models",
+    ),
     "scripted": ProviderInfo(
         "scripted",
         "Offline, deterministic turns from a JSON script (--script)",
@@ -69,7 +76,12 @@ PROVIDERS: dict[str, ProviderInfo] = {
     ),
 }
 NAMES = tuple(PROVIDERS)
-_MODULES = {"claude": "claude", "openai": "openai", "codex": "codex"}
+_MODULES = {
+    "claude": "claude",
+    "openai": "openai",
+    "codex": "codex",
+    "opencode": "opencode",
+}
 
 
 def canonical(name: str) -> str:
@@ -122,6 +134,10 @@ def provider_for(
         from nf_splice.agents.providers.codex import CodexProvider
 
         return CodexProvider(model=model or selected_model("codex"))
+    if name == "opencode":
+        from nf_splice.agents.providers.opencode import OpenCodeProvider
+
+        return OpenCodeProvider(model=model or selected_model("opencode"))
     if name == "scripted":
         from nf_splice.agents.providers.scripted import ScriptedProvider
 
