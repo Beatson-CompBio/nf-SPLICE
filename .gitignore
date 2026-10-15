@@ -216,3 +216,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# nf-SPLICE local development workspace.
+# All agent scratch files, temporary test output, caches, logs, local TUI
+# sessions, reports and ephemeral fixtures live below this one anchored,
+# ignored directory inside the clone. It is never part of the published
+# splice/ bundle and must never be staged (see scripts/check_staged_paths.py).
+/.nf-splice-local/
