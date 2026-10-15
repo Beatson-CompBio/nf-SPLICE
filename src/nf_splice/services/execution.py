@@ -14,8 +14,6 @@ from nf_splice.domain import (
     AuthoringDocument,
     Decision,
     DecisionStatus,
-    Evidence,
-    EvidenceProvenance,
     LayerState,
     PathClassification,
     UnresolvedDecision,
@@ -30,6 +28,17 @@ from nf_splice.domain.execution import (
 )
 from nf_splice.domain.inputs import InputClassification, ReviewedInput
 from nf_splice.inspectors import inspect_splice_tree
+from nf_splice.inspectors.profiles import (
+    _ACCOUNT_LITERAL,
+    _DEMO_TEST,
+    _PARAM_ASSIGNMENT,
+    _PERSONAL_PATH,
+    _SECRET_ASSIGNMENT,
+    ProfileDiscoveryError,
+    discover_profiles,
+)
+from nf_splice.inspectors.profiles import safe_relative as _safe_relative
+from nf_splice.inspectors.profiles import strip_comments as _strip_comments
 from nf_splice.renderers.execution import render_execution, reviewed_execution_profiles
 from nf_splice.services.authoring import (
     load_repository_document,
@@ -50,178 +59,12 @@ class ExecutionBuildResult:
     wrote: bool
 
 
-_PROFILE_BLOCK = re.compile(r"\bprofiles\s*\{")
-_INCLUDE = re.compile(r"\bincludeConfig\s*\(?\s*['\"]([^'\"]+)['\"]")
-_EXECUTOR = re.compile(r"\bexecutor\s*=\s*['\"]([A-Za-z0-9_-]+)['\"]")
-_ENGINE_DIRECT = re.compile(
-    r"\b(docker|singularity|apptainer|podman|conda|mamba|shifter|charliecloud)"
-    r"\.enabled\s*=\s*true\b"
-)
-_ENGINE_BLOCK = re.compile(
-    r"\b(docker|singularity|apptainer|podman|conda|mamba|shifter|charliecloud)"
-    r"\s*\{[^{}]*\benabled\s*=\s*true\b",
-    re.DOTALL,
-)
-_PROFILE_ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
-_SECRET_ASSIGNMENT = re.compile(
-    r"(?i)\b(?:password|passwd|secret|token|credential|private[_-]?key|"
-    r"access[_-]?key)\b\s*=\s*(?!null\b|System\.getenv\b)([^\n]+)"
-)
-_PERSONAL_PATH = re.compile(r"(?:~[/\\]|/(?:Users|home)/[^/'\"\s]+)")
-_ACCOUNT_LITERAL = re.compile(
-    r"(?i)(?:--account(?:=|\s+)|\b(?:account|project|budget)\s*=\s*)"
-    r"['\"]?[A-Za-z0-9][A-Za-z0-9_.-]+"
-)
-_DEMO_TEST = re.compile(r"(?i)(?:test[_-]?data|testdata|demo(?:nstration)?)")
-_PARAM_ASSIGNMENT = re.compile(r"\bparams\.([A-Za-z_][A-Za-z0-9_]*)\s*=")
-
-
 def _replace_layer(
     layers: tuple[LayerState, ...], replacement: LayerState
 ) -> tuple[LayerState, ...]:
     retained = [item for item in layers if item.name != replacement.name]
     retained.append(replacement)
     return tuple(sorted(retained, key=lambda item: item.name))
-
-
-def _strip_comments(text: str) -> str:
-    text = re.sub(
-        r"/\*.*?\*/",
-        lambda match: "\n" * match.group(0).count("\n"),
-        text,
-        flags=re.DOTALL,
-    )
-    return re.sub(r"//.*", "", text)
-
-
-def _matching_brace(text: str, opening: int) -> int:
-    depth = 0
-    quote: str | None = None
-    escaped = False
-    for index in range(opening, len(text)):
-        character = text[index]
-        if quote is not None:
-            if escaped:
-                escaped = False
-            elif character == "\\":
-                escaped = True
-            elif character == quote:
-                quote = None
-            continue
-        if character in {"'", '"'}:
-            quote = character
-        elif character == "{":
-            depth += 1
-        elif character == "}":
-            depth -= 1
-            if depth == 0:
-                return index
-    raise ExecutionProfileError("nextflow.config contains an unclosed profiles block")
-
-
-def _profile_bodies(text: str) -> tuple[tuple[str, str], ...]:
-    cleaned = _strip_comments(text)
-    match = _PROFILE_BLOCK.search(cleaned)
-    if match is None:
-        return ()
-    opening = cleaned.find("{", match.start())
-    closing = _matching_brace(cleaned, opening)
-    body = cleaned[opening + 1 : closing]
-    profiles: list[tuple[str, str]] = []
-    index = 0
-    while index < len(body):
-        candidate = re.search(r"\b([A-Za-z_][A-Za-z0-9_-]*)\s*\{", body[index:])
-        if candidate is None:
-            break
-        name = candidate.group(1)
-        profile_opening = index + candidate.end() - 1
-        profile_closing = _matching_brace(body, profile_opening)
-        profiles.append((name, body[profile_opening + 1 : profile_closing]))
-        index = profile_closing + 1
-    return tuple(profiles)
-
-
-def _scan_environment(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    executors = tuple(sorted(set(_EXECUTOR.findall(text))))
-    engines = set(_ENGINE_DIRECT.findall(text)) | set(_ENGINE_BLOCK.findall(text))
-    engines.discard("mamba")
-    if "mamba" in _ENGINE_DIRECT.findall(text):
-        engines.add("conda")
-    return executors, tuple(sorted(engines))
-
-
-def _safe_relative(root: Path, path: str) -> str | None:
-    if "$" in path or "://" in path:
-        return None
-    requested = root / path
-    if requested.is_symlink():
-        return None
-    candidate = requested.resolve()
-    try:
-        relative = candidate.relative_to(root).as_posix()
-    except ValueError:
-        return None
-    return relative if candidate.is_file() else None
-
-
-def _discover(
-    root: Path,
-) -> tuple[tuple[ExecutionProfileCandidate, tuple[Evidence, ...]], ...]:
-    config = root / "nextflow.config"
-    if not config.is_file():
-        raise ExecutionProfileError("nextflow.config is required for profile discovery")
-    discovered: dict[str, tuple[ExecutionProfileCandidate, tuple[Evidence, ...]]] = {}
-    for name, body in _profile_bodies(config.read_text(encoding="utf-8")):
-        if not _PROFILE_ID.fullmatch(name):
-            continue
-        sources = tuple(
-            sorted(
-                {
-                    relative
-                    for included in _INCLUDE.findall(body)
-                    if (relative := _safe_relative(root, included)) is not None
-                }
-            )
-        )
-        combined = (
-            body
-            + "\n"
-            + "\n".join(
-                (root / source).read_text(encoding="utf-8", errors="replace")
-                for source in sources
-            )
-        )
-        executors, engines = _scan_environment(combined)
-        unresolved = ["review", "config_source"]
-        if len(executors) != 1:
-            unresolved.append("executor")
-        if len(engines) != 1:
-            unresolved.append("container_engine")
-        locations = ("nextflow.config", *sources)
-        candidate = ExecutionProfileCandidate(
-            id=f"profile:{name}",
-            name=name.replace("_", " ").replace("-", " ").title(),
-            source_profile=name,
-            config_sources=sources,
-            executors=executors,
-            container_engines=engines,
-            unresolved_fields=tuple(unresolved),
-        )
-        evidence = tuple(
-            Evidence(
-                id=f"{candidate.id}:{index}",
-                provenance=EvidenceProvenance(
-                    source="execution_profile", location=location
-                ),
-                observed_value=(
-                    candidate.model_dump(mode="json") if index == 1 else location
-                ),
-                confidence=1.0,
-            )
-            for index, location in enumerate(locations, start=1)
-        )
-        discovered[candidate.id] = (candidate, evidence)
-    return tuple(discovered[key] for key in sorted(discovered))
 
 
 def discover_execution_profiles(repository_root: str | Path) -> AuthoringDocument:
@@ -231,7 +74,11 @@ def discover_execution_profiles(repository_root: str | Path) -> AuthoringDocumen
     evidence = {item.id: item for item in document.evidence}
     decisions = {item.id: item for item in document.decisions}
     profile_ids: set[str] = set()
-    for candidate, candidate_evidence in _discover(root):
+    try:
+        discovered = discover_profiles(root)
+    except ProfileDiscoveryError as error:
+        raise ExecutionProfileError(str(error)) from error
+    for candidate, candidate_evidence in discovered:
         profile_ids.add(candidate.id)
         for item in candidate_evidence:
             evidence[item.id] = item

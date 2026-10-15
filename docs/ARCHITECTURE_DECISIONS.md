@@ -64,6 +64,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Proposed | — |
 | ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Proposed | — |
 | ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Proposed | — |
+| ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Proposed | — |
 
 ---
 
@@ -1474,3 +1475,60 @@ could therefore be presented as if a static image file could be downloaded.
 
 - External URLs are untrusted (SSRF, redirect and quota protections); no
   credentials enter the bundle.
+
+---
+
+## ADR-0034: Review one default execution profile with adopted or deterministically generated configs
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 9 |
+| Scope | Execution profiles and configuration authoring |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0022, ADR-0030, ADR-0032 |
+| Implementation | `src/nf_splice/layers/execution.py`, `src/nf_splice/inspectors/profiles.py` |
+| Tests | `tests/test_layer_execution.py`, `tests/test_execution.py` |
+
+### Context
+
+ADR-0022 allowed only byte-identical copies of developer configs and had no
+notion of a platform default profile.
+
+### Decision
+
+- `execution-profiles.draft.yaml` lists reviewed profiles (stable IDs as in
+  0.1.0) and a separately reviewed `default_profile`; with at least one
+  profile, exactly one default must be chosen explicitly and is published as
+  `default_profile` plus a per-profile `default` flag. The default is not a
+  claim that a cluster is reachable.
+- Two explicit config routes per profile: `adopted` (a repository-local
+  `.config` outside `splice/`, copied byte-for-byte) or `generated` (an
+  editable native `splice/drafts/configs/<id>.draft.config` created once by a
+  deterministic builder from reviewed settings and never regenerated over
+  edits). Final configs drop the draft marker line.
+- Generated configs always contain the two headings
+  `// ***** User Pipeline Input Params *****` and
+  `// ***** SPLICE Pipeline Input Params *****`, with sorted, escaped
+  `params` blocks. User overrides must be user-editable parameters and
+  platform overrides platform-only parameters according to the reviewed
+  input contract; secret-like parameters are never written.
+- A reviewable SPLICE Slurm production candidate is offered with
+  operator-managed site parameters (`queue`, `clusterOptions`) emitted only
+  as comments: no account, partition, path, credential or database URL is
+  hard-coded.
+- Safety scanning applies to both routes: embedded secrets, personal paths,
+  literal HPC accounts, test/demo settings in production profiles and, for
+  adopted configs or text outside the generated sections, overrides of
+  user-editable parameters.
+
+### Alternatives rejected
+
+- Treating the first listed profile as default: silent policy choice.
+- Generating configs on every build: discards developer edits.
+
+### Consequences
+
+- Site details are an operator concern recorded as `site_parameters`.
