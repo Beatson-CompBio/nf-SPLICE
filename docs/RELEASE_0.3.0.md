@@ -1,8 +1,9 @@
 # nf-SPLICE 0.3.0 release record
 
-**Status:** ready for review on branch `wip/nf-splice-v0.3.0`, which is
-pushed to GitHub and passes CI; not released. Nothing has been merged,
-tagged or published.
+**Status:** ready for review on branch `wip/nf-splice-v0.3.0`; not released.
+Nothing has been merged, tagged or published. The branch passed CI at
+`0828774`; the agentic AI and output-route commits after `318c350` are local
+and have not yet been pushed or run in CI.
 
 | Item | Value |
 | --- | --- |
@@ -30,12 +31,22 @@ pipelines. A small pipeline for trying the tool is in the repository at
 `tests/fixtures/incomplete-drafts-0.3.0/repository/`; copy it without its
 `splice/` directory to start from scratch.
 
+To try agentic AI, install the `claude` extra in the same way (see
+[Agentic AI](guide/agentic-ai.md)) and follow the
+[tutorials](USAGE.md#tutorials). `tests/fixtures/multi-route-0.3.0/` has a
+pipeline with alternative and optional routes and a results tree from one
+run, made for trying output discovery, `nf-splice assess` and sessions.
+
 Please look first at:
 
 1. The [decisions flagged for review](#decisions-flagged-for-review).
-2. ADR-0041, which removes all 0.1.0 compatibility because 0.1.0 was a
+2. ADR-0044 to ADR-0046: the three ways of working, agent permissions and
+   attribution, and the skills.
+3. ADR-0042: output routes, and why the catalogue and a job's
+   `analysis_output.json` differ.
+4. ADR-0041, which removes all 0.1.0 compatibility because 0.1.0 was a
    pre-release test version.
-3. The [schema reference](schemas/README.md), if you build tools on bundles.
+5. The [schema reference](schemas/README.md), if you build tools on bundles.
 
 ## Feature ledger
 
@@ -108,8 +119,21 @@ release and the baseline for schema compatibility (ADR-0041).
 - **Attribution and privacy:** public actor labels, a private local audit
   store for contact details, opt-in public maintainers (ADR-0029).
 - **Guided wizard** over the same services as the CLI (ADR-0038).
-- **Optional AI assistance** that can only propose; a person approves every
-  change (ADR-0039).
+- **Agentic AI built in**, in three ways of working over one deterministic
+  engine (ADR-0044): manual work with read-only *Ask AI* help; AI-assisted
+  sessions where the agent proposes each stage with its diff and validation
+  and a person approves, objects or asks; and autonomous integration where
+  the agent does the whole integration within an approved scope and reports
+  truthfully what is done and what is blocked. Operation-level permissions,
+  stale-proof approvals and attribution that never presents an agent's
+  decision as human review (ADR-0045). Provider-neutral, with a Claude Agent
+  SDK adapter; skills in `skills/` guide every provider (ADR-0046).
+- **Output routes and evidence:** static tracing of Nextflow publication
+  routes across alternative and optional branches, discovery of published
+  outputs only, and `nf-splice assess`, which reports contract validity,
+  observed-output compatibility and route coverage as separate results
+  (ADR-0042); optional nf-core checks only when installed and permitted
+  (ADR-0043).
 - **Documentation:** a task-based user guide, a generated command reference
   and key-by-key schema references for integrators.
 - **CI** on Python 3.10 to 3.14, nf-core 4.0.2 coexistence, packaging and
@@ -157,11 +181,16 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | Workflow | Interrupted or failed builds never look complete | Done | `test_lifecycle.py`, `test_s09_*` |
 | UI | Wizard covers every layer and the draft/final lifecycle | Done | `test_tui.py` |
 | UI | Navigation, inline validation, progress, resume, CLI equivalence, keyboard review | Done | `test_tui.py` (CLI/TUI equivalence gate) |
-| AI | No AI dependency for manual use; offline compilation and validation | Done | `test_s08_*` (SDK import blocked, sockets disabled) |
-| AI | Claude SDK behind a provider-neutral, approval-gated, least-privilege interface | Done | `test_agents.py` |
-| AI | Manual and AI suggestions interchangeable; only services apply changes | Done | `test_s03_*`, `test_agents.py` |
-| AI | Provider code isolated for future adapters | Done | `src/nf_splice/agents/providers/` |
-| Release | Regression tests pass | Done | 177 passed, 2 opt-in skipped |
+| AI | No AI dependency for manual use; offline compilation and validation | Done | `test_s08_*` (SDK import blocked, sockets disabled), `test_agents.py` |
+| AI | Manual mode with read-only Ask AI that cannot change files | Done | `test_agents.py`, `test_agent_interfaces.py` |
+| AI | AI-assisted sessions: bounded proposals, approval, objection investigation, revision, no advance on silence | Done | `test_agents.py`, `test_agent_interfaces.py` |
+| AI | Autonomous integration builds and validates a real bundle without prompts; blockers reported and resumed in assisted mode | Done | `test_agents.py` |
+| AI | All mode transitions preserve drafts and history; interrupted actions roll back | Done | `test_agents.py` |
+| AI | Stale approvals, concurrent sessions, path traversal, secrets, permission escalation and prompt injection refused | Done | `test_agents.py` |
+| AI | Claude adapter and scripted provider conform to one protocol; missing capabilities fail clearly | Done | `test_agent_interfaces.py` |
+| AI | Skills canonical, packaged, accurate and loaded into every provider turn | Done | `test_skills.py` |
+| Outputs | Catalogue covers alternative routes; one-route example validates without the others; unknown files fail by default | Done | `test_routes.py`, `test_coverage.py` |
+| Release | Regression tests pass | Done | 217 passed, 2 opt-in skipped |
 | Release | Scenarios S01-S15 pass offline | Done | S05 and S14 migration parts not applicable; see below |
 | Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Done | 3.10, 3.11 and 3.14 run locally; all of 3.10 to 3.14 pass in GitHub Actions |
 | Release | Golden files and snapshots committed | Done | `tests/snapshots/tui/`, `docs/schemas/*/v0.3.0/` |
@@ -181,7 +210,7 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | --- | --- |
 | S01 manual CLI | `test_reference_workflow.py` |
 | S02 Textual, identical to CLI | `test_tui.py::test_cli_and_tui_produce_identical_drafts_and_bundles` |
-| S03 manual + AI + external edit | `test_scenarios.py::test_s03_manual_and_ai_work_are_interchangeable`, `test_agents.py` |
+| S03 manual + AI + external edit | `test_scenarios.py::test_s03_manual_and_ai_work_are_interchangeable`, `test_agents.py::test_every_mode_transition_preserves_drafts_and_history` |
 | S04 resume and external mutation | `test_scenarios.py::test_s04_*`, `test_tui.py`, `test_drafts_infra.py`, `test_lifecycle.py` (drift) |
 | S05 legacy bundle migration | Not applicable (ADR-0041) |
 | S06 container hazard | `test_containers.py` (offline HTTPS fixture, SSRF and integrity guards) |
@@ -206,12 +235,15 @@ every cache, temporary file, report and session under `.nf-splice-local/`.
 
 | Check | Result |
 | --- | --- |
-| `scripts/run-checks.sh` (dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard) | exit 0: 177 passed, 2 skipped; ruff clean; 117 files formatted; mypy clean on 111 files; `nf-splice 0.3.0` |
-| `python -m build` | sdist and wheel built |
+| `scripts/run-checks.sh` (dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard) | exit 0: 217 passed, 2 skipped; ruff clean; 140 files formatted; mypy clean on 129 files; `nf-splice 0.3.0` |
+| `python -m build --no-isolation` | sdist and wheel built; the wheel contains the four skills |
 | Generated references (`generate_schema_docs.py --check`, `generate_cli_docs.py --check`) | current |
-| Wheel with `[dev]` in fresh Python 3.11.16 and 3.14.7 environments, suite run against the installed package | 177 passed, 2 skipped on each |
-| Wheel plus `nf-core==4.0.2` in a fresh Python 3.10.21 environment | dependencies compatible; `nf-splice 0.3.0` and `nf-core 4.0.2` both run |
-| Install from Git (`pip install "git+…@wip/nf-splice-v0.3.0"`) into a fresh Python 3.14 environment, then the user guide followed step by step on a new pipeline | Every layer reviewed, bundle published and validated, a job's `analysis_output.json` generated and validated, a new version released, a hand-edited file overwritten explicitly |
+| Wheel with `[dev]` in Python 3.11.16 and 3.14.7 environments, suite run against the installed package | 217 passed, 2 skipped on each |
+| Wheel plus `nf-core==4.0.2` resolved together in a Python 3.10.21 environment | dependencies compatible; `nf-splice 0.3.0` and `nf-core 4.0.2` both run |
+| Each new commit's tree exported and tested on its own | the output-routes documentation commit: docs, ADR, coverage, routes and agent tests pass; the agentic commit: 216 passed, 3 skipped (one Git-only test cannot run outside a checkout) |
+| Autonomous and assisted sessions on the multi-route fixture with the scripted provider | complete: every stage gated, bundle valid, STAR-only example compatible, all 7 routes covered |
+| nf-core lint adapter against a real nf-core 4.0.2 on an nf-core-marked copy of the fixture | without Nextflow it first reported `error` (nf-core fails without Nextflow); now `not_run` with the reason, before nf-core is started |
+| Install from Git (`pip install "git+…@wip/nf-splice-v0.3.0"`) into a fresh Python 3.14 environment, then the user guide followed step by step on a new pipeline | Done at `ecf745d`: every layer reviewed, bundle published and validated, a job's `analysis_output.json` generated and validated, a new version released, a hand-edited file overwritten explicitly. Not repeated for the agentic commits, which are not pushed yet |
 
 The walkthrough found two documentation gaps and one wrong command in a
 message; all three are fixed. The two skipped tests are opt-in: `nextflow`
@@ -229,8 +261,25 @@ credentials.
   backend and were not tested against the real bucket.
 - **Ingestion code** is not in this repository. The components shape is
   published as a schema, an example and fixtures; ingestion needs to read it.
-- **Claude Agent SDK:** tested offline against a fake SDK; live use needs an
-  approved organisation setup.
+- **Claude Agent SDK:** the adapter is tested offline against a fake SDK
+  (least-privilege options, tool mediation, denials, resume, costs) and
+  through full sessions with the scripted provider. No live Claude session
+  has been run; `test_live_claude_assisted_session_proposes_without_changing_files`
+  is opt-in and needs an approved organisation setup.
+- **Codex and OpenCode:** the provider protocol is ready for them, but no
+  adapter is implemented.
+- **Static route analysis** reads Groovy text without running Nextflow. It
+  follows `publishDir` in processes and configuration selectors, includes
+  and aliases, and `if`/`else` blocks, but not channel-level routing
+  (`branch`, `filter`), conditions inside `includeConfig`, Nextflow's
+  preview `output {}` blocks beyond simple assignments, or values computed
+  at run time. Such routes are reported as `unresolved` or
+  `inferred_unverified`, never as confirmed.
+- **nf-core lint** has run against a real nf-core 4.0.2 only up to the
+  Nextflow check, because Nextflow is not installed here; report parsing is
+  tested with a fake executable.
+- **Previews** in assisted sessions run on a copy without `.git`, so
+  Git-derived evidence (revision, remote URL) is missing from previews only.
 - **Exit codes:** `configure` commands save the draft and then exit with
   status 2 while blocking issues remain. Scripts should read the message or
   use `nf-splice plan` rather than treat the status as a failed save.
@@ -271,6 +320,23 @@ From specification section 18.
 8. **Claude Team and SDK billing.** A Team subscription does not by itself
    authorise or pay for Agent SDK usage. Live use is opt-in
    (`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`) and unverified.
+9. **Default autonomous scope.** Autonomous runs may edit drafts and build
+   into `splice/` by default (the build is transactional and recoverable);
+   overwriting hand-edited files and running external tools need explicit
+   grants (ADR-0045).
+10. **Parameter access in autonomous runs.** An autonomous agent may set
+    parameter access policies, recorded as `agent_policy` decisions; an
+    assisting agent needs the stage approval (ADR-0045, ADR-0032).
+11. **Session storage.** Agent sessions live in the repository's ignored
+    `.nf-splice-local/agent/` (self-protected by a `.gitignore`), while the
+    wizard's navigation sessions stay in the user cache (ADR-0044,
+    ADR-0038).
+12. **nf-core lint permissions.** Lint needs `external_tools`,
+    `run_nextflow` and `network`, because it runs `nextflow config` and may
+    contact the network (ADR-0043).
+13. **Published outputs only.** Output candidates come only from published
+    routes; module `meta.yml` files enrich descriptions but no longer create
+    candidates on their own (ADR-0042).
 
 ## Review points
 
@@ -332,6 +398,12 @@ From specification section 18.
 | `ecf745d` | docs(release): handover for review of the 0.3.0 branch |
 | `773aece` | test(ci): make CLI help and TUI worker checks robust |
 | `0828774` | test(cli): rely on functional build flag coverage without Click dependency |
+| `318c350` | docs(release): record the first push and passing CI |
+| `6dd8c8d` | feat(outputs): trace publication routes and discover only published outputs |
+| `8b942cb` | fix(components): end a container expression at the next directive |
+| `d3ee657` | feat(assess): report contract validity, observed outputs and coverage separately |
+| `985ff0b` | docs: output routes, example evidence and the three assessments (ADR-0042, ADR-0043) |
+| `509fa97` | feat(agents)!: manual, AI-assisted and autonomous integration over one engine |
 
 `git log 9ad15c1..` lists everything, including later updates to this
 record.
@@ -360,12 +432,14 @@ personal `.claude/` settings.
 The maintainer merges without pull requests; reviewers have read access.
 
 1. Push `wip/nf-splice-v0.3.0`. CI runs on the push; make sure every job
-   passes, including Python 3.12 and 3.13. Done: CI passes at `0828774`.
+   passes, including Python 3.12 and 3.13. CI passed at `0828774`; push
+   again for the later commits.
 2. Reviewers install the branch (see [above](#for-reviewers-and-testers)),
    follow the user guide and report problems.
 3. Run the opt-in tests where their dependencies exist:
    `NF_SPLICE_NEXTFLOW_TESTS=1 pytest -m nextflow` and, with approved
-   credentials, `NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`.
+   credentials, `NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`. Try one
+   AI-assisted and one autonomous session with Claude on a real pipeline.
 4. Confirm the flagged decisions with ingestion and platform owners.
 5. Merge into `main` and push; CI runs again on `main`.
 6. Tag `v0.3.0`.
