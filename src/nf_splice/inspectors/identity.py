@@ -11,12 +11,16 @@ from urllib.parse import urlparse
 
 from nf_splice.domain import Evidence, EvidenceProvenance
 
-_MANIFEST_BLOCK = re.compile(r"\bmanifest\s*\{(?P<body>.*?)\}", re.DOTALL)
+# Upstream Nextflow configuration syntax: Nextflow itself names its pipeline
+# metadata scope with the literal token in these patterns. The token is parsed
+# only as external input evidence and is never a SPLICE concept or output name
+# (see ADR-0025 and docs/GLOSSARY.md).
+_NEXTFLOW_METADATA_BLOCK = re.compile(r"\bmanifest\s*\{(?P<body>.*?)\}", re.DOTALL)
 _ASSIGNMENT = re.compile(
     r"(?m)^\s*(?P<key>name|version|homePage|repository_url|release_url)\s*=\s*"
     r"(?P<quote>['\"])(?P<value>.+?)(?P=quote)"
 )
-_DOTTED_ASSIGNMENT = re.compile(
+_NEXTFLOW_METADATA_DOTTED = re.compile(
     r"(?m)^\s*manifest\.(?P<key>name|version|homePage|repository_url|release_url)"
     r"\s*=\s*(?P<quote>['\"])(?P<value>.+?)(?P=quote)"
 )
@@ -94,8 +98,8 @@ def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection
             content = config.read_text(encoding="utf-8", errors="replace")
         except OSError:
             content = ""
-        matches = list(_DOTTED_ASSIGNMENT.finditer(content))
-        for block in _MANIFEST_BLOCK.finditer(content):
+        matches = list(_NEXTFLOW_METADATA_DOTTED.finditer(content))
+        for block in _NEXTFLOW_METADATA_BLOCK.finditer(content):
             matches.extend(_ASSIGNMENT.finditer(block.group("body")))
         field_names = {
             "homePage": "repository_url",

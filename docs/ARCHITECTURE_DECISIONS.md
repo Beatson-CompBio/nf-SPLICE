@@ -55,6 +55,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Current | — |
 | ADR-0023 | Record v0.3.0 decisions incrementally with a traceability ledger | Current | — |
 | ADR-0024 | Publish five engine-neutral workflow-bundle contract families with a release registry | Current | — |
+| ADR-0025 | Reserve `manifest` and define SPLICE bundle and platform-unit vocabulary | Current | — |
 
 ---
 
@@ -856,3 +857,58 @@ changed constants, closed objects and new requiredness.
   bundles without an adapter; the migration guide documents a staged rollout.
 - Every future release must extend the registry, and contract definition
   changes require an explicit new revision with migration notes.
+
+---
+
+## ADR-0025: Reserve `manifest` and define SPLICE bundle and platform-unit vocabulary
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 0.5 and requirements 7-8 |
+| Scope | Public nomenclature |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0015, ADR-0024 |
+| Implementation | `src/nf_splice/vocabulary.py`, `src/nf_splice/inspectors/identity.py`, `docs/GLOSSARY.md` |
+| Tests | `tests/test_vocabulary.py`, `tests/test_output_contracts.py` |
+
+### Context
+
+The SPLICE platform already uses `manifest` for a different concept, and the
+platform's units `job`, `sample` and `run` have precise meanings that the
+0.1.0 tool used inconsistently (`run` for workflow-wide outputs, run metadata
+for job metadata). An audit found one SPLICE-owned use of the reserved word:
+the private helper `_MANIFEST_BLOCK` in the Nextflow identity inspector.
+
+### Decision
+
+- SPLICE-owned nomenclature uses **bundle**, **bundle file index**,
+  **contract registry**, **workflow job** and **platform run** with the
+  meanings in `docs/GLOSSARY.md`; `nf_splice.vocabulary` carries the same
+  glossary for code and agent tools.
+- `manifest` is never used for the bundle, its index, the contract registry,
+  schema identifiers, emitted keys, labels or public API names. The bundle
+  family identifier ends in `/bundle` (ADR-0024).
+- The literal Nextflow `manifest { ... }` scope and `manifest.<key>`
+  assignments remain recognised inside the Nextflow identity parser only, as
+  input evidence. Its helpers are renamed `_NEXTFLOW_METADATA_BLOCK` and
+  `_NEXTFLOW_METADATA_DOTTED` without changing the regex token.
+- An automated audit rejects the reserved word in every Python identifier,
+  every string literal outside the Nextflow parser, the packaged contract
+  definitions/registry and CLI help, while asserting the upstream syntax is
+  still parsed. Later generated-artefact tests extend the audit to bundle
+  README, lock, YAML companions and TUI labels.
+
+### Alternatives rejected
+
+- Replacing the token in the parser regex: identity discovery from real
+  `nextflow.config` files would silently break.
+
+### Consequences
+
+- New code and documentation must use the glossary words; the audit fails CI
+  otherwise.
+- `.gitignore` template entries for Python packaging files are third-party
+  conventions and are not SPLICE nomenclature.
