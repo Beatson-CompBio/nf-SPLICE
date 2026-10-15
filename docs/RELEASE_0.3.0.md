@@ -23,3 +23,13 @@ checks that every ADR exists, every path exists and every test file exists.
 | Job metadata and deprecated --run-metadata alias | ADR-0027 | `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py` | `tests/test_output_scopes.py`, `tests/test_runtime.py` | Current |
 | outputs.schema.json x-output-catalog as sole runtime catalogue | ADR-0028 | `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py` | `tests/test_output_scopes.py`, `tests/test_output_contracts.py` | Current |
 | Actor attribution and private audit store | ADR-0029 | `src/nf_splice/domain/audit.py`, `src/nf_splice/services/audit.py` | `tests/test_audit.py` | Current |
+| One authoritative YAML draft per layer; no nf-splice.yaml | ADR-0030 | `src/nf_splice/layers/base.py`, `src/nf_splice/drafts/` | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py` | Current |
+| Rich identity in bundle.draft.yaml | ADR-0031 | `src/nf_splice/layers/bundle.py`, `src/nf_splice/domain/identity.py` | `tests/test_layer_bundle.py` | Current |
+| Engine-neutral input contract and service-side permissions | ADR-0032 | `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py` | `tests/test_layer_inputs.py` | Current |
+| Container sources, verified distributions and cache naming | ADR-0033 | `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` | `tests/test_containers.py` | Current |
+| Single reviewed default profile and generated configs | ADR-0034 | `src/nf_splice/layers/execution.py` | `tests/test_layer_execution.py` | Current |
+| RO-Crate analysis, enrichment and generation | ADR-0035 | `src/nf_splice/layers/provenance.py` | `tests/test_layer_provenance.py` | Current |
+| Per-layer promotion and recoverable bundle publication | ADR-0036 | `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py` | `tests/test_lifecycle.py` | Current |
+| Non-destructive 0.1.0 migration | ADR-0037 | `src/nf_splice/services/migration.py` | `tests/test_migration.py` | Current |
+| File-first CLI | ADR-0030, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
+| Guided Textual wizard and CLI/TUI equivalence | ADR-0038 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |

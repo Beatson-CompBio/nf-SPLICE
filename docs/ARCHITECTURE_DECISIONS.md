@@ -51,8 +51,8 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
 | ADR-0019 | Use compatible runtime framework release families | Current | — |
 | ADR-0020 | Package with setuptools and a source layout | Current | — |
-| ADR-0021 | Keep all static integration-harness state inside `splice/` | Current | — |
-| ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Current | — |
+| ADR-0021 | Keep all static integration-harness state inside `splice/` | Superseded | ADR-0030 |
+| ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Superseded | ADR-0034, ADR-0035 |
 | ADR-0023 | Record v0.3.0 decisions incrementally with a traceability ledger | Current | — |
 | ADR-0024 | Publish five engine-neutral workflow-bundle contract families with a release registry | Current | — |
 | ADR-0025 | Reserve `manifest` and define SPLICE bundle and platform-unit vocabulary | Current | — |
@@ -60,15 +60,15 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0027 | Classify outputs by SPLICE job, sample and run with free-text scientific labels | Current | — |
 | ADR-0028 | Generate one analysis output per job from the embedded output catalogue | Current | — |
 | ADR-0029 | Attribute review events publicly by label and keep contact details in a private local audit | Current | — |
-| ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Proposed | — |
-| ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Proposed | — |
-| ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Proposed | — |
-| ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Proposed | — |
-| ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Proposed | — |
-| ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Proposed | — |
-| ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Proposed | — |
-| ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Proposed | — |
-| ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Proposed | — |
+| ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Current | — |
+| ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Current | — |
+| ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Current | — |
+| ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Current | — |
+| ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Current | — |
+| ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Current | — |
+| ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Current | — |
+| ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Current | — |
+| ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Current | — |
 
 ---
 
@@ -594,12 +594,12 @@ constant and expose it through both installed metadata and the CLI.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-07 |
 | Source | Post-Milestone B user architecture correction, 2026-08-07 |
 | Scope | Integration location, authoring state, and generation provenance |
 | Supersedes | ADR-0003, ADR-0004, ADR-0007 |
-| Superseded by | — |
+| Superseded by | ADR-0030 |
 | Related | ADR-0008, ADR-0009, ADR-0010, ADR-0013, ADR-0015 |
 
 ### Decision
@@ -647,12 +647,12 @@ runtime boundary in ADR-0015.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-07 |
 | Source | Milestone D pull-request review correction, 2026-08-07 |
 | Scope | RO-Crate and execution-profile source authority |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0034, ADR-0035 |
 | Related | ADR-0002, ADR-0005, ADR-0006, ADR-0012, ADR-0013, ADR-0017, ADR-0021 |
 
 ### Decision
@@ -1202,11 +1202,11 @@ unset.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 10 (requirements 3 and 6) |
 | Scope | Authoring authority and storage |
-| Supersedes | — |
+| Supersedes | ADR-0021 |
 | Superseded by | — |
 | Related | ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0011, ADR-0013, ADR-0021, ADR-0026, ADR-0029 |
 | Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/drafts/store.py` |
@@ -1260,9 +1260,10 @@ to be "imported". 0.3.0 requires independent, directly editable drafts.
 
 ### Consequences
 
-- Status is Proposed until every layer, the promotion lifecycle and the CLI/
-  TUI have moved to drafts; it then supersedes ADR-0021's authoring-state
-  clause.
+- Supersedes ADR-0021: every static harness file still lives below
+  repository-root `splice/` and the lock remains `splice/nf-splice.lock.json`,
+  but `splice/nf-splice.yaml` is no longer canonical state; it is read-only
+  migration input (ADR-0037).
 
 ---
 
@@ -1270,7 +1271,7 @@ to be "imported". 0.3.0 requires independent, directly editable drafts.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 3 |
 | Scope | Pipeline identity and descriptive metadata |
@@ -1328,7 +1329,7 @@ derived the bundle id from the name on every render.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 4 (requirement 5) |
 | Scope | Input contract semantics, permissions and engine bindings |
@@ -1407,7 +1408,7 @@ user-configurable parameters, dropped `hidden`, rebuilt groups without their
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 6 |
 | Scope | Component inventory and container provenance |
@@ -1491,11 +1492,11 @@ could therefore be presented as if a static image file could be downloaded.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 9 |
 | Scope | Execution profiles and configuration authoring |
-| Supersedes | — |
+| Supersedes | ADR-0022 |
 | Superseded by | — |
 | Related | ADR-0022, ADR-0030, ADR-0032 |
 | Implementation | `src/nf_splice/layers/execution.py`, `src/nf_splice/inspectors/profiles.py` |
@@ -1548,11 +1549,11 @@ notion of a platform default profile.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, sections 7 and 0.3 (ADR-0022 row) |
 | Scope | Workflow provenance and integration-review provenance |
-| Supersedes | — |
+| Supersedes | ADR-0022 |
 | Superseded by | — |
 | Related | ADR-0022, ADR-0029, ADR-0030, ADR-0034 |
 | Implementation | `src/nf_splice/layers/provenance.py` |
@@ -1596,8 +1597,8 @@ unchanged and a pipeline without an RO-Crate could not be integrated.
 
 ### Consequences
 
-- Together with ADR-0034 this replaces ADR-0022's "copy unchanged only"
-  rule; ADR-0022 is superseded when these layers become Current.
+- Together with ADR-0034 this supersedes ADR-0022's "copy unchanged only"
+  rule while keeping its source-ownership and profile-ID rules.
 
 ---
 
@@ -1605,7 +1606,7 @@ unchanged and a pipeline without an RO-Crate could not be integrated.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, sections 10.6, 3.2 and 0.4 (invariant 6) |
 | Scope | Promotion, publication, lock and whole-bundle validation |
@@ -1667,7 +1668,7 @@ build could leave a mixed bundle that looked complete.
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 14 |
 | Scope | Legacy compatibility and migration |
@@ -1724,7 +1725,7 @@ Existing integrations store reviewed decisions in `splice/nf-splice.yaml`
 
 | Metadata | Value |
 |---|---|
-| Status | Proposed |
+| Status | Current |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 11 |
 | Scope | Terminal user interface |
