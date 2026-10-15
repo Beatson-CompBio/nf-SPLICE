@@ -56,6 +56,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0023 | Record v0.3.0 decisions incrementally with a traceability ledger | Current | — |
 | ADR-0024 | Publish five engine-neutral workflow-bundle contract families with a release registry | Current | — |
 | ADR-0025 | Reserve `manifest` and define SPLICE bundle and platform-unit vocabulary | Current | — |
+| ADR-0026 | Edit drafts as restricted YAML 1.2 with comment-preserving three-way patches | Current | — |
 
 ---
 
@@ -912,3 +913,68 @@ the private helper `_MANIFEST_BLOCK` in the Nextflow identity inspector.
   otherwise.
 - `.gitignore` template entries for Python packaging files are third-party
   conventions and are not SPLICE nomenclature.
+
+---
+
+## ADR-0026: Edit drafts as restricted YAML 1.2 with comment-preserving three-way patches
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 10.2.1 and 10.4 |
+| Scope | Draft syntax, editing and write safety |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0010, ADR-0012, ADR-0013, ADR-0019 |
+| Implementation | `src/nf_splice/drafts/yamlio.py`, `src/nf_splice/drafts/patch.py`, `src/nf_splice/drafts/store.py`, `pyproject.toml` |
+| Tests | `tests/test_drafts_infra.py` |
+
+### Context
+
+0.3.0 makes individual YAML drafts the editable authoring truth, shared by
+developers' editors, the CLI, the TUI and agents. PyYAML implements YAML 1.1
+(`on` becomes `true`, `01` becomes `1`, unquoted dates become timestamps),
+loses comments on every rewrite and accepts duplicate keys. Rewriting a whole
+draft from a model would discard developer edits and comments.
+
+### Decision
+
+- Drafts are parsed with `ruamel.yaml` (new runtime dependency family
+  `ruamel.yaml>=0.18.10,<0.19`) in round-trip mode with YAML 1.2 core-schema
+  semantics. A draft must be one JSON-compatible document: aliases, anchors,
+  non-core or language tags, duplicate keys, non-string keys, NaN/infinity
+  and unquoted timestamps are rejected with a line-addressed
+  `DraftSyntaxError`. Unquoted YAML 1.1-ambiguous scalars produce warnings.
+- New drafts are written from plain data with conservative quoting so YAML
+  1.1 and 1.2 readers agree; repeated serialisation is byte-stable.
+- Every mutation is a list of JSON-pointer `PatchOp`s whose `expected` value
+  is the value observed when the edit was planned. Applying to the current
+  file succeeds only where that base value is still present (or the planned
+  value is already there), so non-overlapping concurrent edits are preserved
+  and overlaps are reported as conflicts without any write. This is a
+  three-way merge whose base travels with the patch; no copy of reviewed
+  values is stored elsewhere.
+- Patches are applied to the round-trip node tree, so comments and
+  formatting of untouched content survive. Replaced values lose only their
+  own comments.
+- File writes are atomic (temporary file, fsync, `os.replace`), refuse
+  symbolic links and paths outside `splice/`, create files only when absent,
+  and compare the file's SHA-256 immediately before replacement
+  (compare-and-swap); modification times are never trusted.
+- Malformed drafts are never regenerated or overwritten; they are reported
+  with their parse location until the developer fixes them.
+
+### Alternatives rejected
+
+- PyYAML with a custom resolver: still loses comments and needs a bespoke
+  duplicate-key and tag guard.
+- Storing a base copy of each draft for merges: a hidden second copy of
+  reviewed values competing with the draft.
+- Whole-file regeneration with mtime checks: silently discards edits.
+
+### Consequences
+
+- YAML-to-JSON compilation can promise parsed-JSON semantic equality and
+  byte-stable repeated output, not byte equality between YAML and JSON.
+- A new dependency must remain compatible with Python 3.10-3.14 in CI.
