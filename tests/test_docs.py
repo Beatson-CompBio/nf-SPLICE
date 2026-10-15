@@ -84,3 +84,13 @@ def test_reserved_word_only_in_the_glossary_explanation() -> None:
         if path.name in {"GLOSSARY.md", "ARCHITECTURE_DECISIONS.md"}:
             continue
         assert "manifest" not in path.read_text(encoding="utf-8").lower(), path.name
+
+
+def test_command_reference_is_current() -> None:
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "generate_cli_docs.py"), "--check"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr

@@ -129,8 +129,19 @@ RepositoryOption = Annotated[
         help="Pipeline repository root.",
     ),
 ]
-OptionalExistingPath = Annotated[
-    Path | None, typer.Option(exists=True, resolve_path=True)
+
+
+def _existing_path(help_text: str) -> Any:
+    """An optional existing-path option with help text."""
+    return typer.Option(exists=True, resolve_path=True, help=help_text)
+
+
+ExampleOutputTreeOption = Annotated[
+    Path | None,
+    _existing_path(
+        "Outputs: example results directory, or a saved 'ls -R'/'tree' listing "
+        "of one, to discover output candidates from."
+    ),
 ]
 OutputDirectoryOption = Annotated[
     Path,
@@ -322,7 +333,7 @@ def init_command(
     description: str | None = typer.Option(None, help="Concise description."),
     title: str | None = typer.Option(None, help="Display title."),
     licence: str | None = typer.Option(None, help="Licence identifier."),
-    example_output_tree: OptionalExistingPath = None,
+    example_output_tree: ExampleOutputTreeOption = None,
     contract_version: str | None = typer.Option(
         None, help="Reviewed analysis-output schema version (X.Y.Z)."
     ),
@@ -643,9 +654,21 @@ def configure_command(
         list[str] | None,
         typer.Option("--visibility", help="Inputs: NAME=standard|advanced|hidden."),
     ] = None,
-    decision_file: OptionalExistingPath = None,
-    example_output_tree: OptionalExistingPath = None,
-    publish_directory: OptionalExistingPath = None,
+    decision_file: Annotated[
+        Path | None,
+        _existing_path(
+            "Batch review file: a YAML 'actions' list for outputs, or a JSON "
+            "array of parameter policies for inputs."
+        ),
+    ] = None,
+    example_output_tree: ExampleOutputTreeOption = None,
+    publish_directory: Annotated[
+        Path | None,
+        _existing_path(
+            "Outputs: publish directory of a completed job to discover output "
+            "candidates from."
+        ),
+    ] = None,
     contract_version: str | None = typer.Option(
         None, help="Outputs: reviewed analysis-output schema version X.Y.Z."
     ),
@@ -1226,9 +1249,24 @@ def _metadata_file(path: Path | None, label: str) -> dict[str, object] | None:
 @analysis_output_app.command("generate")
 def generate_analysis_output_command(
     repository: RepositoryOption = Path("."),
-    publish_directory: OptionalExistingPath = None,
-    native_output_index: OptionalExistingPath = None,
-    output_tree: OptionalExistingPath = None,
+    publish_directory: Annotated[
+        Path | None,
+        _existing_path("Publish directory of the completed job (walked on disk)."),
+    ] = None,
+    native_output_index: Annotated[
+        Path | None,
+        _existing_path(
+            "Output index written by the pipeline (.json, .yaml, .csv or .tsv), "
+            "instead of walking a directory."
+        ),
+    ] = None,
+    output_tree: Annotated[
+        Path | None,
+        _existing_path(
+            "Saved 'ls -R' or 'tree' listing of the publish directory. Supply "
+            "exactly one of the three sources."
+        ),
+    ] = None,
     job_metadata: Annotated[
         Path | None,
         typer.Option(
@@ -1588,7 +1626,10 @@ def agent_run_command(
     repository: RepositoryOption = Path("."),
     provider: str = typer.Option(..., help="claude, or scripted (requires --script)."),
     mode: str = typer.Option("suggest", help="ask, suggest or draft."),
-    script: OptionalExistingPath = None,
+    script: Annotated[
+        Path | None,
+        _existing_path("JSON script of steps for the offline scripted provider."),
+    ] = None,
     allow_remote_model: bool = typer.Option(
         False, help="Consent to sending bounded repository context to a remote model."
     ),
