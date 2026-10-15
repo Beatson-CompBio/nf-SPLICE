@@ -1,12 +1,32 @@
-# SPLICE workflow-bundle contracts
+# Building on SPLICE bundles
 
-nf-splice publishes exactly five public JSON contract families plus two
-companion artefacts. Families are engine-neutral: another generator (for
-example for Snakemake) can emit the same revisions. Vocabulary is defined in
-[`GLOSSARY.md`](GLOSSARY.md); decisions in ADR-0024, ADR-0027, ADR-0028,
-ADR-0032 to ADR-0036.
+This page is for developers of platforms, ingestion services and other tools
+that read SPLICE workflow bundles. It explains what a bundle contains, how
+to read it and how its formats are versioned. Each file has a key-by-key
+reference in [`schemas/`](schemas/README.md).
 
-| Published file | Family URI | Revision (nf-splice 0.3.0) | Field reference |
+## What a bundle contains
+
+A bundle is the `splice/` directory of a workflow repository:
+
+```text
+splice/
+├── bundle.json               entry point: identity, contract revisions, file index
+├── inputs.schema.json        input parameters (JSON Schema 2020-12)
+├── outputs.schema.json       output catalogue + schema of each job's analysis_output.json
+├── components.json           modules and container images
+├── execution-profiles.json   execution profiles and the default
+├── configs/<profile>.config  Nextflow configuration of each profile
+├── ro-crate-metadata.json    RO-Crate provenance
+├── outputs.yaml              human-readable copy of the output catalogue
+├── README.md                 description for people
+└── nf-splice.lock.json       hashes of every published file
+```
+
+The five JSON files at the top are the **contracts**: formats with a
+published, versioned definition that consumers implement.
+
+| File | Contract family | Revision | Reference |
 | --- | --- | --- | --- |
 | `bundle.json` | `https://schemas.splice-data.io/workflow-bundle/bundle` | `0.3.0` | [bundle](schemas/bundle/README.md) |
 | `inputs.schema.json` | `https://schemas.splice-data.io/workflow-bundle/inputs` | `0.3.0` | [inputs](schemas/inputs/README.md) |
@@ -14,89 +34,121 @@ ADR-0032 to ADR-0036.
 | `components.json` | `https://schemas.splice-data.io/workflow-bundle/components` | `0.3.0` | [components](schemas/components/README.md) |
 | `execution-profiles.json` | `https://schemas.splice-data.io/workflow-bundle/execution-profiles` | `0.3.0` | [execution-profiles](schemas/execution-profiles/README.md) |
 
-The URIs are identifiers and planned documentation locations, not deployed
-URLs; validation is fully offline from packaged definitions. Each family has
-a formal definition (`docs/schemas/<family>/v0.3.0/schema.json`, identical to
-the wheel-packaged copy), an example and a generated per-key reference.
+Two further formats matter to integrators:
 
-Companion artefacts with their own validation, outside the five families:
-`outputs.yaml` (developer-readable output catalogue, `catalogue_format_version`
-`0.3.0`), `ro-crate-metadata.json` (RO-Crate 1.1 / Workflow RO-Crate), the
-lock `nf-splice.lock.json` (format `2.0`) and `README.md`. There is **no**
-`outputs.json`.
+- [`analysis_output.json`](schemas/analysis-output.md): the inventory each
+  completed job produces, validated by the bundle's `outputs.schema.json`.
+- [Companion files](schemas/companion-files.md): `outputs.yaml`, the
+  RO-Crate, the profile configurations, the lock and the README.
 
-## Identity of documents
+There is no `outputs.json`. Output metadata lives only in
+`outputs.schema.json`.
 
-- JSON Schema documents (`inputs.schema.json`, `outputs.schema.json`) keep a
-  standard `$schema` dialect (2020-12 and draft-07 respectively) and their own
-  per-pipeline `$id`; the family URI and revision are in `x-splice-contract`.
-- Data documents (`bundle.json`, `components.json`, `execution-profiles.json`)
-  carry `schema_id`, `schema_version` and `generated_by`.
-- Every detached file repeats the workflow identity envelope (`id`, `name`,
-  `version`, `engine`) so it can be checked against `bundle.json`.
+## Reading a bundle
 
-## Release-to-contract registry
+1. Read `bundle.json`. Check `schema_id` and `schema_version`, and reject
+   revisions you do not support. A `bundle.json` with `schema_version`
+   `1.0` and no `schema_id` comes from nf-splice 0.1.0.
+2. For each entry in `schemas`, open the file at `path` and validate it
+   against the family revision given by `version`.
+3. Check that the workflow identity in every file (`pipeline`,
+   `x-splice-pipeline` or `x-output-catalog.pipeline`) matches
+   `bundle.json`.
+4. Read output metadata from `outputs.schema.json` → `x-output-catalog`.
+   Validate each job's `analysis_output.json` against the same file.
+5. Resolve container images from `components.json`. Use `distribution` when
+   present and verify its `sha256` after download; otherwise use
+   `source_images`. If `require_downloadable_images` is `true` and an image
+   cannot be downloaded, reject the bundle rather than fall back.
+6. Run jobs with `default_execution_profile` unless an operator chooses
+   another profile.
 
-`nf-splice schema list --json` prints the packaged registry
-(`src/nf_splice/contracts/data/registry.json`). Every nf-splice release has an
-explicit row; a later release that does not change a family re-registers the
-same revision. Pipeline versions, the per-pipeline
-`analysis_output_schema_version`, the lock format and the tool version are
-separate concepts.
+## Identity and versions
+
+Each file states which contract it follows:
+
+- Data documents (`bundle.json`, `components.json`,
+  `execution-profiles.json`) carry `schema_id`, `schema_version` and
+  `generated_by` at the top level.
+- JSON Schema documents (`inputs.schema.json`, `outputs.schema.json`) keep
+  their standard `$schema` and a workflow-specific `$id`, and carry the
+  contract in `x-splice-contract`.
+
+Several independent version numbers appear in a bundle. Do not mix them up:
+
+| Version | Where | Changes when |
+| --- | --- | --- |
+| Contract revision | `schema_version`, `x-splice-contract.version` | A contract family's format changes. |
+| Workflow version | `pipeline.version` | The workflow is released. |
+| Output schema version | `x-output-catalog.analysis_output_schema_version` | The workflow's `analysis_output.json` changes. |
+| Generator version | `generated_by.version` | A different nf-splice release writes the files. |
+| Lock format | `nf-splice.lock.json` → `schema_version` | The lock format changes. |
+
+## Getting the definitions
+
+The family URIs are identifiers, not live web addresses. Validation is fully
+offline:
+
+- The definitions are packaged with nf-splice. Print one with
+  `nf-splice schema show <family>`.
+- The same files are in this repository at
+  `docs/schemas/<family>/v<revision>/schema.json`, each with an
+  `example.json`.
+
+## Validating
+
+With nf-splice:
+
+```bash
+nf-splice schema validate splice/components.json --json
+nf-splice schema check --repository . --json
+nf-splice validate --json
+```
+
+`schema validate` checks one file. `schema check` checks all five files of a
+bundle. `validate` also checks cross-file identity, the output catalogue
+copy, draft markers and the lock hashes.
+
+Without nf-splice, the definitions are standard JSON Schema 2020-12. For
+example, in Python:
+
+```python
+import json
+from jsonschema import Draft202012Validator
+
+schema = json.load(open("docs/schemas/components/v0.3.0/schema.json"))
+document = json.load(open("splice/components.json"))
+Draft202012Validator(schema).validate(document)
+```
+
+For `inputs.schema.json` and `outputs.schema.json`, also check the document
+itself as a schema of its own dialect (2020-12 and draft-07 respectively).
+
+## Compatibility
+
+A contract revision never changes once published. A new revision is needed
+to remove or rename a key, narrow a type or an allowed set of values, change
+a fixed value, close an object or make a key required. Adding an optional
+key is compatible.
+
+`nf-splice schema check --against OLD --family F` reports the differences
+between two revisions.
+
+Each nf-splice release states the revision it writes for every family, even
+when a family did not change. `nf-splice schema list --json` prints this
+registry.
 
 | nf-splice | bundle | inputs | outputs | components | execution-profiles |
 | --- | --- | --- | --- | --- | --- |
 | 0.1.0 | legacy 1.0 (unregistered) | unversioned | unversioned | legacy 1.0 | legacy 1.0 |
 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 |
 
-## Validation commands
+A consumer that understands only 0.1.0 bundles cannot read 0.3.0 bundles
+without an adapter. See the
+[migration guide](CONTRACT_MIGRATION_0.3.0.md) for field mappings and the
+recommended roll-out order.
 
-```bash
-nf-splice schema list --json
-nf-splice schema show outputs
-nf-splice schema validate splice/components.json --json
-nf-splice schema check --repository . --json
-nf-splice validate --json
-```
+## Terms
 
-`schema validate` checks one document (JSON Schema documents are first checked
-as schemas of their dialect, then for SPLICE extensions). `schema check`
-validates all five published files. `validate` additionally checks the
-`schemas` map, cross-file identity, the YAML/JSON output projection, draft
-markers, forbidden files and lock hashes.
-
-## Ingestion read order
-
-1. Read `bundle.json`; reject unknown `schema_version`s (bundle 1.0 is a
-   legacy 0.1.0 bundle).
-2. Use `schemas` and `files` to locate the other four documents; validate
-   each against its family revision.
-3. Check every identity envelope against `bundle.json` `pipeline`.
-4. Read output metadata only from `outputs.schema.json` → `x-output-catalog`
-   (YAML is for developers). Validate each job's `analysis_output.json`
-   against the same file.
-5. Resolve images from `components.json`: use `distribution` for verified
-   downloads (check `sha256`), otherwise the native `source_images`. If
-   `require_downloadable_images` is true and an image cannot be fetched,
-   fail the ingestion of that bundle rather than guessing.
-6. Select `default_execution_profile` unless the operator chooses another.
-
-## `x-output-catalog`
-
-The embedded catalogue lists every reviewed output type with free-text
-`category`/`stage`, `scope` (`job`, `sample`, `run`), `entity_type`, `format`
-and anchored `path_patterns` (`{sample}` captures `sample_id`, `{run}`
-captures the platform `run_id`). Each completed job produces one
-`analysis_output.json` with records at job, sample or run granularity; run
-records carry both `run_id` and the parent `sample_id`, and the document
-carries `job_id_short`/`job_id_long` plus engine-qualified `job_metadata`.
-
-## Compatibility policy
-
-A family revision is immutable. Removing or renaming keys, narrowing types or
-enums, changing constants, closing objects or adding requiredness requires a
-new revision, a migration path and fixtures (`nf-splice schema check
---against OLD --family F` reports such changes). Additive optional keys are
-compatible. Consumers that only understand 0.1.0 bundles cannot read 0.3.0
-bundles without an adapter; see
-[`CONTRACT_MIGRATION_0.3.0.md`](CONTRACT_MIGRATION_0.3.0.md).
+The terms job, sample and run have precise meanings in these formats. See
+the [glossary](GLOSSARY.md).

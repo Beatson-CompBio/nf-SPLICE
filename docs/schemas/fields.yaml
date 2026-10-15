@@ -1,184 +1,302 @@
-# Meaning, consumer use and privacy of every key in the five workflow-bundle
-# contract families. Types, requiredness and constraints are generated from
-# the packaged formal definitions (scripts/generate_schema_docs.py).
-# use: who reads the key (ingestion, DEX, UI, runtime). privacy: public
-# unless stated. Keys under "common" apply to every family that has them.
+# Descriptions for every key of the five workflow-bundle contract families.
+#
+# scripts/generate_schema_docs.py combines these descriptions with the types,
+# requiredness and constraints of the packaged formal definitions to write
+# docs/schemas/<family>/README.md. `--check` fails when a key has no
+# description or a page is stale.
+#
+# Per family:
+#   _about     Markdown introduction: what the file is, who writes and reads it.
+#   _sections  Optional introductions for an object's section, keyed by path.
+#   <path>     A description string, or {description, privacy} for keys that
+#              can hold personal data.
+# Keys under `common` apply to every family that has them. Input parameter
+# extensions are keyed as `<parameter>.<key>`.
+
 common:
-  schema_id: {meaning: "Family URI of this document's contract.", use: "Ingestion selects the validator by it."}
-  schema_version: {meaning: "Contract revision of this document (not the tool or pipeline version).", use: "Ingestion compatibility gate."}
-  generated_by: {meaning: "Generator identity.", use: "Provenance and support."}
-  generated_by.name: {meaning: "Generator name (nf-splice).", use: "Provenance."}
-  generated_by.version: {meaning: "Generator release that wrote the file.", use: "Provenance; see the contract registry."}
-  pipeline: {meaning: "Identity envelope linking a detached file to its workflow.", use: "Cross-file consistency check."}
-  pipeline.id: {meaning: "Stable bundle identifier (slug), derived once.", use: "Primary workflow key in ingestion."}
-  pipeline.name: {meaning: "Pipeline name.", use: "Display and matching."}
-  pipeline.version: {meaning: "Upstream pipeline release version.", use: "Version selection in the platform."}
-  pipeline.engine: {meaning: "Workflow engine (nextflow in 0.3.0).", use: "Selects the execution adapter."}
-  pipeline.repository_url: {meaning: "Canonical source repository URL.", use: "Provenance and links."}
-  x-splice-contract: {meaning: "Family URI and revision of a JSON Schema document (separate from $schema/$id).", use: "Contract validation."}
-  x-splice-contract.id: {meaning: "Family URI.", use: "Validator selection."}
-  x-splice-contract.version: {meaning: "Family revision.", use: "Compatibility gate."}
-  x-splice-contract.generated_by: {meaning: "Generator identity.", use: "Provenance."}
-  x-splice-contract.generated_by.name: {meaning: "Generator name.", use: "Provenance."}
-  x-splice-contract.generated_by.version: {meaning: "Generator release.", use: "Provenance."}
-  x-splice-draft: {meaning: "Draft marker; must be absent from published files.", use: "Rejected by validation if present."}
-  $schema: {meaning: "Standard JSON Schema dialect of the document.", use: "Schema validator selection."}
-  $id: {meaning: "Per-pipeline identity of the instance schema (not the family URI).", use: "Schema references."}
-  type: {meaning: "Instance type validated by the schema (object).", use: "JSON Schema."}
+  schema_id: "Contract family URI. Use it to choose the validator for this file."
+  schema_version: "Contract revision of this file. This is not the nf-splice version or the pipeline version."
+  generated_by: "Tool that wrote the file."
+  generated_by.name: "Generator name, for example `nf-splice`."
+  generated_by.version: "Generator release that wrote the file."
+  pipeline: "Identity of the workflow this file belongs to. It repeats the identity in `bundle.json` so a detached file can be matched to its bundle."
+  pipeline.id: "Stable workflow identifier. Use it as the primary key for the workflow."
+  pipeline.name: "Workflow name."
+  pipeline.version: "Released version of the workflow."
+  pipeline.engine: "Workflow engine that runs the workflow. Always `nextflow` in this revision."
+  pipeline.repository_url: "Canonical source repository of the workflow."
+  x-splice-contract: "Contract family and revision of this JSON Schema document, kept separate from the standard `$schema` and `$id` keys."
+  x-splice-contract.id: "Contract family URI."
+  x-splice-contract.version: "Contract revision."
+  x-splice-contract.generated_by: "Tool that wrote the file."
+  x-splice-contract.generated_by.name: "Generator name, for example `nf-splice`."
+  x-splice-contract.generated_by.version: "Generator release that wrote the file."
+  x-splice-draft: "Draft marker used while authoring. A published file never contains it; validation rejects files that do."
+  $schema: "Standard JSON Schema dialect of this document."
+  $id: "Identifier of this workflow's schema. It is specific to the workflow and is not the contract family URI."
+  type: "Type of the instance this schema validates. Always `object`."
+
 bundle:
-  bundle_format: {meaning: "Fixed bundle kind marker.", use: "Ingestion recognises a SPLICE bundle."}
-  pipeline.title: {meaning: "Human display title.", use: "UI."}
-  pipeline.description: {meaning: "Concise description (recommended).", use: "UI and catalogue search."}
-  pipeline.long_description: {meaning: "Longer description.", use: "UI detail page."}
-  pipeline.readme: {meaning: "README reference or text.", use: "UI detail page."}
-  pipeline.project_url: {meaning: "Project website, distinct from the repository.", use: "UI link."}
-  pipeline.release_url: {meaning: "Release page of this version.", use: "UI link; validated against the version."}
-  pipeline.authors: {meaning: "Ordered credited authors (not integration reviewers).", use: "Citation and display."}
-  pipeline.authors[].name: {meaning: "Person or organisation name.", use: "Display."}
-  pipeline.authors[].type: {meaning: "person or organization.", use: "Display and RO-Crate type."}
-  pipeline.authors[].affiliation: {meaning: "Affiliation.", use: "Display."}
-  pipeline.authors[].orcid: {meaning: "ORCID URL of a person.", use: "Linked identity."}
-  pipeline.authors[].role: {meaning: "Contribution role.", use: "Display."}
-  pipeline.funders: {meaning: "Funding bodies; identifiers never guessed.", use: "Acknowledgement."}
-  pipeline.funders[].name: {meaning: "Funder name.", use: "Display."}
-  pipeline.funders[].award_id: {meaning: "Award identifier.", use: "Reporting."}
-  pipeline.funders[].award_title: {meaning: "Award title.", use: "Display."}
-  pipeline.funders[].url: {meaning: "Funder or award URL.", use: "Link."}
-  pipeline.citation: {meaning: "Structured citation (at least one locator).", use: "How to cite."}
-  pipeline.citation.doi: {meaning: "DOI without resolver prefix.", use: "Citation."}
-  pipeline.citation.url: {meaning: "Citation URL.", use: "Citation."}
-  pipeline.citation.text: {meaning: "Free-text citation.", use: "Citation."}
-  pipeline.citation.cff_path: {meaning: "Repository path of CITATION.cff.", use: "Citation source."}
-  pipeline.licence: {meaning: "Licence identifier (e.g. SPDX).", use: "Display and compliance."}
-  pipeline.licence_url: {meaning: "Licence text URL.", use: "Link."}
-  pipeline.documentation_url: {meaning: "Documentation URL.", use: "UI link."}
-  pipeline.support_url: {meaning: "Public support URL (published only when approved).", use: "UI link."}
-  pipeline.engine_version_min: {meaning: "Minimum workflow-engine version, from evidence only.", use: "Execution compatibility."}
-  pipeline.engine_versions_tested: {meaning: "Tested engine version or range.", use: "Execution compatibility."}
-  pipeline.keywords: {meaning: "Free-text keywords (not a controlled vocabulary).", use: "Search."}
-  pipeline.pipeline_type: {meaning: "Free-text pipeline type.", use: "Catalogue grouping."}
-  pipeline.modality: {meaning: "Free-text data modality.", use: "Catalogue grouping."}
-  pipeline.released_at: {meaning: "Release timestamp, when sourced.", use: "Display."}
-  maintainers: {meaning: "Opt-in public contacts, published only with explicit consent.", use: "Platform contact.", privacy: "Personal data; opt-in only."}
-  maintainers[].name: {meaning: "Contact name.", use: "Platform contact.", privacy: "Personal data; opt-in only."}
-  maintainers[].role: {meaning: "Contact role.", use: "Platform contact."}
-  maintainers[].affiliation: {meaning: "Contact affiliation.", use: "Platform contact."}
-  maintainers[].contact_url: {meaning: "Public contact URL.", use: "Platform contact."}
-  maintainers[].email: {meaning: "Public contact e-mail.", use: "Platform contact.", privacy: "Personal data; opt-in only; never derived from Git."}
-  schemas: {meaning: "The five contract families, keyed by family URI.", use: "Ingestion read order: validate each referenced file."}
-  schemas.*.version: {meaning: "Family revision of the referenced file.", use: "Compatibility gate."}
-  schemas.*.path: {meaning: "Relative path of the referenced file.", use: "File location."}
-  files: {meaning: "Bundle file index (no outputs.json).", use: "File location."}
-  files.inputs_schema: {meaning: "Path of inputs.schema.json.", use: "File location."}
-  files.outputs_catalogue: {meaning: "Path of outputs.yaml (developer-readable).", use: "Not needed by JSON consumers."}
-  files.outputs_schema: {meaning: "Path of outputs.schema.json (with x-output-catalog).", use: "Runtime and ingestion output metadata."}
-  files.ro_crate: {meaning: "Path of the published RO-Crate.", use: "Provenance."}
-  files.components: {meaning: "Path of components.json.", use: "Image pre-caching."}
-  files.execution_profiles: {meaning: "Path of execution-profiles.json.", use: "Execution selection."}
-  default_execution_profile: {meaning: "Reviewed platform default profile id.", use: "Default execution selection."}
+  _about: |
+    `bundle.json` is the entry point of a SPLICE workflow bundle. It identifies
+    the workflow, credits its authors, lists the contract revision of every
+    other file and says where each file is.
+
+    - **Written by:** `nf-splice build all`, from the reviewed
+      `splice/drafts/bundle.draft.yaml`.
+    - **Read by:** anything that ingests a bundle. Read this file first, then
+      follow `schemas` and `files` to the other four contracts.
+  _sections:
+    pipeline: "Workflow identity and descriptive metadata. Only `id`, `name`, `version`, `engine` and `repository_url` are required; every other key appears only when it was reviewed."
+    maintainers: "Public contacts for the workflow. They are published only when the maintainers' consent was recorded, and are never derived from Git."
+    schemas: "One entry per contract family, keyed by family URI. All five families are always present."
+    files: "Paths of the bundle's files, relative to the directory that holds `bundle.json`."
+  bundle_format: "Marks the file as a SPLICE workflow bundle index."
+  pipeline.title: "Display title."
+  pipeline.description: "One- or two-sentence summary for listings and search."
+  pipeline.long_description: "Longer description for a detail page."
+  pipeline.readme: "README reference or text."
+  pipeline.project_url: "Project website, when it differs from the repository."
+  pipeline.release_url: "Release page of this exact version. Validation checks that it matches `version`."
+  pipeline.authors: "Credited authors of the workflow, in citation order. People who only reviewed the integration are not authors."
+  pipeline.authors[].name: "Name of the person or organisation."
+  pipeline.authors[].type: "Whether the author is a person or an organisation."
+  pipeline.authors[].affiliation: "Affiliation of the author."
+  pipeline.authors[].orcid: "ORCID identifier of a person, as a full URL."
+  pipeline.authors[].role: "Contribution role, as free text."
+  pipeline.funders: "Funding bodies. Award identifiers appear only when they were sourced, never guessed."
+  pipeline.funders[].name: "Funder name."
+  pipeline.funders[].award_id: "Award or grant identifier."
+  pipeline.funders[].award_title: "Award title."
+  pipeline.funders[].url: "Funder or award web page."
+  pipeline.citation: "How to cite the workflow. At least one of the keys below is present."
+  pipeline.citation.doi: "DOI without a resolver prefix, for example `10.5281/zenodo.123`."
+  pipeline.citation.url: "Citation web page."
+  pipeline.citation.text: "Formatted citation text."
+  pipeline.citation.cff_path: "Repository path of the workflow's `CITATION.cff` file."
+  pipeline.licence: "Licence identifier, preferably an SPDX identifier such as `MIT`."
+  pipeline.licence_url: "Link to the licence text."
+  pipeline.documentation_url: "User documentation of the workflow."
+  pipeline.support_url: "Public support page, published only when approved."
+  pipeline.engine_version_min: "Minimum engine version the workflow declares."
+  pipeline.engine_versions_tested: "Engine version or range the workflow was tested with."
+  pipeline.keywords: "Free-text keywords for search. There is no controlled vocabulary."
+  pipeline.pipeline_type: "Free-text kind of workflow, for grouping in a catalogue."
+  pipeline.modality: "Free-text data modality, for grouping in a catalogue."
+  pipeline.released_at: "Release date and time, when sourced."
+  maintainers: {description: "Public maintainer contacts.", privacy: "Personal data. Published only with recorded consent."}
+  maintainers[].name: {description: "Contact name.", privacy: "Personal data. Published only with recorded consent."}
+  maintainers[].role: "Contact role."
+  maintainers[].affiliation: "Contact affiliation."
+  maintainers[].contact_url: "Public contact page."
+  maintainers[].email: {description: "Public contact e-mail address.", privacy: "Personal data. Published only with recorded consent; never taken from Git."}
+  schemas: "Contract revision and path of each of the five files."
+  schemas.*.version: "Contract revision of the referenced file. Reject revisions your code does not support."
+  schemas.*.path: "Path of the referenced file."
+  files: "File index. There is no `outputs.json`: output metadata lives in `outputs.schema.json`."
+  files.inputs_schema: "Path of `inputs.schema.json`."
+  files.outputs_catalogue: "Path of `outputs.yaml`, a human-readable view of the output catalogue. Programs should read `outputs_schema` instead."
+  files.outputs_schema: "Path of `outputs.schema.json`, which holds the output catalogue."
+  files.ro_crate: "Path of the published RO-Crate."
+  files.components: "Path of `components.json`."
+  files.execution_profiles: "Path of `execution-profiles.json`."
+  default_execution_profile: "Profile to run when the operator does not choose one. Matches a `profiles[].id` in `execution-profiles.json`."
+
 inputs:
-  x-splice-pipeline: {meaning: "Identity envelope (not a runtime parameter).", use: "Cross-file consistency."}
-  x-splice-pipeline.id: {meaning: "Pipeline id.", use: "Consistency."}
-  x-splice-pipeline.name: {meaning: "Pipeline name.", use: "Consistency."}
-  x-splice-pipeline.version: {meaning: "Pipeline version.", use: "Consistency."}
-  x-splice-pipeline.engine: {meaning: "Engine.", use: "Consistency."}
-  x-splice-pipeline.repository_url: {meaning: "Repository URL.", use: "Consistency."}
-  $defs: {meaning: "Documentation groups (nf-schema convention) referenced from allOf; the runtime object stays flat.", use: "UI grouping and validation."}
-  $defs.*.properties: {meaning: "Parameters of one group; each defined exactly once.", use: "Validation and forms."}
-  $defs.*.required: {meaning: "Group-level required parameters (preserved).", use: "Validation."}
-  properties: {meaning: "Ungrouped top-level parameters.", use: "Validation and forms."}
-  "*.x-splice-access": {meaning: "Who may change the parameter value.", use: "Service-side authorisation (principal supplied by the platform)."}
-  "*.x-splice-access.editable_by": {meaning: "Subset of user, platform, agent; empty means fixed.", use: "Authorisation."}
-  "*.x-splice-ui": {meaning: "Presentation hints; never permissions.", use: "UI."}
-  "*.x-splice-ui.visibility": {meaning: "standard, advanced or hidden.", use: "UI."}
-  "*.x-splice-ui.help_text": {meaning: "SPLICE-specific help (nf-schema help_text is kept too).", use: "UI."}
-  "*.x-splice-ui.icon": {meaning: "Icon hint.", use: "UI."}
-  "*.x-splice-ui.order": {meaning: "Display order.", use: "UI."}
-  "*.x-splice-data": {meaning: "Marks a data reference.", use: "Platform data-reference checks (no probing)."}
-  "*.x-splice-data.kind": {meaning: "file, directory, path or uri.", use: "Data picker widget."}
-  "*.x-splice-data.samplesheet": {meaning: "Parameter is a samplesheet with its own schema.", use: "Samplesheet editor."}
-  "*.x-splice-source": {meaning: "Engine binding and import origin.", use: "Engine adapter maps values to native inputs."}
-  "*.x-splice-source.engine": {meaning: "Engine of the binding.", use: "Adapter selection."}
-  "*.x-splice-source.binding": {meaning: "Native target, e.g. params.genome.", use: "Execution."}
-  "*.x-splice-source.origin": {meaning: "Source evidence location.", use: "Provenance."}
+  _about: |
+    `inputs.schema.json` describes the workflow's input parameters as a
+    standard JSON Schema 2020-12 document, so any JSON Schema validator can
+    check a set of parameter values. SPLICE adds `x-splice-*` keys that say
+    who may change each parameter, how to present it and how it maps to the
+    engine.
+
+    - **Written by:** `nf-splice build all`, from the reviewed
+      `splice/drafts/inputs.schema.draft.yaml` (imported from
+      `nextflow_schema.json`).
+    - **Read by:** platforms that build parameter forms, validate submitted
+      values and pass them to the engine.
+
+    Parameters are ordinary JSON Schema property definitions (`type`,
+    `default`, `enum`, `minimum`, `pattern`, `format`, `description` and
+    so on), including nf-schema annotations such as `help_text` and
+    `fa_icon`. They sit either directly under `properties` or inside a group
+    under `$defs`. Groups are documentation only: a submitted parameter
+    object is always flat. Each parameter is defined exactly once.
+  _sections:
+    x-splice-pipeline: "Workflow identity. It is not a runtime parameter."
+    $defs: "Parameter groups, as in nf-schema. The root schema references them from `allOf`."
+    "<parameter>": "SPLICE keys that may appear on any parameter definition, whether it is under `properties` or inside a `$defs` group."
+    "<parameter>.x-splice-access": "Who may set the parameter's value. Enforce this on the server; it is not a presentation hint."
+    "<parameter>.x-splice-ui": "Presentation hints. They never grant or restrict permission."
+    "<parameter>.x-splice-data": "Marks a parameter whose value refers to data."
+    "<parameter>.x-splice-source": "How the parameter maps to the engine."
+  x-splice-pipeline: "Workflow identity. It is not a runtime parameter."
+  x-splice-pipeline.id: "Workflow identifier, as in `bundle.json`."
+  x-splice-pipeline.name: "Workflow name."
+  x-splice-pipeline.version: "Workflow version."
+  x-splice-pipeline.engine: "Workflow engine."
+  x-splice-pipeline.repository_url: "Workflow repository."
+  $defs: "Named parameter groups."
+  $defs.*.properties: "Parameters of one group."
+  $defs.*.required: "Parameters of the group that must be supplied."
+  properties: "Parameters that belong to no group."
+  "<parameter>.x-splice-access": "Access policy of the parameter."
+  "<parameter>.x-splice-access.editable_by": "Who may set the value: any of `user`, `platform` and `agent`. An empty list means the value is fixed."
+  "<parameter>.x-splice-ui": "Presentation hints."
+  "<parameter>.x-splice-ui.visibility": "`standard` shows the parameter, `advanced` shows it in an advanced section, `hidden` hides it. Hidden parameters still exist and keep their access policy."
+  "<parameter>.x-splice-ui.help_text": "SPLICE-specific help. nf-schema `help_text` is kept separately."
+  "<parameter>.x-splice-ui.icon": "Icon hint."
+  "<parameter>.x-splice-ui.order": "Display order within the group, lowest first."
+  "<parameter>.x-splice-data": "Data reference marker."
+  "<parameter>.x-splice-data.kind": "What the value refers to: a `file`, `directory`, `path` or `uri`."
+  "<parameter>.x-splice-data.samplesheet": "The value is a samplesheet with its own schema."
+  "<parameter>.x-splice-source": "Engine binding."
+  "<parameter>.x-splice-source.engine": "Engine of the binding, for example `nextflow`."
+  "<parameter>.x-splice-source.binding": "Native target of the value, for example `params.genome`."
+  "<parameter>.x-splice-source.origin": "Where the definition was imported from, for example `nextflow_schema.json`."
+
 outputs:
-  x-output-catalog: {meaning: "Complete reviewed output catalogue embedded in the runtime schema.", use: "Sole catalogue for ingestion, DEX and runtime."}
-  x-output-catalog.catalog_version: {meaning: "Catalogue format revision.", use: "Compatibility."}
-  x-output-catalog.schema_semantics: {meaning: "Statement of catalogue semantics.", use: "Documentation."}
-  x-output-catalog.analysis_output_schema_version: {meaning: "Per-pipeline analysis_output.json schema version.", use: "Runtime document version."}
-  x-output-catalog.pipeline: {meaning: "Identity envelope.", use: "Consistency."}
-  x-output-catalog.pipeline.id: {meaning: "Pipeline id.", use: "Consistency."}
-  x-output-catalog.pipeline.name: {meaning: "Pipeline name.", use: "Consistency."}
-  x-output-catalog.pipeline.version: {meaning: "Pipeline version.", use: "Consistency."}
-  x-output-catalog.pipeline.engine: {meaning: "Engine.", use: "Consistency."}
-  x-output-catalog.pipeline.repository_url: {meaning: "Repository URL.", use: "Consistency."}
-  x-output-catalog.scopes: {meaning: "Definitions of job, sample and run.", use: "Ingestion attaches records to job, sample or platform run."}
-  x-output-catalog.scopes.job: {meaning: "Whole workflow job.", use: "Job-level attachment."}
-  x-output-catalog.scopes.sample: {meaning: "One sample (aggregate).", use: "Sample attachment."}
-  x-output-catalog.scopes.run: {meaning: "One platform file-level run of a sample.", use: "Run attachment with parent sample."}
-  x-output-catalog.categories: {meaning: "Free-text categories with optional display metadata.", use: "DEX grouping."}
-  x-output-catalog.categories.*.title: {meaning: "Display title.", use: "DEX."}
-  x-output-catalog.categories.*.description: {meaning: "Display description.", use: "DEX."}
-  x-output-catalog.output_types: {meaning: "Reviewed output types.", use: "Runtime classification and DEX."}
-  x-output-catalog.output_types[].key: {meaning: "Stable output type key.", use: "Record output_type."}
-  x-output-catalog.output_types[].title: {meaning: "Display title.", use: "DEX."}
-  x-output-catalog.output_types[].description: {meaning: "Scientific description.", use: "DEX."}
-  x-output-catalog.output_types[].category: {meaning: "Free-text scientific category.", use: "DEX grouping."}
-  x-output-catalog.output_types[].stage: {meaning: "Optional free-text stage.", use: "DEX filtering."}
-  x-output-catalog.output_types[].scope: {meaning: "Permitted job/sample/run granularities.", use: "Record ownership."}
-  x-output-catalog.output_types[].entity_type: {meaning: "file or directory.", use: "Transfer handling."}
-  x-output-catalog.output_types[].format: {meaning: "Permitted formats.", use: "Viewers."}
-  x-output-catalog.output_types[].path_patterns: {meaning: "Anchored patterns; {sample} and {run} capture identifiers.", use: "Runtime classification."}
-  x-output-catalog.output_types[].labels: {meaning: "Reviewed descriptive labels.", use: "DEX filtering."}
-  x-output-catalog.output_types[].optional: {meaning: "Reserved; every output may be absent from a job.", use: "Completeness checks."}
+  _about: |
+    `outputs.schema.json` has two jobs:
+
+    1. It is the JSON Schema (draft-07) that validates the
+       `analysis_output.json` each completed job produces. Its own
+       `properties` and `definitions` are written for this workflow; see
+       [`analysis_output.json`](../analysis-output.md).
+    2. Its `x-output-catalog` key holds the reviewed catalogue of every output
+       the workflow can produce: what each output is, at which granularity
+       it is owned (job, sample or run) and how to recognise it by path.
+
+    - **Written by:** `nf-splice build all`, from the reviewed
+      `splice/drafts/outputs.draft.yaml`. `outputs.yaml` is a human-readable
+      copy of the same catalogue.
+    - **Read by:** platforms that classify, store and display job outputs.
+      Read the catalogue from this file only.
+
+    The keys below are the fixed part of the document. For the
+    workflow-specific runtime schema, read
+    [`analysis_output.json`](../analysis-output.md).
+  _sections:
+    x-output-catalog: "The reviewed output catalogue."
+    x-output-catalog.scopes: "Definitions of the three granularities that can own an output."
+    x-output-catalog.categories: "Categories used by `output_types`, keyed by category name. Names are free text."
+    x-output-catalog.output_types: "One entry per kind of output."
+  x-output-catalog: "Output catalogue of the workflow."
+  x-output-catalog.catalog_version: "Revision of the catalogue format."
+  x-output-catalog.schema_semantics: "Short statement of how the catalogue is meant to be read."
+  x-output-catalog.analysis_output_schema_version: "Version of this workflow's `analysis_output.json` schema. Reviewers raise it when the runtime document changes."
+  x-output-catalog.pipeline: "Workflow identity."
+  x-output-catalog.pipeline.id: "Workflow identifier."
+  x-output-catalog.pipeline.name: "Workflow name."
+  x-output-catalog.pipeline.version: "Workflow version."
+  x-output-catalog.pipeline.engine: "Workflow engine."
+  x-output-catalog.pipeline.repository_url: "Workflow repository."
+  x-output-catalog.scopes: "Granularity definitions."
+  x-output-catalog.scopes.job: "One complete execution of the workflow. Job outputs belong to the job as a whole."
+  x-output-catalog.scopes.sample: "One biological sample. Sample outputs carry a `sample_id`."
+  x-output-catalog.scopes.run: "One file-level platform run of a sample, such as one sequencing run. Run outputs carry a `run_id` and the parent `sample_id`."
+  x-output-catalog.categories: "Output categories."
+  x-output-catalog.categories.*.title: "Display title of the category."
+  x-output-catalog.categories.*.description: "Description of the category."
+  x-output-catalog.output_types: "Kinds of output."
+  x-output-catalog.output_types[].key: "Stable identifier. Records in `analysis_output.json` refer to it as `output_type`."
+  x-output-catalog.output_types[].title: "Display title."
+  x-output-catalog.output_types[].description: "What the output contains, written for scientists."
+  x-output-catalog.output_types[].category: "Category name, one of the keys of `categories`."
+  x-output-catalog.output_types[].stage: "Free-text processing stage, such as `alignment`."
+  x-output-catalog.output_types[].scope: "Granularities that can own this output: `job`, `sample` and/or `run`."
+  x-output-catalog.output_types[].entity_type: "Whether the output is a `file` or a `directory`."
+  x-output-catalog.output_types[].format: "Permitted formats, for example `html` or `bam`."
+  x-output-catalog.output_types[].path_patterns: "Regular expressions anchored with `^` and `$` that match the output's path relative to the job's publish directory. `{sample}` captures the `sample_id` and `{run}` captures the `run_id`."
+  x-output-catalog.output_types[].labels: "Reviewed descriptive labels, as name-value pairs."
+  x-output-catalog.output_types[].optional: "Reserved. Any output may be absent from a particular job."
+
 components:
-  require_downloadable_images: {meaning: "Whether every container needs a verified downloadable image.", use: "Ingestion pre-caching policy."}
-  containers: {meaning: "Logical container images.", use: "Image resolution and caching."}
-  containers[].id: {meaning: "Stable id (compatible with 0.1.0).", use: "Component linkage."}
-  containers[].type: {meaning: "Runtime of uri: singularity/apptainer for a verified distribution, docker for a registry reference.", use: "Legacy readers."}
-  containers[].uri: {meaning: "Verified download URI, else the native registry reference.", use: "Legacy readers; never assume curl-able unless distribution exists."}
-  containers[].source_images: {meaning: "Native references per runtime.", use: "Runtime-specific pulls."}
-  containers[].source_images.docker: {meaning: "Docker/OCI registry reference.", use: "Docker execution."}
-  containers[].source_images.singularity: {meaning: "Singularity reference.", use: "Singularity execution."}
-  containers[].source_images.apptainer: {meaning: "Apptainer reference.", use: "Apptainer execution."}
-  containers[].distribution: {meaning: "Verified static image file.", use: "curl download and pre-cache."}
-  containers[].distribution.download_uri: {meaning: "HTTPS download URI.", use: "Download."}
-  containers[].distribution.sha256: {meaning: "SHA-256 computed by nf-splice from downloaded bytes.", use: "Integrity check."}
-  containers[].distribution.size_bytes: {meaning: "Size in bytes.", use: "Capacity planning."}
-  containers[].distribution.filename: {meaning: "Published file name.", use: "Download."}
-  containers[].distribution.format: {meaning: "sif or img (signature-checked).", use: "Runtime."}
-  containers[].distribution.cache_filename: {meaning: "Nextflow cache file name for the source.", use: "Pre-cache placement."}
-  containers[].distribution.source_runtime: {meaning: "Runtime the image serves.", use: "Runtime."}
-  containers[].distribution.source_image_digest: {meaning: "Upstream image digest when known.", use: "Reproducibility."}
-  containers[].resolution: {meaning: "Readiness of the container.", use: "Ingestion gating."}
-  containers[].resolution.status: {meaning: "verified or resolved in published files.", use: "Ingestion gating."}
-  containers[].resolution.reasons: {meaning: "Machine-readable reasons.", use: "Diagnostics."}
-  containers[].legacy_ids: {meaning: "0.1.0 ids remapped to this container.", use: "Migration."}
-  components: {meaning: "Reviewed workflow modules.", use: "Software inventory."}
-  components[].id: {meaning: "Stable component id.", use: "Inventory key."}
-  components[].type: {meaning: "workflow_module.", use: "Inventory."}
-  components[].name: {meaning: "Module name.", use: "Display."}
-  components[].path: {meaning: "Module path in the repository.", use: "Provenance."}
-  components[].namespace: {meaning: "Module namespace (nf-core, local).", use: "Display."}
-  components[].tool: {meaning: "Tool identity.", use: "Software inventory."}
-  components[].tool.name: {meaning: "Tool name.", use: "Inventory."}
-  components[].tool.version: {meaning: "Reviewed tool version.", use: "Inventory."}
-  components[].evidence: {meaning: "Evidence locations.", use: "Provenance."}
-  components[].container_id: {meaning: "Linked container id.", use: "Image resolution."}
-  components[].conda_packages: {meaning: "Conda dependency strings.", use: "Inventory."}
+  _about: |
+    `components.json` lists the software the workflow runs and the container
+    images it needs. It keeps three things apart: the native image
+    references for each runtime, the modules that use them and, when one has
+    been verified, a downloadable image file.
+
+    - **Written by:** `nf-splice build all`, from the reviewed
+      `splice/drafts/components.draft.yaml`.
+    - **Read by:** platforms that pre-fetch or cache images before running
+      jobs, and software inventories.
+
+    To fetch an image, use `distribution` when it is present: it is a file
+    nf-splice downloaded and hashed itself. Otherwise use `source_images`
+    with the matching runtime. A registry reference such as
+    `quay.io/org/tool:1.0` is not a downloadable file.
+  _sections:
+    containers: "Container images, one entry per logical image."
+    containers[].source_images: "Native image references, one per runtime. At least one is present."
+    containers[].distribution: "A verified, directly downloadable image file. Present only after `nf-splice containers verify` succeeded."
+    containers[].resolution: "Readiness of the image."
+    components: "Workflow modules found in the repository."
+    components[].tool: "Tool the module wraps."
+  require_downloadable_images: "When `true`, every container has a verified `distribution`, and a platform should refuse a bundle where one cannot be downloaded rather than fall back silently."
+  containers: "Container images."
+  containers[].id: "Stable container identifier. Modules link to it through `container_id`."
+  containers[].type: "Runtime of `uri`: `singularity` or `apptainer` for a verified distribution, otherwise the runtime of the native reference."
+  containers[].uri: "The verified download URL when a distribution exists, otherwise the native reference. Kept for readers of 0.1.0 bundles; new code should use `distribution` and `source_images`."
+  containers[].source_images: "Native references."
+  containers[].source_images.docker: "Docker or OCI registry reference."
+  containers[].source_images.singularity: "Singularity reference."
+  containers[].source_images.apptainer: "Apptainer reference."
+  containers[].distribution: "Verified image file."
+  containers[].distribution.download_uri: "HTTPS URL of the image file."
+  containers[].distribution.sha256: "SHA-256 of the file, computed by nf-splice from the bytes it downloaded. Check it after downloading."
+  containers[].distribution.size_bytes: "File size in bytes."
+  containers[].distribution.filename: "File name of the image."
+  containers[].distribution.format: "Image format: `sif` or `img`."
+  containers[].distribution.cache_filename: "File name Nextflow's Singularity or Apptainer cache uses for the source image. Store the file under this name to pre-populate the cache."
+  containers[].distribution.source_runtime: "Runtime the file is for."
+  containers[].distribution.source_image_digest: "Digest of the upstream image, when known."
+  containers[].resolution: "Readiness."
+  containers[].resolution.status: "Readiness state. Published bundles contain `resolved` (native reference only) or `verified` (downloadable file)."
+  containers[].resolution.reasons: "Machine-readable reasons for the state."
+  containers[].legacy_ids: "Identifiers this container had in a 0.1.0 bundle."
+  components: "Workflow modules."
+  components[].id: "Stable module identifier."
+  components[].type: "Kind of component. Always `workflow_module` in this revision."
+  components[].name: "Module name."
+  components[].path: "Module directory in the workflow repository."
+  components[].namespace: "Module namespace, such as `nf-core` or `local`."
+  components[].tool: "Wrapped tool."
+  components[].tool.name: "Tool name."
+  components[].tool.version: "Reviewed tool version."
+  components[].evidence: "Repository locations the module was found from."
+  components[].container_id: "Container the module runs in. Matches a `containers[].id`."
+  components[].conda_packages: "Conda package specifications the module declares."
+
 execution-profiles:
-  default_profile: {meaning: "Single reviewed default profile id.", use: "Default execution."}
-  profiles: {meaning: "Reviewed execution profiles.", use: "Execution selection."}
-  profiles[].id: {meaning: "Stable profile id.", use: "Selection key."}
-  profiles[].name: {meaning: "Display name.", use: "UI."}
-  profiles[].description: {meaning: "Reviewed purpose.", use: "UI."}
-  profiles[].type: {meaning: "test, development or production.", use: "Policy."}
-  profiles[].engine: {meaning: "Engine.", use: "Adapter."}
-  profiles[].executor: {meaning: "Nextflow executor name.", use: "Scheduling."}
-  profiles[].container_engine: {meaning: "Container runtime.", use: "Image selection."}
-  profiles[].config: {meaning: "Relative config path.", use: "Passed to the engine."}
-  profiles[].default: {meaning: "Whether this is the default.", use: "Selection."}
-  profiles[].config_strategy: {meaning: "adopted (byte-identical source) or generated.", use: "Provenance."}
-  profiles[].site_parameters: {meaning: "Values the operator must configure (no literals in the bundle).", use: "Deployment checklist."}
-  profiles[].site_parameters[].name: {meaning: "Setting name.", use: "Deployment."}
-  profiles[].site_parameters[].description: {meaning: "What to configure.", use: "Deployment."}
+  _about: |
+    `execution-profiles.json` lists the reviewed ways to run the workflow,
+    each with its own Nextflow configuration file under `configs/`, and names
+    one default.
+
+    - **Written by:** `nf-splice build all`, from the reviewed
+      `splice/drafts/execution-profiles.draft.yaml`.
+    - **Read by:** platforms that choose a configuration when they launch a
+      job.
+
+    Profiles never contain site accounts, queues or credentials. Values an
+    operator must supply are listed in `site_parameters`.
+  _sections:
+    profiles: "Reviewed execution profiles."
+    profiles[].site_parameters: "Settings the operator configures at deployment. The bundle never holds their values."
+  default_profile: "Identifier of the default profile. Matches one `profiles[].id`, and that profile has `default: true`."
+  profiles: "Execution profiles."
+  profiles[].id: "Stable profile identifier."
+  profiles[].name: "Display name."
+  profiles[].description: "What the profile is for."
+  profiles[].type: "Intended use: `test`, `development` or `production`."
+  profiles[].engine: "Workflow engine."
+  profiles[].executor: "Nextflow executor, for example `local` or `slurm`."
+  profiles[].container_engine: "Container runtime, for example `singularity` or `docker`."
+  profiles[].config: "Configuration file of the profile, relative to the bundle directory. Pass it to the engine, for example with `nextflow run -c`."
+  profiles[].default: "Whether this is the default profile."
+  profiles[].config_strategy: "`adopted`: a byte-identical copy of a configuration from the workflow repository. `generated`: written by nf-splice."
+  profiles[].site_parameters: "Operator settings."
+  profiles[].site_parameters[].name: "Setting name."
+  profiles[].site_parameters[].description: "What to configure."
