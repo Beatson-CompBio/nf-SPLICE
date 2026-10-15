@@ -358,7 +358,10 @@ def _tree_candidates(path: Path, source: str) -> list[_RawCandidate]:
     found: list[_RawCandidate] = []
     for (parent, _), names in sorted(grouped.items()):
         if len(names) > 1:
-            suffix = os.path.commonprefix([name[::-1] for name in names])[::-1]
+            # Character-wise on reversed names: the shared filename suffix.
+            suffix = os.path.commonprefix(  # noqa: RUF071
+                [name[::-1] for name in names]
+            )[::-1]
             suffix = suffix[suffix.find(".") :] if "." in suffix else ""
         else:
             suffix = ""
