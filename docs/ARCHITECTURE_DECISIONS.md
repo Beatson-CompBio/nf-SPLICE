@@ -53,6 +53,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0020 | Package with setuptools and a source layout | Current | — |
 | ADR-0021 | Keep all static integration-harness state inside `splice/` | Current | — |
 | ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Current | — |
+| ADR-0023 | Record v0.3.0 decisions incrementally with a traceability ledger | Current | — |
 
 ---
 
@@ -695,3 +696,69 @@ profiles.
 - CLI and TUI review forms collect the platform registration values while
   keeping IDs out of developer input.
 - Vocabulary changes require an explicit schema and compatibility review.
+
+---
+
+## ADR-0023: Record v0.3.0 decisions incrementally with a traceability ledger
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 0.3 |
+| Scope | Architecture governance |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0001 |
+| Implementation | `docs/RELEASE_0.3.0.md`, `docs/ARCHITECTURE_DECISIONS.md`, `scripts/check_staged_paths.py` |
+| Tests | `tests/test_adr_governance.py`, `tests/test_dev_workspace.py` |
+
+### Context
+
+The 0.3.0 release changes public contracts, authoring authority, runtime
+semantics, interfaces and integrations. ADR-0001 requires an append-only
+register but does not say when records are written or how a reviewer proves
+that each shipped feature has a governing decision and verification evidence.
+
+### Decision
+
+From 0.3.0 onwards every observable behaviour, public nomenclature, schema,
+authoring-authority, runtime-semantics, security or integration change is
+recorded as a new ADR **in the same commit** as its implementation, tests and
+documentation. A record may be committed as Proposed while implementation is
+in progress and becomes Current only when the implementation is complete and
+tested. Formatting-only refactors do not need records.
+
+Every record from ADR-0023 onwards carries two additional metadata rows,
+`Implementation` (source paths) and `Tests` (test files), and the sections
+Context, Decision, Alternatives rejected and Consequences. A Security and
+privacy section is required whenever the change affects either.
+
+`docs/RELEASE_0.3.0.md` holds the release ledger: one row per feature mapping
+feature → ADR(s) → implementation files → tests → status. The automated
+governance test validates the register index against each section, the
+bidirectional `Supersedes`/`Superseded by` links, the required metadata and
+sections of new records, and that every ledger row names existing ADRs,
+existing implementation paths and existing test files. A release review fails
+when a substantive requirement has no Current ADR and verification evidence.
+
+Development of the release happens only inside the single local clone on a
+local WIP branch. Every project-generated temporary file, cache, log, agent
+note and local TUI session lives below the anchored, ignored
+`/.nf-splice-local/` workspace (`scripts/dev-env.sh` routes tool caches there),
+and `scripts/check_staged_paths.py` rejects staged development-only or
+secret-bearing paths even when forcibly added. Production behaviour never
+depends on that workspace existing.
+
+### Alternatives rejected
+
+- Writing ADRs retrospectively at release time: loses the rationale available
+  while implementing and lets undocumented behaviour ship.
+- A separate decision file per ADR: the existing single canonical register is
+  already the reviewed source of truth (ADR-0001).
+
+### Consequences
+
+- Reviewers can audit each feature commit together with its decision.
+- The ledger and register are machine-checked in CI, so missing traceability
+  is a test failure rather than a review omission.
