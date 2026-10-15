@@ -1,7 +1,8 @@
 # nf-SPLICE 0.3.0 release record
 
-**Status:** ready for review on branch `wip/nf-splice-v0.3.0`; not released.
-When this record was written nothing had been merged, tagged or published.
+**Status:** ready for review on branch `wip/nf-splice-v0.3.0`, which is
+pushed to GitHub and passes CI; not released. Nothing has been merged,
+tagged or published.
 
 | Item | Value |
 | --- | --- |
@@ -154,7 +155,7 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | AI | Provider code isolated for future adapters | Done | `src/nf_splice/agents/providers/` |
 | Release | Regression tests pass | Done | 177 passed, 2 opt-in skipped |
 | Release | Scenarios S01-S15 pass offline | Done | S05 and S14 migration parts not applicable; see below |
-| Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Partial | 3.10, 3.11 and 3.14 run locally; 3.12 and 3.13 run in CI, which has not yet run |
+| Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Done | 3.10, 3.11 and 3.14 run locally; all of 3.10 to 3.14 pass in GitHub Actions |
 | Release | Golden files and snapshots committed | Done | `tests/snapshots/tui/`, `docs/schemas/*/v0.3.0/` |
 | Release | Bundle family URI exact; reserved word only in the upstream parser | Done | `test_vocabulary.py`, `test_s13_*`, `test_docs.py` |
 | Release | Scopes exactly job/sample/run with mixed granularity | Done | `test_output_scopes.py` |
@@ -220,8 +221,6 @@ credentials.
   backend and were not tested against the real bucket.
 - **Ingestion code** is not in this repository. The components shape is
   published as a schema, an example and fixtures; ingestion needs to read it.
-- **CI** has not run yet. It runs on the first push of this branch and again
-  when it is merged into `main`. Python 3.12 and 3.13 are covered only there.
 - **Claude Agent SDK:** tested offline against a fake SDK; live use needs an
   approved organisation setup.
 - **Exit codes:** `configure` commands save the draft and then exit with
@@ -322,9 +321,19 @@ From specification section 18.
 | `ff6fe62` | ci: run on review-branch pushes and on demand |
 | `e974c2d` | fix(inputs): suggest a sync-identity command that exists |
 | `a947583` | docs: install from GitHub and fixes from a fresh-user walkthrough |
+| `ecf745d` | docs(release): handover for review of the 0.3.0 branch |
+| `773aece` | test(ci): make CLI help and TUI worker checks robust |
+| `0828774` | test(cli): rely on functional build flag coverage without Click dependency |
 
-The commit that adds this record follows these; `git log 9ad15c1..` lists
-everything. All commits are authored and committed by the maintainer's own
+`git log 9ad15c1..` lists everything, including later updates to this
+record.
+
+`773aece` and `0828774` were made after the first push to get CI passing.
+They drop help-text assertions for `build --json` and `build --check`,
+which depended on how Rich wraps help output on the runner (both options
+are still exercised by functional tests). They also let Textual dispatch a
+button event before the wizard tests wait for workers, and run the quality
+and schema steps even when pytest fails. All commits are authored and committed by the maintainer's own
 identity. Before the branch was first pushed, its history was rewritten
 locally once to replace an author address Git had derived from the machine
 name and to remove AI co-author trailers; content, order, subjects and dates
@@ -343,7 +352,7 @@ personal `.claude/` settings.
 The maintainer merges without pull requests; reviewers have read access.
 
 1. Push `wip/nf-splice-v0.3.0`. CI runs on the push; make sure every job
-   passes, including Python 3.12 and 3.13.
+   passes, including Python 3.12 and 3.13. Done: CI passes at `0828774`.
 2. Reviewers install the branch (see [above](#for-reviewers-and-testers)),
    follow the user guide and report problems.
 3. Run the opt-in tests where their dependencies exist:
