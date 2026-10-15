@@ -450,3 +450,26 @@ def test_live_nextflow_reuses_the_predicted_cache_file(tmp_path: Path) -> None:
         check=False,
     )
     assert "Pulling" not in result.stdout + result.stderr
+
+
+def test_container_expression_stops_at_the_next_directive(tmp_path: Path) -> None:
+    module = tmp_path / "main.nf"
+    module.write_text(
+        """process FASTQC {
+    container 'quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0'
+    publishDir "${params.outdir}/fastqc", mode: 'copy'
+    label 'process_low'
+
+    input:
+    path reads
+}
+""",
+        encoding="utf-8",
+    )
+    sources = container_sources(module, "main.nf")
+    assert [(item.raw, item.kind) for item in sources] == [
+        (
+            "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
+            ReferenceKind.OCI_REGISTRY,
+        )
+    ]

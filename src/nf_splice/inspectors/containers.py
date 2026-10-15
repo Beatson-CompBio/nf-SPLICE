@@ -53,10 +53,33 @@ def classify_reference(raw: str) -> ReferenceKind:
     return ReferenceKind.UNSUPPORTED
 
 
+_DIRECTIVE_START = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(?:\s|['\"(]|$)")
+_CONTINUES = ("?", ":", "(", ",", "+", "{", "\\", "&&", "||")
+
+
 def _expression(text: str, start: int) -> str:
+    """The container expression: up to a section, a blank line or a directive.
+
+    A following line that starts a new directive (``publishDir ...``,
+    ``label ...``) ends the expression unless the expression visibly
+    continues, as in nf-core's multi-line ternary form.
+    """
     tail = text[start : start + 1500]
     boundary = re.search(r"\n\s*(?:input|output|when|script|stub|exec|shell)\s*:", tail)
-    return tail[: boundary.start()] if boundary else tail.split("\n\n", 1)[0]
+    tail = tail[: boundary.start()] if boundary else tail.split("\n\n", 1)[0]
+    lines = tail.split("\n")
+    kept = [lines[0]]
+    for line in lines[1:]:
+        stripped = line.strip()
+        previous = kept[-1].rstrip()
+        if (
+            _DIRECTIVE_START.match(stripped)
+            and not stripped.startswith(("?", ":"))
+            and not previous.endswith(_CONTINUES)
+        ):
+            break
+        kept.append(line)
+    return "\n".join(kept)
 
 
 def _line(text: str, offset: int) -> int:
