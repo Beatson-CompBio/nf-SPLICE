@@ -149,7 +149,10 @@ class Credential:
 
 
 def resolve_credential(
-    mode: str | None = None, *, endpoints: openai_auth.Endpoints | None = None
+    mode: str | None = None,
+    *,
+    endpoints: openai_auth.Endpoints | None = None,
+    min_seconds: float = 300.0,
 ) -> Credential:
     """The credential for the chosen mode; never falls back to the other."""
     chosen = mode or auth_mode()
@@ -165,7 +168,7 @@ def resolve_credential(
             )
         return Credential("api-key", key, None, "openai-api-usage")
     token, record = openai_auth.access_token(
-        endpoints=endpoints or openai_auth.ENDPOINTS
+        endpoints=endpoints or openai_auth.ENDPOINTS, min_seconds=min_seconds
     )
     return Credential(
         "chatgpt", token, openai_auth.account_label(record), "chatgpt-plan"

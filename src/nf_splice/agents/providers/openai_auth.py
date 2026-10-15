@@ -393,7 +393,10 @@ def _error_code(diagnostic: str) -> str | None:
 
 
 def access_token(
-    record: dict[str, Any] | None = None, *, endpoints: Endpoints = ENDPOINTS
+    record: dict[str, Any] | None = None,
+    *,
+    endpoints: Endpoints = ENDPOINTS,
+    min_seconds: float = 300.0,
 ) -> tuple[str, dict[str, Any]]:
     """A valid access token for plan usage, refreshing when needed."""
     current = record or active_account()
@@ -412,7 +415,7 @@ def access_token(
         )
     if (
         not current.get("access_token")
-        or current.get("expires_at", 0) - time.time() < 300
+        or current.get("expires_at", 0) - time.time() < min_seconds
     ):
         current = refresh(current, endpoints=endpoints)
     return str(current["access_token"]), current
