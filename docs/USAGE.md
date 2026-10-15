@@ -30,6 +30,8 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | Page | Covers |
 | --- | --- |
 | [Publishing and updating](guide/publishing.md) | Publishing, new releases, hand edits, recovery |
+| [Working copy and Git](guide/working-copy.md) | The safe integration copy, `.splice-local/`, local commits and pushing |
+| [Export a ZIP archive](guide/export.md) | A verified archive of the bundle or the whole pipeline |
 | [Job outputs](guide/job-outputs.md) | The `analysis_output.json` of each completed job |
 | [Output routes and evidence](guide/output-coverage.md) | Alternative routes, example results and `nf-splice assess` |
 

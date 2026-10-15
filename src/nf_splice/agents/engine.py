@@ -49,6 +49,7 @@ from nf_splice.agents.protocol import (
 from nf_splice.agents.report import build_report, report_text
 from nf_splice.agents.sandbox import Sandbox
 from nf_splice.agents.stages import (
+    FINISHING,
     LAYER_FOR_STAGE,
     ORDER,
     GateResult,
@@ -78,8 +79,15 @@ from nf_splice.agents.state import (
 from nf_splice.agents.toolbox import SessionToolbox, ToolMode, TurnOutcome
 from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
 from nf_splice.layers import ChangeContext
-from nf_splice.layout import STAGING_DIR
+from nf_splice.layout import STAGING_DIR, is_git_work_tree
+from nf_splice.services import gitops
 from nf_splice.services.coverage import assess
+from nf_splice.services.export import (
+    ExportError,
+    ExportScope,
+    default_archive_path,
+    export_archive,
+)
 from nf_splice.services.lifecycle import validate_layer
 
 _PLAN_CONTROLS = {"submit_stage_proposal", "record_blocker", "record_evidence"}
@@ -289,17 +297,14 @@ class SessionEngine:
     def _recheck_completed(self) -> None:
         for stage in ORDER:
             record = self.state.stages[stage]
-            if record.status is not StageStatus.COMPLETED or stage in {
-                Stage.VERIFY,
-                Stage.REPORT,
-            }:
+            if record.status is not StageStatus.COMPLETED or stage in FINISHING:
                 continue
             result = gate(stage, self.root)
             if not result.passed:
                 record.status = StageStatus.PENDING
                 record.issues = list(result.issues)
                 record.notes.append("reopened: its validation no longer passes")
-                for later in (Stage.VERIFY, Stage.REPORT):
+                for later in FINISHING:
                     self.state.stages[later].status = StageStatus.PENDING
 
     def _withdraw_pending(self, reason: str) -> None:
@@ -326,7 +331,11 @@ class SessionEngine:
         assisted = self.state.mode is InteractionMode.ASSISTED
         for stage in ORDER:
             record = self.state.stages[stage]
-            if record.status in {StageStatus.COMPLETED, StageStatus.CANCELLED}:
+            if record.status in {
+                StageStatus.COMPLETED,
+                StageStatus.CANCELLED,
+                StageStatus.SKIPPED,
+            }:
                 continue
             if record.status is StageStatus.BLOCKED and not assisted:
                 continue
@@ -343,7 +352,8 @@ class SessionEngine:
                         record.notes.append(note)
                 continue
             if any(
-                self.state.stages[item].status is not StageStatus.COMPLETED
+                self.state.stages[item].status
+                not in {StageStatus.COMPLETED, StageStatus.SKIPPED}
                 for item in spec(stage).depends_on
             ):
                 continue
@@ -359,7 +369,7 @@ class SessionEngine:
         for blocker in self.state.blockers:
             if blocker.stage is stage:
                 blocker.resolved = True
-        if stage not in {Stage.VERIFY, Stage.REPORT}:
+        if stage not in FINISHING:
             self.state.add_evidence(
                 f"{spec(stage).title}: {result.summary or 'validation passed'}",
                 EvidenceStatus.TOOL_VERIFIED,
@@ -818,17 +828,104 @@ class SessionEngine:
         )
         return result
 
+    def _skip(self, stage: Stage, reason: str) -> None:
+        record = self.state.stages[stage]
+        record.status = StageStatus.SKIPPED
+        record.summary = reason
+        record.completed_at = now()
+        self.state.say("system", "stage_skipped", f"{spec(stage).title}: {reason}")
+
+    def _export_stage(self) -> None:
+        """Write and verify the bundle archive (deterministic, private folder)."""
+        if not self.state.policy.granted(Permission.EXPORT):
+            self._skip(Stage.EXPORT, "exporting is not permitted in this session")
+            return
+        default = default_archive_path(self.root, ExportScope.BUNDLE)
+        target = default.with_name(f"{default.stem}-{self.state.id}.zip")
+        try:
+            result = export_archive(
+                self.root, ExportScope.BUNDLE, target, overwrite=True
+            )
+        except ExportError as error:
+            self._block(Stage.EXPORT, [str(error)], [], ["export_archive"])
+            return
+        self.state.export = result.to_json()
+        self.state.add_evidence(
+            f"Archive {result.path} verified: " + "; ".join(result.checks),
+            EvidenceStatus.TOOL_VERIFIED,
+            [result.sha256],
+            Stage.EXPORT,
+        )
+        self._complete(
+            Stage.EXPORT,
+            GateResult(True, (), f"verified archive, SHA-256 {result.sha256[:12]}"),
+        )
+
+    def _commit_stage(self, *, assisted: bool) -> bool:
+        """Commit locally when permitted; returns True when awaiting approval."""
+        if not self.state.policy.granted(Permission.GIT_COMMIT):
+            self._skip(
+                Stage.COMMIT,
+                "not committed: the session does not have the git_commit permission; "
+                "run `nf-splice git commit` when you are ready",
+            )
+            return False
+        if not is_git_work_tree(self.root):
+            self._skip(
+                Stage.COMMIT, "not committed: the working copy is not a Git repository"
+            )
+            return False
+        operations = [
+            PlannedOperation(
+                tool="git_commit",
+                arguments={
+                    "message": f"Publish the SPLICE workflow bundle ({self.state.id})"
+                },
+                description="commit the validated splice/ and .gitignore locally",
+            )
+        ]
+        if assisted:
+            drafts, sources = self._fingerprints()
+            proposal = Proposal(
+                id=f"proposal-{len(self.state.proposals) + 1}",
+                stage=Stage.COMMIT,
+                summary="Commit the validated bundle to the local branch "
+                "(nothing is pushed).",
+                operations=operations,
+                validation_gate="splice/ and .gitignore have no uncommitted changes",
+                diff=gitops.diff(self.root)[:60000],
+                drafts_fingerprint=drafts,
+                sources_fingerprint=sources,
+                created_at=now(),
+            )
+            self.state.pending = proposal
+            self._store_proposal(proposal)
+            self.state.status = SessionStatus.AWAITING_APPROVAL
+            self.state.stages[Stage.COMMIT].status = StageStatus.NEEDS_APPROVAL
+            self.state.say(
+                "agent", "proposal", proposal_text(proposal), stage=Stage.COMMIT
+            )
+            return True
+        toolbox = self._toolbox(ToolMode.EXECUTE, Stage.COMMIT, {"git_commit"}, set())
+        result = toolbox.call("git_commit", operations[0].arguments)
+        if not result.get("success"):
+            self._block(
+                Stage.COMMIT, list(result.get("issues", [])), [], ["git_commit"]
+            )
+            return False
+        self.state.commit = result
+        self._complete(Stage.COMMIT, gate(Stage.COMMIT, self.root))
+        return False
+
     def _finish(self) -> None:
-        assessment = None
-        if self.state.stages[Stage.VERIFY].status is not StageStatus.COMPLETED:
-            assessment = self._verify_stage()
-        else:
-            previous = self.state.report or {}
-            assessment = previous.get("results") or self._verify_stage()
-        report = build_report(self.root, self.store, self.state, assessment)
+        if (
+            self.state.stages[Stage.VERIFY].status is not StageStatus.COMPLETED
+            or self.state.assessment is None
+        ):
+            self.state.assessment = self._verify_stage()
         self.state.stages[Stage.REPORT].status = StageStatus.COMPLETED
         self.state.stages[Stage.REPORT].completed_at = now()
-        report = build_report(self.root, self.store, self.state, assessment)
+        report = build_report(self.root, self.store, self.state, self.state.assessment)
         self.state.report = report
         self.state.current_stage = None
         complete = report["completion"] == "complete"
@@ -882,13 +979,19 @@ class SessionEngine:
                     )
                     break
                 continue
-            if stage in {Stage.VERIFY, Stage.REPORT}:
-                if stage is Stage.VERIFY:
-                    state.report = {"results": self._verify_stage()}
-                else:
-                    self._finish()
+            if stage is Stage.VERIFY:
+                state.assessment = self._verify_stage()
+                continue
+            if stage is Stage.EXPORT:
+                self._export_stage()
+                continue
+            if stage is Stage.COMMIT:
+                if self._commit_stage(assisted=True):
                     break
                 continue
+            if stage is Stage.REPORT:
+                self._finish()
+                break
             result = gate(stage, self.root)
             if result.passed:
                 self._complete(stage, result, "already satisfied by the current files")
@@ -1262,10 +1365,14 @@ class SessionEngine:
                 )
                 for remaining in ORDER:
                     record = state.stages[remaining]
-                    if record.status not in {
-                        StageStatus.COMPLETED,
-                        StageStatus.BLOCKED,
-                    } and remaining not in {Stage.VERIFY, Stage.REPORT}:
+                    if (
+                        record.status
+                        not in {
+                            StageStatus.COMPLETED,
+                            StageStatus.BLOCKED,
+                        }
+                        and remaining not in FINISHING
+                    ):
                         self._block(
                             remaining,
                             record.issues,
@@ -1289,7 +1396,11 @@ class SessionEngine:
             if stage is Stage.VALIDATE:
                 self._validate_stage()
             elif stage is Stage.VERIFY:
-                state.report = {"results": self._verify_stage()}
+                state.assessment = self._verify_stage()
+            elif stage is Stage.EXPORT:
+                self._export_stage()
+            elif stage is Stage.COMMIT:
+                self._commit_stage(assisted=False)
             elif stage is Stage.REPORT:
                 break
             elif (result := gate(stage, self.root)).passed:
@@ -1369,7 +1480,7 @@ class SessionEngine:
             self.root,
             self.store,
             self.state,
-            (self.state.report or {}).get("results"),
+            self.state.assessment,
         )
         self._save()
         return self.state
@@ -1422,8 +1533,12 @@ class SessionEngine:
                     }:
                         record.status = StageStatus.PENDING
                         record.attempts = 0
-            for later in (Stage.VERIFY, Stage.REPORT):
-                if state.stages[later].status is StageStatus.COMPLETED:
+            for later in FINISHING:
+                if state.stages[later].status in {
+                    StageStatus.COMPLETED,
+                    StageStatus.SKIPPED,
+                    StageStatus.BLOCKED,
+                }:
                     state.stages[later].status = StageStatus.PENDING
             state.status = SessionStatus.ACTIVE
         state.mode = mode
@@ -1461,6 +1576,4 @@ class SessionEngine:
         """The latest report, computing a provisional one when needed."""
         if self.state.report and "completion" in self.state.report:
             return self.state.report
-        return build_report(
-            self.root, self.store, self.state, (self.state.report or {}).get("results")
-        )
+        return build_report(self.root, self.store, self.state, self.state.assessment)

@@ -48,7 +48,9 @@ Draft changes (permission `draft_edit`): `initialise_drafts`, `set_identity`,
 `review_profile`, `reject_profile`, `set_default_profile`,
 `add_slurm_default_profile`, `provenance_strategy`, `patch_draft`.
 
-Publication (permission `build`): `build_bundle`.
+Publication (permission `build`): `build_bundle`. Local commit (permission
+`git_commit`, granted only on request): `git_commit`. Pushing is never
+available to an agent.
 
 Session control: `submit_stage_proposal`, `assess_objection`,
 `record_blocker`, `record_evidence`.
@@ -97,9 +99,10 @@ nf-splice session ask "Why is the HISAT2 output included?"
    `record_blocker` with the exact decision, the affected artefact, the
    checks you tried and a suggested resolution, then stop working on that
    stage. Independent stages continue.
-5. The engine builds, verifies and reports. A partial result is reported as
-   partial; the person can resume the same session in assisted mode to
-   resolve blockers.
+5. The engine builds, verifies, exports a verified ZIP into
+   `.splice-local/exports/`, commits locally when `git_commit` was granted,
+   and reports. A partial result is reported as partial; the person can
+   resume the same session in assisted mode to resolve blockers.
 
 ```bash
 nf-splice --actor "Ada Lovelace" session start --mode autonomous --provider claude --allow-remote-model --example-output results/

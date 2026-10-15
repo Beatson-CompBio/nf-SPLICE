@@ -27,6 +27,7 @@ Global options go before the command name, for example
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
 | [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
 | [`nf-splice migrate`](#nf-splice-migrate) | Move drafts and sessions of an earlier layout into .splice-local/. |
+| [`nf-splice export`](#nf-splice-export) | Create and verify a ZIP of the validated bundle or pipeline copy. |
 | [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
 | [`nf-splice ask`](#nf-splice-ask) | Ask AI about your pipeline or drafts; read-only, it never changes anything. |
 | [`nf-splice tui`](#nf-splice-tui) | Open the terminal wizard: manual, AI-assisted or autonomous. |
@@ -69,6 +70,12 @@ Global options go before the command name, for example
 | [`nf-splice skills export`](#nf-splice-skills-export) | Copy the skills where an external coding agent discovers them. |
 | [`nf-splice workspace check`](#nf-splice-workspace-check) | Report problems with the private workspace and published folder (read-only). |
 | [`nf-splice workspace untrack`](#nf-splice-workspace-untrack) | Stop Git tracking .splice-local/ (files kept; history not rewritten). |
+| [`nf-splice source prepare`](#nf-splice-source-prepare) | Create the isolated working copy that nf-splice will change. |
+| [`nf-splice source info`](#nf-splice-source-info) | Show where this integration copy came from (read-only). |
+| [`nf-splice git status`](#nf-splice-git-status) | Changes to the bundle and other files (read-only). |
+| [`nf-splice git diff`](#nf-splice-git-diff) | Diff of splice/ and .gitignore against the last commit (read-only). |
+| [`nf-splice git commit`](#nf-splice-git-commit) | Commit the validated splice/ and .gitignore with your Git identity. |
+| [`nf-splice git push`](#nf-splice-git-push) | Push the integration branch to a remote you choose (never automatic). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
 
 ### nf-splice inspect
@@ -215,6 +222,22 @@ nf-splice migrate [OPTIONS]
 | `--check` |  |  | Show what would move. |
 | `--apply` |  |  | Back up, move and verify. |
 | `--rollback` |  |  | Restore the most recent migration's originals. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice export
+
+Create and verify a ZIP of the validated bundle or pipeline copy.
+
+```text
+nf-splice export [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--archive-scope` | `<str>` | `bundle` | bundle (splice/ only) or pipeline. |
+| `--archive-output` | `<path>` |  | ZIP file to write (default .splice-local/exports/<name>-<version>-splice-<scope>.zip). |
+| `--overwrite` |  |  | Replace an existing archive. |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice assess
@@ -864,6 +887,98 @@ nf-splice workspace untrack [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--yes` |  |  | Confirm: stop tracking .splice-local/. |
+
+### nf-splice source prepare
+
+Create the isolated working copy that nf-splice will change.
+
+```text
+nf-splice source prepare [OPTIONS] SOURCE
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `SOURCE` | yes | Pipeline folder, local Git repository or Git URL. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--into` | `<path>` |  | New directory for the integration copy (default: <name>-splice-integration next to the source). |
+| `--ref` | `<str>` |  | Branch, tag or commit to start from. |
+| `--branch` | `<str>` |  | Local branch for the work (default nf-splice/integration-<name>). |
+| `--include-uncommitted` |  |  | Also copy the source repository's uncommitted changes. |
+| `--git-name` | `<str>` |  | Git author name for this copy. |
+| `--git-email` | `<str>` |  | Git author e-mail for this copy. |
+| `--no-git` |  |  | Plain folder copy without a local Git repository. |
+| `--in-place` |  |  | Work on the original instead of a copy (risky). |
+| `--yes` |  |  | Confirm working in place. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice source info
+
+Show where this integration copy came from (read-only).
+
+```text
+nf-splice source info [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice git status
+
+Changes to the bundle and other files (read-only).
+
+```text
+nf-splice git status [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice git diff
+
+Diff of splice/ and .gitignore against the last commit (read-only).
+
+```text
+nf-splice git diff [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+
+### nf-splice git commit
+
+Commit the validated splice/ and .gitignore with your Git identity.
+
+```text
+nf-splice git commit [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--message`, `-m` | `<str>` | `Publish the SPLICE workflow bundle` | Commit message. |
+| `--include` | `<str>` |  | Also commit this pipeline path (repeatable). |
+
+### nf-splice git push
+
+Push the integration branch to a remote you choose (never automatic).
+
+```text
+nf-splice git push [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--remote` | `<str>` |  | Remote to push to, for example origin. |
+| `--branch` | `<str>` |  | Remote branch (default: current). |
+| `--yes` |  |  | Confirm pushing to the remote. |
 
 ### nf-splice preview outputs
 

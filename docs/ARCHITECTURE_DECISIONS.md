@@ -78,6 +78,8 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0045 | Govern agents with operation-level permissions, bound approvals and truthful attribution | Current | — |
 | ADR-0046 | Keep provider-neutral skills canonical in the repository, packaged and loaded by the runtime | Current | — |
 | ADR-0047 | Keep private authoring state in an ignored `.splice-local/` and publish only `splice/` | Current | — |
+| ADR-0048 | Integrate in an isolated working copy and commit only the validated bundle locally | Current | — |
+| ADR-0049 | Export deterministic, independently verified ZIP archives of the bundle or pipeline | Current | — |
 
 ---
 
@@ -2372,3 +2374,113 @@ restarts.
 - Drafts are not shared through Git. People keep the working copy (or back
   up `.splice-local/`) until a bundle is finished; reproducible CI uses
   decision files and validates the committed `splice/`.
+
+---
+
+## ADR-0048: Integrate in an isolated working copy and commit only the validated bundle locally
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 2 |
+| Scope | Source isolation, Git lifecycle and remote boundaries |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0013, ADR-0044, ADR-0045, ADR-0047 |
+| Implementation | `src/nf_splice/services/source.py`, `src/nf_splice/services/gitops.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_source_git_export.py`, `tests/test_agents.py` |
+
+### Context
+
+Integration changes files in a pipeline repository. People must be able to
+try nf-splice, alone or with an agent, without risking their original
+checkout, uncommitted work or remote branches, and many pipelines are not
+in Git at all.
+
+### Decision
+
+- `nf-splice source prepare` creates an integration copy before anything is
+  changed: a local Git repository is cloned onto `nf-splice/integration-<name>`
+  (uncommitted changes are reported and imported only with
+  `--include-uncommitted`); a plain folder is copied without symbolic links,
+  work or log files and initialised as a local repository whose import
+  commit uses the person's Git identity (never an invented one); a Git URL
+  is cloned with the person's own credentials. Destinations are new or
+  empty, never inside the source or nf-splice's own checkout. Working in
+  place needs `--in-place --yes`. The copy records its origin in
+  `.splice-local/integration.json`.
+- `nf-splice git status|diff|commit` review and commit locally. A commit
+  contains only `splice/` and `.gitignore` (plus paths the person names),
+  only after the published bundle validates, never `.splice-local/`, with
+  the person's Git identity. Commits made by a session carry a
+  `Prepared-with: nf-splice` trailer and no impersonated author.
+- Pushing is separate and explicit (`nf-splice git push --remote NAME
+  --yes`), checked with a dry run first. nf-splice never pushes, creates
+  remote branches, forks or pull requests on its own; agents can never be
+  given that permission (`publish_external`).
+- Sessions gain a `commit` stage that runs only with the `git_commit`
+  permission (an approval in assisted sessions) and is otherwise reported
+  as skipped.
+
+### Alternatives rejected
+
+- A branch in the person's existing checkout: does not protect uncommitted
+  work and changes their repository.
+- Requiring a Git host account: unnecessary for local work.
+
+### Consequences
+
+- The final report states the local Git state and that nothing was pushed.
+
+---
+
+## ADR-0049: Export deterministic, independently verified ZIP archives of the bundle or pipeline
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 6 |
+| Scope | Delivery archives |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0036, ADR-0047, ADR-0048 |
+| Implementation | `src/nf_splice/services/export.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_source_git_export.py`, `tests/test_agents.py` |
+
+### Context
+
+Bundles are handed to platform operators and collaborators who may not use
+Git. An archive must contain exactly the validated files and nothing
+private, and its integrity must be checkable.
+
+### Decision
+
+- `nf-splice export --archive-scope bundle|pipeline [--archive-output PATH]
+  [--overwrite]` works in every mode through one service. `bundle` holds
+  `splice/`; `pipeline` holds the copy's pipeline files (Git-tracked files in
+  a Git copy, otherwise an explicit walk) plus `splice/` under a folder named
+  after the pipeline. `.splice-local/`, `.git/`, work, results, caches,
+  environment and secrets files are excluded by an explicit policy, and a
+  file containing credential-like content stops the export.
+- Archives are made only from a valid, current build, with sorted members,
+  fixed timestamps and permissions, written to a temporary file and
+  renamed. The default path is `.splice-local/exports/`, so a pipeline
+  archive can never contain itself; existing archives are not replaced
+  without `--overwrite`.
+- The archive is reopened and verified: safe member names, exactly the
+  expected member set, each member's SHA-256, no private or Git content, and
+  a successful validation of the bundle extracted into a temporary folder.
+  The archive's path, size and SHA-256 are reported.
+- Sessions export a bundle archive in an `export` stage after verification.
+
+### Alternatives rejected
+
+- `zip -r` of the folder or relying on `.gitignore`: includes private and
+  untracked data.
+
+### Consequences
+
+- An archive is not a commit, and a build is not a published pull request;
+  reports state each separately.

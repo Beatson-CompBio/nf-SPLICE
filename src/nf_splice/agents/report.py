@@ -34,6 +34,19 @@ def _published(root: Path) -> list[dict[str, str]]:
     return files
 
 
+def _git_state(root: Path, state: SessionState) -> dict[str, Any]:
+    from nf_splice.services import gitops
+
+    current = gitops.status(root)
+    return {
+        "repository": current.repository,
+        "branch": current.branch,
+        "head": current.head,
+        "uncommitted_bundle_changes": current.owned,
+        "committed_in_session": bool(state.commit and state.commit.get("committed")),
+    }
+
+
 def build_report(
     root: Path,
     store: SessionStore,
@@ -43,14 +56,18 @@ def build_report(
     """A truthful report: never "complete" unless the bundle is built and valid."""
     built = gate(Stage.BUILD, root)
     all_stages = all(
-        state.stages[stage].status is StageStatus.COMPLETED
+        state.stages[stage].status in {StageStatus.COMPLETED, StageStatus.SKIPPED}
         for stage in ORDER
         if stage is not Stage.REPORT
     )
     contract_valid = bool(
         assessment and assessment.get("contract_validity", {}).get("status") == "valid"
     )
-    complete = all_stages and built.passed and contract_valid
+    observed_status = (
+        (assessment or {}).get("observed_output_compatibility", {}).get("status")
+    )
+    incompatible = observed_status == "incompatible"
+    complete = all_stages and built.passed and contract_valid and not incompatible
     blockers = [
         item.model_dump(mode="json") for item in state.blockers if not item.resolved
     ]
@@ -60,6 +77,12 @@ def build_report(
         if coverage.get("statement"):
             limitations.append(coverage["statement"])
         observed = assessment.get("observed_output_compatibility", {})
+        if incompatible:
+            limitations.append(
+                "Supplied example output is not compatible with the catalogue "
+                "(unclassified, ambiguous or unidentified files); the integration is "
+                "not complete until the catalogue or the example is corrected."
+            )
         if observed.get("status") == "not_assessed":
             limitations.append(
                 "No example output was supplied, so no run's outputs were classified "
@@ -79,6 +102,7 @@ def build_report(
         else "Partial: "
         + (f"{len(blockers)} unresolved blocker(s); " if blockers else "")
         + ("the bundle is not built and valid. " if not built.passed else "")
+        + ("supplied example output is incompatible. " if incompatible else "")
         + "See the stages and blockers below."
     )
     return {
@@ -102,6 +126,15 @@ def build_report(
         "verified_artefacts": _published(root) if built.passed else [],
         "results": assessment or {},
         "blockers": blockers,
+        "archive": state.export,
+        "git": _git_state(root, state),
+        "remote": "not pushed: nf-splice never pushes automatically; use "
+        "`nf-splice git push --remote NAME --yes`",
+        "provider_verification": (
+            "offline scripted provider: no live model was used"
+            if state.provider.name == "scripted"
+            else f"live provider {state.provider.name}"
+        ),
         "outstanding_questions": [state.pending.summary] if state.pending else [],
         "approvals": [item.model_dump(mode="json") for item in state.approvals],
         "applied_operations": origins,
@@ -149,6 +182,26 @@ def report_text(report: dict[str, Any]) -> str:
             lines.append(
                 f"Optional check {check['name']}: {check['status']} ({check['reason']})"
             )
+    archive = report.get("archive")
+    if archive:
+        lines += [
+            "",
+            f"Archive: {archive['path']} ({archive['size']} bytes, SHA-256 "
+            f"{archive['sha256']}), verified: {archive['verified']}",
+        ]
+    git_state = report.get("git") or {}
+    if git_state.get("repository"):
+        lines.append(
+            f"Git: branch {git_state.get('branch')}, "
+            + (
+                "bundle committed in this session"
+                if git_state.get("committed_in_session")
+                else f"{len(git_state.get('uncommitted_bundle_changes', []))} "
+                "uncommitted bundle change(s)"
+            )
+        )
+    lines.append(f"Remote: {report.get('remote')}")
+    lines.append(f"Provider: {report.get('provider_verification')}")
     if report["blockers"]:
         lines += ["", "Blockers:"]
         for item in report["blockers"]:

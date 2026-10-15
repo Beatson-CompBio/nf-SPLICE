@@ -714,3 +714,92 @@ def test_session_state_is_versioned_and_validated(tmp_path: Path) -> None:
     with pytest.raises(SessionError, match="format"):
         SessionEngine.open(root, engine.state.id)
     os.environ.pop("NF_SPLICE_AGENT_DIR", None)
+
+
+# ------------------------------------------------------------ export and commit
+
+
+def _git_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    if shutil.which("git") is None:
+        pytest.skip("needs git")
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    config = tmp_path / "gitconfig"
+    config.write_text(
+        "[user]\n\tname = Ada Lovelace\n\temail = ada@example.org\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    from nf_splice.services.source import prepare_integration_copy
+
+    copy = prepare_integration_copy(str(copy_fixture(tmp_path)), tmp_path / "copy")
+    return Path(copy.path)
+
+
+def test_autonomous_run_exports_and_commits_when_permitted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _git_copy(tmp_path, monkeypatch)
+    engine = _engine(
+        root,
+        RouteAgent(),
+        InteractionMode.AUTONOMOUS,
+        policy=ExecutionPolicy(grants=validate_grants(["git_commit"])),
+    )
+    asyncio.run(engine.advance())
+    report = engine.report()
+    assert report["completion"] == "complete", report["statement"]
+    assert report["archive"]["verified"] is True
+    assert Path(report["archive"]["path"]).is_file()
+    assert report["git"]["committed_in_session"] is True
+    assert report["remote"].startswith("not pushed")
+    assert report["provider_verification"].startswith("offline scripted")
+    committed = subprocess.run(
+        ["git", "-C", str(root), "show", "--name-only", "--format=%an%n%b", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert committed.startswith("Ada Lovelace")
+    assert "Prepared-with: nf-splice" in committed
+    assert ".splice-local" not in committed
+    assert "splice/bundle.json" in committed
+
+
+def test_assisted_commit_needs_approval_and_is_skipped_without_permission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _git_copy(tmp_path, monkeypatch)
+    engine = _engine(
+        root,
+        RouteAgent(),
+        policy=ExecutionPolicy(grants=validate_grants(["git_commit"])),
+    )
+    asyncio.run(engine.advance())
+    stages = _approve_all(engine)
+    assert stages[-1] == "commit"
+    assert engine.state.stages[Stage.COMMIT].status is StageStatus.COMPLETED
+
+    second = _git_copy(tmp_path / "second", monkeypatch)
+    plain = _engine(second, RouteAgent(), InteractionMode.AUTONOMOUS)
+    asyncio.run(plain.advance())
+    assert plain.state.stages[Stage.COMMIT].status is StageStatus.SKIPPED
+    report = plain.report()
+    assert report["completion"] == "complete"
+    assert report["git"]["committed_in_session"] is False
+    assert report["git"]["uncommitted_bundle_changes"]
+
+
+def test_incompatible_example_output_is_never_reported_complete(
+    tmp_path: Path,
+) -> None:
+    root = copy_fixture(tmp_path)
+    example = tmp_path / "example"
+    shutil.copytree(EXAMPLE, example)
+    (example / "extra").mkdir()
+    (example / "extra" / "unexpected.txt").write_text("x", encoding="utf-8")
+    engine = _engine(root, RouteAgent(), InteractionMode.AUTONOMOUS, examples=[example])
+    asyncio.run(engine.advance())
+    report = engine.report()
+    assert validate_bundle(root).valid  # the contract itself is valid
+    assert report["completion"] == "partial"
+    assert "incompatible" in report["statement"]

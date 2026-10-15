@@ -687,6 +687,19 @@ def _build(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _git_commit(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice import __version__
+    from nf_splice.services import gitops
+
+    session = ctx.session_directory.name if ctx.session_directory else "manual"
+    result = gitops.commit(
+        ctx.root,
+        str(a.get("message") or "Publish the SPLICE workflow bundle"),
+        trailer=f"Prepared-with: nf-splice {__version__} ({session})",
+    )
+    return {"success": True, **result}
+
+
 # ------------------------------------------------------------ registry
 
 _OUTPUT_OBJECT = {
@@ -1170,6 +1183,14 @@ OPERATIONS: dict[str, Operation] = {
             "draft",
             _patch,
             layer_argument=True,
+        ),
+        Operation(
+            "git_commit",
+            "Commit the validated splice/ and .gitignore to the local branch.",
+            _obj({"message": {"type": "string"}}),
+            Permission.GIT_COMMIT,
+            "build",
+            _git_commit,
         ),
         Operation(
             "build_bundle",

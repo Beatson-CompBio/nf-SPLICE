@@ -12,7 +12,9 @@ create the drafts, review each layer, build the bundle in `splice/`.
 
 ## Prerequisites
 
-- A Nextflow pipeline repository: `main.nf`, `nextflow.config`, ideally
+- An integration copy of the Nextflow pipeline, made with
+  `nf-splice source prepare <folder-or-git-url>`, so the original is never
+  changed. It needs `main.nf`, `nextflow.config`, ideally
   `nextflow_schema.json` and `modules.json`.
 - nf-splice never runs the pipeline. Example output from an earlier run is
   optional evidence (see the output-discovery skill).

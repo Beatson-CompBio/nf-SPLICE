@@ -104,6 +104,16 @@ workspace_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(workspace_app, name="workspace")
+source_app = typer.Typer(
+    help="Isolate the pipeline in its own integration working copy.",
+    no_args_is_help=True,
+)
+app.add_typer(source_app, name="source")
+git_app = typer.Typer(
+    help="Review and commit the bundle locally; push only when you choose.",
+    no_args_is_help=True,
+)
+app.add_typer(git_app, name="git")
 preview_app = typer.Typer(
     help="Show derived, non-authoritative previews of published files.",
     no_args_is_help=True,
@@ -1218,6 +1228,235 @@ def workspace_untrack_command(
         if removed
         else "Nothing under .splice-local/ is tracked."
     )
+
+
+@source_app.command("prepare")
+def source_prepare_command(
+    source: Annotated[
+        str, typer.Argument(help="Pipeline folder, local Git repository or Git URL.")
+    ],
+    destination: Annotated[
+        Path | None,
+        typer.Option(
+            "--into",
+            help="New directory for the integration copy "
+            "(default: <name>-splice-integration next to the source).",
+        ),
+    ] = None,
+    ref: str | None = typer.Option(None, help="Branch, tag or commit to start from."),
+    branch: str | None = typer.Option(
+        None, help="Local branch for the work (default nf-splice/integration-<name>)."
+    ),
+    include_uncommitted: bool = typer.Option(
+        False, help="Also copy the source repository's uncommitted changes."
+    ),
+    git_name: str | None = typer.Option(None, help="Git author name for this copy."),
+    git_email: str | None = typer.Option(None, help="Git author e-mail for this copy."),
+    no_git: bool = typer.Option(
+        False, "--no-git", help="Plain folder copy without a local Git repository."
+    ),
+    in_place: bool = typer.Option(
+        False, "--in-place", help="Work on the original instead of a copy (risky)."
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Confirm working in place."),
+    json_output: JsonOption = False,
+) -> None:
+    """Create the isolated working copy that nf-splice will change."""
+    from nf_splice.services.source import SourceError, prepare_integration_copy
+
+    if in_place and not yes:
+        typer.echo(
+            "Working in place lets nf-splice change your original pipeline folder "
+            "(it adds splice/, .splice-local/ and a .gitignore rule). Repeat with "
+            "--yes to accept, or omit --in-place to work on a safe copy.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    try:
+        copy = prepare_integration_copy(
+            source,
+            destination,
+            ref=ref,
+            branch=branch,
+            include_uncommitted=include_uncommitted,
+            git_name=git_name,
+            git_email=git_email,
+            in_place=in_place,
+            use_git=not no_git,
+        )
+    except (SourceError, OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(dumps(copy.to_json()))
+        return
+    typer.echo(f"Integration copy: {copy.path}")
+    if copy.branch:
+        typer.echo(f"Branch: {copy.branch}")
+    if copy.uncommitted_in_source and not copy.imported_uncommitted:
+        typer.echo(
+            f"note: {len(copy.uncommitted_in_source)} uncommitted change(s) in the "
+            "source were not copied (use --include-uncommitted to copy them)"
+        )
+    for item in copy.skipped[:20]:
+        typer.echo(f"not copied: {item}")
+    typer.echo(
+        "The original pipeline is unchanged. Continue in the copy, for example: "
+        f"nf-splice init --repository {copy.path}"
+    )
+
+
+@source_app.command("info")
+def source_info_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Show where this integration copy came from (read-only)."""
+    from nf_splice.services.source import read_record
+
+    record = read_record(repository)
+    if record is None:
+        typer.echo("No integration record: this folder was not prepared by nf-splice.")
+        raise typer.Exit(code=2)
+    if json_output:
+        typer.echo(dumps(record))
+        return
+    for key in ("source_kind", "source", "source_revision", "branch", "created_at"):
+        typer.echo(f"{key}: {record.get(key)}")
+
+
+@git_app.command("status")
+def git_status_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Changes to the bundle and other files (read-only)."""
+    from nf_splice.services import gitops
+
+    current = gitops.status(repository)
+    if json_output:
+        typer.echo(dumps(current.to_json()))
+        return
+    if not current.repository:
+        typer.echo(
+            "Not a Git repository; create a copy with `nf-splice source prepare`."
+        )
+        return
+    typer.echo(f"Branch: {current.branch or '(detached)'}")
+    for path in current.owned:
+        typer.echo(f"bundle change: {path}")
+    for path in current.other:
+        typer.echo(f"other change: {path}")
+    if current.private_tracked:
+        typer.echo(
+            "problem: .splice-local/ is tracked; run nf-splice workspace untrack --yes"
+        )
+    if not current.owned and not current.other:
+        typer.echo("No changes.")
+
+
+@git_app.command("diff")
+def git_diff_command(repository: RepositoryOption = Path(".")) -> None:
+    """Diff of splice/ and .gitignore against the last commit (read-only)."""
+    from nf_splice.services import gitops
+
+    typer.echo(_git_run(lambda: gitops.diff(repository)) or "No changes.", nl=False)
+
+
+def _git_run(action: Callable[[], T]) -> T:
+    from nf_splice.services.gitops import GitOperationError
+
+    try:
+        return action()
+    except (GitOperationError, OSError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+
+@git_app.command("commit")
+def git_commit_command(
+    repository: RepositoryOption = Path("."),
+    message: str = typer.Option(
+        "Publish the SPLICE workflow bundle", "--message", "-m", help="Commit message."
+    ),
+    include: Annotated[
+        list[str] | None,
+        typer.Option("--include", help="Also commit this pipeline path (repeatable)."),
+    ] = None,
+) -> None:
+    """Commit the validated splice/ and .gitignore with your Git identity."""
+    from nf_splice.services import gitops
+
+    result = _git_run(
+        lambda: gitops.commit(repository, message, extra_paths=list(include or []))
+    )
+    if result["committed"]:
+        typer.echo(
+            f"Committed {len(result['paths'])} file(s) as {result['commit'][:12]}."
+        )
+    else:
+        typer.echo("Nothing to commit.")
+
+
+@git_app.command("push")
+def git_push_command(
+    repository: RepositoryOption = Path("."),
+    remote: str = typer.Option(..., help="Remote to push to, for example origin."),
+    branch: str | None = typer.Option(None, help="Remote branch (default: current)."),
+    yes: bool = typer.Option(False, "--yes", help="Confirm pushing to the remote."),
+) -> None:
+    """Push the integration branch to a remote you choose (never automatic)."""
+    from nf_splice.services import gitops
+
+    if not yes:
+        typer.echo(
+            "Pushing publishes the branch on the remote. Repeat with --yes to "
+            "confirm. nf-splice never opens pull requests; use your Git host for that.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    result = _git_run(lambda: gitops.push(repository, remote, branch))
+    typer.echo(f"Pushed to {result['remote']} {result['branch']}.")
+
+
+@app.command("export")
+def export_command(
+    repository: RepositoryOption = Path("."),
+    archive_scope: str = typer.Option(
+        "bundle", "--archive-scope", help="bundle (splice/ only) or pipeline."
+    ),
+    archive_output: Annotated[
+        Path | None,
+        typer.Option(
+            "--archive-output",
+            help="ZIP file to write (default .splice-local/exports/<name>-<version>-"
+            "splice-<scope>.zip).",
+        ),
+    ] = None,
+    overwrite: bool = typer.Option(False, help="Replace an existing archive."),
+    json_output: JsonOption = False,
+) -> None:
+    """Create and verify a ZIP of the validated bundle or pipeline copy."""
+    from nf_splice.services.export import ExportError, ExportScope, export_archive
+
+    try:
+        scope = ExportScope(archive_scope)
+    except ValueError as error:
+        raise typer.BadParameter(
+            "--archive-scope must be bundle or pipeline"
+        ) from error
+    try:
+        result = export_archive(repository, scope, archive_output, overwrite=overwrite)
+    except (ExportError, OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(dumps(result.to_json()))
+        return
+    typer.echo(f"Wrote {result.path} ({result.size} bytes)")
+    typer.echo(f"SHA-256: {result.sha256}")
+    for check in result.checks:
+        typer.echo(f"verified: {check}")
+    for item in result.excluded[:20]:
+        typer.echo(f"not included: {item}")
 
 
 @app.command("assess")

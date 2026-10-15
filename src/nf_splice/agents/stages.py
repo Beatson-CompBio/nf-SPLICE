@@ -29,6 +29,8 @@ class Stage(str, Enum):
     VALIDATE = "validate"
     BUILD = "build"
     VERIFY = "verify"
+    EXPORT = "export"
+    COMMIT = "commit"
     REPORT = "report"
 
 
@@ -44,6 +46,7 @@ class StageStatus(str, Enum):
     BLOCKED = "blocked"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    SKIPPED = "skipped"
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,6 +151,19 @@ def _build_gate(root: Path) -> GateResult:
         f"valid bundle ({report.checked_files} contract files)"
         if report.valid
         else "invalid",
+    )
+
+
+def _commit_gate(root: Path) -> GateResult:
+    from nf_splice.services import gitops
+
+    current = gitops.status(root)
+    if not current.repository:
+        return GateResult(False, ("not a Git repository",), "not committed")
+    return GateResult(
+        not current.owned,
+        tuple(f"uncommitted: {item}" for item in current.owned),
+        "splice/ is committed" if not current.owned else "uncommitted bundle changes",
     )
 
 
@@ -290,6 +306,23 @@ SPECS: tuple[StageSpec, ...] = (
         deterministic=True,
     ),
     StageSpec(
+        Stage.EXPORT,
+        "Export",
+        "Write and verify a ZIP archive of the published bundle.",
+        None,
+        (Stage.BUILD,),
+        (),
+        deterministic=True,
+    ),
+    StageSpec(
+        Stage.COMMIT,
+        "Local commit",
+        "Commit the validated splice/ and .gitignore to the local branch.",
+        None,
+        (Stage.BUILD,),
+        ("git_commit",),
+    ),
+    StageSpec(
         Stage.REPORT,
         "Report",
         "Write the final report.",
@@ -300,6 +333,8 @@ SPECS: tuple[StageSpec, ...] = (
     ),
 )
 ORDER = tuple(item.stage for item in SPECS)
+#: Stages after the build that record, archive and report the result.
+FINISHING = frozenset({Stage.VERIFY, Stage.EXPORT, Stage.COMMIT, Stage.REPORT})
 
 GATES: dict[Stage, Callable[[Path], GateResult]] = {
     Stage.DISCOVER: _discover_gate,
@@ -307,6 +342,8 @@ GATES: dict[Stage, Callable[[Path], GateResult]] = {
     Stage.VALIDATE: _validate_gate,
     Stage.BUILD: _build_gate,
     Stage.VERIFY: _always,
+    Stage.EXPORT: _always,
+    Stage.COMMIT: _commit_gate,
     Stage.REPORT: _always,
 }
 

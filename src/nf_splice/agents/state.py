@@ -247,6 +247,9 @@ class SessionState(_Model):
     drafts_fingerprint: str = ""
     sources_fingerprint: str = ""
     report: dict[str, Any] | None = None
+    assessment: dict[str, Any] | None = None
+    export: dict[str, Any] | None = None
+    commit: dict[str, Any] | None = None
     mode_history: list[dict[str, str]] = Field(default_factory=list)
     events_logged: int = 0
 

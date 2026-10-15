@@ -20,6 +20,8 @@ class Permission(str, Enum):
     READ = "read"
     DRAFT_EDIT = "draft_edit"
     BUILD = "build"
+    EXPORT = "export"
+    GIT_COMMIT = "git_commit"
     OVERWRITE = "overwrite"
     EXTERNAL_TOOLS = "external_tools"
     RUN_NEXTFLOW = "run_nextflow"
@@ -34,25 +36,32 @@ DESCRIPTIONS: dict[Permission, str] = {
     Permission.READ: "inspect the repository, drafts and authorised example output",
     Permission.DRAFT_EDIT: "make reversible, audited edits to the private drafts",
     Permission.BUILD: "publish validated drafts into splice/ (transactional)",
+    Permission.EXPORT: "write a verified ZIP of the bundle to .splice-local/exports/",
+    Permission.GIT_COMMIT: "commit the validated splice/ to the local Git branch",
     Permission.OVERWRITE: "replace published files that differ or were edited by hand",
     Permission.EXTERNAL_TOOLS: "run an installed external checker such as nf-core",
     Permission.RUN_NEXTFLOW: "let a checker execute Nextflow (never a pipeline run)",
     Permission.NETWORK: "let a checker contact the network",
     Permission.INSTALL: "install software (no agent operation does this)",
-    Permission.PUBLISH_EXTERNAL: "upload or publish outside the repository (none do)",
+    Permission.PUBLISH_EXTERNAL: "push, upload or publish outside the working copy "
+    "(no agent operation does this)",
     Permission.CREDENTIALS: "read credentials or secrets (no operation does this)",
     Permission.HUMAN_CONSENT: "decisions only a person can make, such as "
     "publishing maintainers' contact details",
 }
 
 #: Granted by default. Assisted sessions still need approval for each stage.
-DEFAULT_GRANTS = frozenset({Permission.READ, Permission.DRAFT_EDIT, Permission.BUILD})
+DEFAULT_GRANTS = frozenset(
+    {Permission.READ, Permission.DRAFT_EDIT, Permission.BUILD, Permission.EXPORT}
+)
 #: Grants a user may add explicitly.
 GRANTABLE = frozenset(
     {
         Permission.READ,
         Permission.DRAFT_EDIT,
         Permission.BUILD,
+        Permission.EXPORT,
+        Permission.GIT_COMMIT,
         Permission.OVERWRITE,
         Permission.EXTERNAL_TOOLS,
         Permission.RUN_NEXTFLOW,

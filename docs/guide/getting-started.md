@@ -30,9 +30,20 @@ To try a branch before it is merged, add `@<branch>` to the address, for
 example `"git+https://github.com/Beatson-CompBio/nf-SPLICE.git@wip/nf-splice-v0.3.0"`. If Git asks for credentials, sign in
 with your GitHub account; the repository is private.
 
-## 1. Create the drafts
+## 1. Make a safe working copy
 
-From the root of your pipeline repository:
+nf-splice works on a copy, so your original pipeline is never changed:
+
+```bash
+nf-splice source prepare ../my-pipeline
+cd ../my-pipeline-splice-integration
+```
+
+See [Working copy and Git](working-copy.md) for Git URLs and other options.
+
+## 2. Create the drafts
+
+From the root of the working copy:
 
 ```bash
 nf-splice init --accept-detected
@@ -46,7 +57,7 @@ and running it again never replaces a draft you already have.
 `--accept-detected` accepts the identity values that all sources agree on.
 Anything ambiguous is left empty for you to decide.
 
-## 2. See what is left to do
+## 3. See what is left to do
 
 ```bash
 nf-splice status
@@ -64,7 +75,7 @@ Each part of the bundle (a *layer*) is `missing`, `malformed`, `incomplete`
 or `ready`. `nf-splice plan` lists every open item with the draft field it
 refers to.
 
-## 3. Review each layer
+## 4. Review each layer
 
 The quickest route is the guided wizard. It walks through every layer in
 order and shows what is still needed:
@@ -86,7 +97,7 @@ describe each step:
 5. [Execution profiles](execution-profiles.md): how the pipeline runs
 6. [Provenance](provenance.md): the RO-Crate
 
-## 4. Publish
+## 5. Publish
 
 When `nf-splice status` reports every layer as `ready`:
 
@@ -100,6 +111,14 @@ nf-splice validate
 bundle is in `splice/`. Commit `splice/` and the updated `.gitignore`. Your
 drafts stay in the private `.splice-local/` folder, which is not committed;
 keep it to make later updates from the same reviewed decisions.
+
+```bash
+nf-splice git commit
+nf-splice export --archive-scope bundle
+```
+
+`git commit` records the validated bundle on your local branch;
+`export` writes a verified ZIP (see [Export a ZIP archive](export.md)).
 
 ## Next steps
 

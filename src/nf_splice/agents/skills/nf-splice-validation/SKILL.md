@@ -25,6 +25,8 @@ Drafts exist (`nf-splice init`). Building needs every layer ready.
 | Published bundle | `validate_bundle` | `nf-splice validate` |
 | Three separate results | `assess` | `nf-splice assess --example-output results/` |
 | Optional external checks | `run_optional_checks` | `nf-splice assess --allow external_tools --allow run_nextflow --allow network` |
+| Verified archive | (export stage) | `nf-splice export --archive-scope bundle` |
+| Local commit of the bundle | `git_commit` | `nf-splice git commit` |
 
 ## Workflow
 
