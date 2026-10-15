@@ -70,6 +70,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Current | — |
 | ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Current | — |
 | ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Current | — |
+| ADR-0040 | Gate releases on a Python 3.10-3.14 matrix, packaging and repository hygiene | Current | — |
 
 ---
 
@@ -1848,3 +1849,52 @@ usable without AI, credentials or network.
 
 - No shell, file, network or upload capability is reachable by the model;
   tool results are redacted and bounded; consent precedes remote disclosure.
+
+---
+
+## ADR-0040: Gate releases on a Python 3.10-3.14 matrix, packaging and repository hygiene
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 1.2, 15.4 and 13 (CI row) |
+| Scope | Continuous integration and packaging |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0017, ADR-0018, ADR-0019, ADR-0020, ADR-0023, ADR-0026, ADR-0039 |
+| Implementation | `.github/workflows/ci.yml`, `pyproject.toml`, `.gitattributes`, `scripts/check_staged_paths.py` |
+| Tests | `tests/test_packaging.py`, `tests/test_dev_workspace.py`, `tests/test_docs.py` |
+
+### Context
+
+0.1.0 CI tested only Python 3.10. 0.3.0 adds packaged contract data, a
+stylesheet, a new runtime dependency (`ruamel.yaml`, ADR-0026), an optional
+AI extra and committed byte-exact fixtures.
+
+### Decision
+
+- CI runs the offline test suite, ruff, ruff format, mypy, the generated
+  contract-reference check and the installed CLI on Python 3.10, 3.11, 3.12,
+  3.13 and 3.14. Live Nextflow and live AI tests are markers that CI excludes.
+- nf-core 4.0.2 coexistence stays tested on Python 3.10 (ADR-0018).
+- A packaging job builds sdist and wheel, installs the wheel without the
+  optional extra (checking that no AI SDK is imported) and separately with
+  `[claude]`. `tests/test_packaging.py` checks the wheel and sdist contain
+  the registry, the five definitions and the wizard stylesheet, and runs the
+  CLI from the unpacked wheel.
+- A hygiene job rejects tracked development-only or secret-bearing paths and
+  verifies `/.nf-splice-local/` is ignored. `.gitattributes` keeps fixture
+  bytes exact (no line-ending normalisation).
+- The dev extra adds `pytest-asyncio` (Textual Pilot tests) and `setuptools`
+  (offline `--no-isolation` builds). Runtime dependency families are
+  unchanged apart from `ruamel.yaml`; the optional extra pins
+  `claude-agent-sdk>=0.2.167,<0.3`.
+
+### Alternatives rejected
+
+- Testing only the minimum Python: misses newer-runtime regressions.
+
+### Consequences
+
+- CI cost grows with the matrix; failures are reported per interpreter.

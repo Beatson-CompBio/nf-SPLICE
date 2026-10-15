@@ -37,3 +37,4 @@ checks that every ADR exists, every path exists and every test file exists.
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | User, platform and migration documentation with verified commands | ADR-0023, ADR-0027, ADR-0037 | `README.md`, `docs/USAGE.md`, `docs/CONTRACT_MIGRATION_0.3.0.md`, `docs/TUI.md`, `docs/CONTAINERS.md`, `docs/PROVENANCE.md` | `tests/test_docs.py` | Current |
 | Reference validated bundle and incomplete draft fixtures | ADR-0030, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
+| CI matrix 3.10-3.14, packaging and hygiene gates | ADR-0040 | `.github/workflows/ci.yml`, `pyproject.toml` | `tests/test_packaging.py` | Current |

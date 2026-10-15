@@ -42,6 +42,7 @@ dev = [
   "pytest>=9,<10",
   "pytest-asyncio>=1.2,<2",
   "ruff>=0.16,<1",
+  "setuptools>=83,<84",
 ]
 
 [project.scripts]
@@ -60,6 +61,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "nf_splice.contracts" = ["data/*.json", "data/schemas/*/*.json"]
+"nf_splice.interfaces.tui" = ["tui.tcss"]
 
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-config", "--strict-markers"]
