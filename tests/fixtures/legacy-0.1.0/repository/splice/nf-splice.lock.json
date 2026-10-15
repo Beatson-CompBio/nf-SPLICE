@@ -1,0 +1,151 @@
+{
+  "schema_version": "1.0",
+  "generator": {
+    "name": "nf-splice",
+    "version": "0.1.0"
+  },
+  "repository": {
+    "url": "https://github.com/org/legacy-example",
+    "revision": null
+  },
+  "selected_evidence": [
+    {
+      "id": "component:modules/local/tool:1",
+      "source": "component_inventory",
+      "location": "modules.json",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "component:modules/local/tool:2",
+      "source": "component_inventory",
+      "location": "modules/local/tool/meta.yml",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "component:modules/local/tool:3",
+      "source": "component_inventory",
+      "location": "modules/local/tool/main.nf",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "identity-evidence:c99f0efa4e6cfde3",
+      "source": "nextflow.config",
+      "location": "nextflow.config:2",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "identity-evidence:d1410db8aab2e637",
+      "source": "nextflow.config",
+      "location": "nextflow.config:3",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "identity-evidence:edcf2184eea342ef",
+      "source": "nextflow.config",
+      "location": "nextflow.config:1",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "input-schema:analysis:max_cpus",
+      "source": "nextflow_schema",
+      "location": "nextflow_schema.json#/$defs/analysis/properties/max_cpus",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "input-schema:analysis:threshold",
+      "source": "nextflow_schema",
+      "location": "nextflow_schema.json#/$defs/analysis/properties/threshold",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "input-schema:input_output_options:input",
+      "source": "nextflow_schema",
+      "location": "nextflow_schema.json#/$defs/input_output_options/properties/input",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "input-schema:input_output_options:outdir",
+      "source": "nextflow_schema",
+      "location": "nextflow_schema.json#/$defs/input_output_options/properties/outdir",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "output-evidence:972187573d18fbbf",
+      "source": "process_output",
+      "location": "main.nf:4",
+      "repository_revision": null,
+      "confidence": 0.85
+    },
+    {
+      "id": "profile:local:1",
+      "source": "execution_profile",
+      "location": "nextflow.config",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "profile:local:2",
+      "source": "execution_profile",
+      "location": "conf/local.config",
+      "repository_revision": null,
+      "confidence": 1.0
+    },
+    {
+      "id": "provenance:root-ro-crate:evidence",
+      "source": "ro_crate",
+      "location": "ro-crate-metadata.json",
+      "repository_revision": null,
+      "confidence": 1.0
+    }
+  ],
+  "sources": {
+    "conf/local.config": {
+      "sha256": "a1e30eb488ab08706ec07dc8ed017c0bd4b3255cd925c2432990ec58dcdf557a"
+    },
+    "ro-crate-metadata.json": {
+      "sha256": "9bbf74a203f8c4aef45e9d46544dd0e9f50a1471f8b913cab492a4c51d7649c5"
+    },
+    "splice/nf-splice.yaml": {
+      "sha256": "23ad468d03614d855c3dff4451cdc40521ef2a8c1221e3d4d8720067198351bf"
+    }
+  },
+  "managed_files": {
+    "README.md": {
+      "sha256": "8cb270c9e051f1c4a1936cd337bae56ea2cfbc19d8c0e115ffceb3dff35d12dd"
+    },
+    "bundle.json": {
+      "sha256": "85f4b561ca856dd6bd38c727eaaf61dba619629f19750f898184b7c497bfeada"
+    },
+    "components.json": {
+      "sha256": "a3933871ce16f65d3cd0e9f79cf4e99d011714f47dfe151f8d137fbe9fc08e7e"
+    },
+    "configs/profile-local-6c6f63616c.config": {
+      "sha256": "a1e30eb488ab08706ec07dc8ed017c0bd4b3255cd925c2432990ec58dcdf557a"
+    },
+    "execution-profiles.json": {
+      "sha256": "0d302f9b0b4d3d6b752e4379f9c7902e63c4fab04f516bf93f5bd976501968c9"
+    },
+    "inputs.schema.json": {
+      "sha256": "a84c52c6cd545fbc863a3360810c6733dd6241ca22eb4cfcdd66e45ef9b63bfe"
+    },
+    "outputs.schema.json": {
+      "sha256": "728ee2fb4af6d4dab7e940cefebe6fc8f1d837923b620dfdeae246a01e81fa65"
+    },
+    "outputs.yaml": {
+      "sha256": "987c900fbfffef7a6a4c78641409e99363906d8bea43280476e35fd70bc9ffb8"
+    },
+    "ro-crate-metadata.json": {
+      "sha256": "9bbf74a203f8c4aef45e9d46544dd0e9f50a1471f8b913cab492a4c51d7649c5"
+    }
+  }
+}

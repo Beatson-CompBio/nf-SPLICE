@@ -1,0 +1,18 @@
+{
+  "bundle_format": "splice-pipeline-bundle",
+  "schema_version": "1.0",
+  "pipeline": {
+    "id": "legacy-example",
+    "name": "legacy-example",
+    "version": "1.0.0",
+    "engine": "nextflow"
+  },
+  "files": {
+    "inputs_schema": "inputs.schema.json",
+    "outputs_catalogue": "outputs.yaml",
+    "outputs_schema": "outputs.schema.json",
+    "ro_crate": "ro-crate-metadata.json",
+    "components": "components.json",
+    "execution_profiles": "execution-profiles.json"
+  }
+}

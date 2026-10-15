@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "description": "Samplesheet.",
+          "mimetype": "text/csv"
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Output directory."
+        }
+      }
+    },
+    "analysis": {
+      "title": "Analysis",
+      "type": "object",
+      "properties": {
+        "threshold": {
+          "type": "number",
+          "description": "Analysis threshold.",
+          "default": 0.8,
+          "minimum": 0
+        },
+        "max_cpus": {
+          "type": "integer",
+          "description": "Maximum CPUs.",
+          "default": 4,
+          "hidden": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output_options"
+    },
+    {
+      "$ref": "#/$defs/analysis"
+    }
+  ]
+}

@@ -1,0 +1,421 @@
+schema_version: '1.0'
+pipeline:
+  name: legacy-example
+  version: 1.0.0
+  repository_url: https://github.com/org/legacy-example
+  release_url: null
+output_contract:
+  schema_version: 1.0.0
+evidence:
+- id: component:modules/local/tool:1
+  provenance:
+    source: component_inventory
+    location: modules.json
+    repository_revision: null
+  observed_value:
+    id: component:modules__local__tool
+    name: tool
+    path: modules/local/tool
+    namespace: local
+    tool_name: tool
+    versions:
+    - '1.0'
+    container_uris:
+    - quay.io/example/tool:1.0
+    conda_packages: []
+    unresolved_fields:
+    - review
+  confidence: 1.0
+- id: component:modules/local/tool:2
+  provenance:
+    source: component_inventory
+    location: modules/local/tool/meta.yml
+    repository_revision: null
+  observed_value: modules/local/tool/meta.yml
+  confidence: 1.0
+- id: component:modules/local/tool:3
+  provenance:
+    source: component_inventory
+    location: modules/local/tool/main.nf
+    repository_revision: null
+  observed_value: modules/local/tool/main.nf
+  confidence: 1.0
+- id: identity-evidence:c99f0efa4e6cfde3
+  provenance:
+    source: nextflow.config
+    location: nextflow.config:2
+    repository_revision: null
+  observed_value:
+    field: version
+    value: 1.0.0
+  confidence: 1.0
+- id: identity-evidence:d1410db8aab2e637
+  provenance:
+    source: nextflow.config
+    location: nextflow.config:3
+    repository_revision: null
+  observed_value:
+    field: repository_url
+    value: https://github.com/org/legacy-example
+  confidence: 1.0
+- id: identity-evidence:edcf2184eea342ef
+  provenance:
+    source: nextflow.config
+    location: nextflow.config:1
+    repository_revision: null
+  observed_value:
+    field: name
+    value: legacy-example
+  confidence: 1.0
+- id: input-schema:analysis:max_cpus
+  provenance:
+    source: nextflow_schema
+    location: nextflow_schema.json#/$defs/analysis/properties/max_cpus
+    repository_revision: null
+  observed_value:
+    type: integer
+    description: Maximum CPUs.
+    default: 4
+    hidden: true
+  confidence: 1.0
+- id: input-schema:analysis:threshold
+  provenance:
+    source: nextflow_schema
+    location: nextflow_schema.json#/$defs/analysis/properties/threshold
+    repository_revision: null
+  observed_value:
+    type: number
+    description: Analysis threshold.
+    default: 0.8
+    minimum: 0
+  confidence: 1.0
+- id: input-schema:input_output_options:input
+  provenance:
+    source: nextflow_schema
+    location: nextflow_schema.json#/$defs/input_output_options/properties/input
+    repository_revision: null
+  observed_value:
+    type: string
+    format: file-path
+    description: Samplesheet.
+    mimetype: text/csv
+  confidence: 1.0
+- id: input-schema:input_output_options:outdir
+  provenance:
+    source: nextflow_schema
+    location: nextflow_schema.json#/$defs/input_output_options/properties/outdir
+    repository_revision: null
+  observed_value:
+    type: string
+    format: directory-path
+    description: Output directory.
+  confidence: 1.0
+- id: output-evidence:30da3aee15b705af
+  provenance:
+    source: publishDir
+    location: main.nf:2
+    repository_revision: null
+  observed_value:
+    suggested_key: multiqc
+    path_pattern: ^multiqc/.+$
+  confidence: 0.65
+- id: output-evidence:972187573d18fbbf
+  provenance:
+    source: process_output
+    location: main.nf:4
+    repository_revision: null
+  observed_value:
+    suggested_key: report
+    path_pattern: ^multiqc/multiqc_report\.html$
+  confidence: 0.85
+- id: profile:local:1
+  provenance:
+    source: execution_profile
+    location: nextflow.config
+    repository_revision: null
+  observed_value:
+    id: profile:local
+    name: Local
+    source_profile: local
+    config_sources:
+    - conf/local.config
+    executors:
+    - local
+    container_engines:
+    - singularity
+    unresolved_fields:
+    - review
+    - config_source
+  confidence: 1.0
+- id: profile:local:2
+  provenance:
+    source: execution_profile
+    location: conf/local.config
+    repository_revision: null
+  observed_value: conf/local.config
+  confidence: 1.0
+- id: provenance:root-ro-crate:evidence
+  provenance:
+    source: ro_crate
+    location: ro-crate-metadata.json
+    repository_revision: null
+  observed_value:
+    id: provenance:root-ro-crate
+    source_path: ro-crate-metadata.json
+    evidence_locations:
+    - ro-crate-metadata.json
+  confidence: 1.0
+decisions:
+- id: component:modules__local__tool
+  status: reviewed
+  value:
+    id: component:modules__local__tool
+    name: tool
+    path: modules/local/tool
+    namespace: local
+    tool_name: tool
+    version: '1.0'
+    container_uri: quay.io/example/tool:1.0
+    conda_packages: []
+    evidence_locations:
+    - modules.json
+    - modules/local/tool/main.nf
+    - modules/local/tool/meta.yml
+  evidence_ids:
+  - component:modules/local/tool:1
+  - component:modules/local/tool:2
+  - component:modules/local/tool:3
+  reason: null
+- id: identity:name
+  status: reviewed
+  value: legacy-example
+  evidence_ids:
+  - identity-evidence:edcf2184eea342ef
+  reason: null
+- id: identity:repository_url
+  status: reviewed
+  value: https://github.com/org/legacy-example
+  evidence_ids:
+  - identity-evidence:d1410db8aab2e637
+  reason: null
+- id: identity:version
+  status: reviewed
+  value: 1.0.0
+  evidence_ids:
+  - identity-evidence:c99f0efa4e6cfde3
+  reason: null
+- id: input:input
+  status: reviewed
+  value:
+    name: input
+    group: input_output_options
+    group_title: Input/output options
+    group_description: ''
+    classification: user-configurable
+    schema_fragment:
+      type: string
+      format: file-path
+      description: Samplesheet.
+      mimetype: text/csv
+  evidence_ids:
+  - input-schema:input_output_options:input
+  reason: null
+- id: input:max_cpus
+  status: reviewed
+  value:
+    name: max_cpus
+    group: analysis
+    group_title: Analysis
+    group_description: ''
+    classification: execution-environment-managed
+    schema_fragment:
+      type: integer
+      description: Maximum CPUs.
+      default: 4
+      hidden: true
+  evidence_ids:
+  - input-schema:analysis:max_cpus
+  reason: null
+- id: input:outdir
+  status: reviewed
+  value:
+    name: outdir
+    group: input_output_options
+    group_title: Input/output options
+    group_description: ''
+    classification: platform-managed
+    schema_fragment:
+      type: string
+      format: directory-path
+      description: Output directory.
+  evidence_ids:
+  - input-schema:input_output_options:outdir
+  reason: null
+- id: input:threshold
+  status: reviewed
+  value:
+    name: threshold
+    group: analysis
+    group_title: Analysis
+    group_description: ''
+    classification: user-configurable
+    schema_fragment:
+      type: number
+      description: Analysis threshold.
+      default: 0.8
+      minimum: 0
+  evidence_ids:
+  - input-schema:analysis:threshold
+  reason: null
+- id: output:1ebc943a2e87edc9
+  status: rejected
+  value:
+    id: output:1ebc943a2e87edc9
+    suggested_key: multiqc
+    path_pattern: ^multiqc/.+$
+    source_locations:
+    - main.nf:2
+    processes:
+    - MULTIQC
+    suggested_title: Multiqc
+    suggested_description: null
+    suggested_format: directory
+    likely_scope: null
+    likely_entity_type: directory
+    confidence: 0.65
+    conditional: false
+    unresolved_fields:
+    - key
+    - title
+    - description
+    - category
+    - scopes
+  evidence_ids:
+  - output-evidence:30da3aee15b705af
+  reason: Not a platform output.
+- id: output:b1692be590a1cc9e
+  status: reviewed
+  value:
+    key: multiqc_report
+    title: MultiQC report
+    description: Run-wide MultiQC report.
+    category: run_report
+    formats:
+    - html
+    scopes:
+    - run
+    entity_types:
+    - file
+    path_patterns:
+    - ^multiqc/multiqc_report\.html$
+    stage: null
+    labels: []
+  evidence_ids:
+  - output-evidence:972187573d18fbbf
+  reason: null
+- id: output:legacylibrary
+  status: reviewed
+  value:
+    key: library_qc
+    title: Library QC
+    description: Per-library QC.
+    category: quality_control
+    formats:
+    - json
+    scopes:
+    - library
+    entity_types:
+    - file
+    path_patterns:
+    - ^qc/{sample}/{library}\.json$
+    stage: raw
+    labels: []
+  evidence_ids: []
+  reason: null
+- id: output:legacysample
+  status: reviewed
+  value:
+    key: counts
+    title: Counts
+    description: Per-sample counts.
+    category: quantification
+    formats:
+    - tsv
+    scopes:
+    - sample
+    entity_types:
+    - file
+    path_patterns:
+    - ^quant/{sample}/counts\.tsv$
+    stage: null
+    labels: []
+  evidence_ids: []
+  reason: null
+- id: profile:local
+  status: reviewed
+  value:
+    id: profile-local-6c6f63616c
+    name: Local
+    description: Local development execution.
+    type: development
+    engine: nextflow
+    executor: local
+    container_engine: singularity
+    source_profile: local
+    config_source: conf/local.config
+    config_path: configs/profile-local-6c6f63616c.config
+    evidence_locations:
+    - conf/local.config
+    - nextflow.config
+  evidence_ids:
+  - profile:local:1
+  - profile:local:2
+  reason: null
+- id: provenance:root-ro-crate
+  status: reviewed
+  value:
+    source_path: ro-crate-metadata.json
+    evidence_locations:
+    - ro-crate-metadata.json
+  evidence_ids:
+  - provenance:root-ro-crate:evidence
+  reason: null
+layers:
+- name: components
+  configured: true
+  decision_ids:
+  - component:modules__local__tool
+  unresolved: []
+- name: execution_profiles
+  configured: true
+  decision_ids:
+  - profile:local
+  unresolved: []
+- name: identity
+  configured: true
+  decision_ids:
+  - identity:name
+  - identity:version
+  - identity:repository_url
+  unresolved: []
+- name: inputs
+  configured: true
+  decision_ids:
+  - input:input
+  - input:max_cpus
+  - input:outdir
+  - input:threshold
+  unresolved: []
+- name: outputs
+  configured: true
+  decision_ids:
+  - output:1ebc943a2e87edc9
+  - output:b1692be590a1cc9e
+  - output:legacylibrary
+  - output:legacysample
+  unresolved: []
+- name: provenance
+  configured: true
+  decision_ids:
+  - provenance:root-ro-crate
+  unresolved: []

@@ -1,0 +1,379 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/org/legacy-example/schema/analysis-output/v1.0.0",
+  "title": "SPLICE legacy-example analysis output",
+  "description": "Versioned contract for analysis_output.json files produced by legacy-example 1.0.0.",
+  "type": "object",
+  "required": [
+    "files"
+  ],
+  "properties": {
+    "analysis_output_schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "schema_id": {
+      "type": "string",
+      "const": "https://github.com/org/legacy-example/schema/analysis-output/v1.0.0"
+    },
+    "pipeline_name": {
+      "type": "string",
+      "const": "legacy-example"
+    },
+    "pipeline_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "repository_url": {
+      "type": "string",
+      "const": "https://github.com/org/legacy-example"
+    },
+    "release_url": {
+      "type": "string"
+    },
+    "job_id_short": {
+      "type": "string",
+      "pattern": "^[A-Za-z][0-9]{3}$"
+    },
+    "job_id_long": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "platform_run_id": {
+      "type": "string"
+    },
+    "workflow_run_id": {
+      "type": "string"
+    },
+    "nextflow_session_id": {
+      "type": "string"
+    },
+    "nextflow_run_name": {
+      "type": "string"
+    },
+    "config_profile": {
+      "type": "string"
+    },
+    "publish_directory": {
+      "type": "string"
+    },
+    "execution_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/file_record"
+      },
+      "description": "Files and directories produced by one completed run; absent optional outputs are valid."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "file_record": {
+      "type": "object",
+      "required": [
+        "path",
+        "category",
+        "output_type",
+        "scope",
+        "entity_type",
+        "format"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+          "description": "Relative path from the completed publish directory."
+        },
+        "category": {
+          "oneOf": [
+            {
+              "const": "run_report",
+              "title": "Workflow reporting and run metadata",
+              "description": "Run-level reports, execution traces, and pipeline metadata."
+            },
+            {
+              "const": "quality_control",
+              "title": "Quality control",
+              "description": "Reports and measurements used to assess data quality."
+            },
+            {
+              "const": "quantification",
+              "title": "Quantification",
+              "description": "Per-sample and aggregate abundance measurements."
+            }
+          ]
+        },
+        "output_type": {
+          "oneOf": [
+            {
+              "const": "library_qc",
+              "title": "Library QC",
+              "description": "Per-library QC."
+            },
+            {
+              "const": "counts",
+              "title": "Counts",
+              "description": "Per-sample counts."
+            },
+            {
+              "const": "multiqc_report",
+              "title": "MultiQC report",
+              "description": "Run-wide MultiQC report."
+            }
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "run",
+            "sample",
+            "library"
+          ]
+        },
+        "entity_type": {
+          "type": "string",
+          "enum": [
+            "file",
+            "directory"
+          ]
+        },
+        "format": {
+          "type": "string"
+        },
+        "sample_id": {
+          "type": "string"
+        },
+        "library_id": {
+          "type": "string"
+        },
+        "read": {
+          "type": "string"
+        },
+        "aligner": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "string"
+        },
+        "checksum_algorithm": {
+          "type": "string"
+        },
+        "storage_uri": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "library_qc"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quality_control"
+              },
+              "scope": {
+                "enum": [
+                  "library"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "json"
+                ]
+              },
+              "path": {
+                "pattern": "^qc/(?:[^/]+)/(?:[^/]+)\\.json$"
+              },
+              "stage": {
+                "const": "raw"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "counts"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quantification"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "tsv"
+                ]
+              },
+              "path": {
+                "pattern": "^quant/(?:[^/]+)/counts\\.tsv$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "multiqc_report"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "run_report"
+              },
+              "scope": {
+                "enum": [
+                  "run"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "html"
+                ]
+              },
+              "path": {
+                "pattern": "^multiqc/multiqc_report\\.html$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-output-catalog": {
+    "schema_semantics": "The catalogue defines every reviewed output type; each completed run may contain any produced subset.",
+    "categories": {
+      "run_report": {
+        "title": "Workflow reporting and run metadata",
+        "description": "Run-level reports, execution traces, and pipeline metadata."
+      },
+      "quality_control": {
+        "title": "Quality control",
+        "description": "Reports and measurements used to assess data quality."
+      },
+      "quantification": {
+        "title": "Quantification",
+        "description": "Per-sample and aggregate abundance measurements."
+      }
+    },
+    "output_types": [
+      {
+        "key": "library_qc",
+        "title": "Library QC",
+        "description": "Per-library QC.",
+        "category": "quality_control",
+        "scope": [
+          "library"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "json"
+        ],
+        "path_patterns": [
+          "^qc/{sample}/{library}\\.json$"
+        ],
+        "stage": "raw"
+      },
+      {
+        "key": "counts",
+        "title": "Counts",
+        "description": "Per-sample counts.",
+        "category": "quantification",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "tsv"
+        ],
+        "path_patterns": [
+          "^quant/{sample}/counts\\.tsv$"
+        ]
+      },
+      {
+        "key": "multiqc_report",
+        "title": "MultiQC report",
+        "description": "Run-wide MultiQC report.",
+        "category": "run_report",
+        "scope": [
+          "run"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "html"
+        ],
+        "path_patterns": [
+          "^multiqc/multiqc_report\\.html$"
+        ]
+      }
+    ]
+  }
+}

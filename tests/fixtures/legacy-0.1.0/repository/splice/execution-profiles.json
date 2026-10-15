@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "profiles": [
+    {
+      "id": "profile-local-6c6f63616c",
+      "name": "Local",
+      "description": "Local development execution.",
+      "type": "development",
+      "engine": "nextflow",
+      "executor": "local",
+      "container_engine": "singularity",
+      "config": "configs/profile-local-6c6f63616c.config"
+    }
+  ]
+}

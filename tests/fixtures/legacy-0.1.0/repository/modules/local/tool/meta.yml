@@ -1,0 +1,4 @@
+name: tool
+tools:
+  - tool:
+      description: Example tool
