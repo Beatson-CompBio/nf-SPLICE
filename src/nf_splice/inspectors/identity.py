@@ -24,13 +24,16 @@ _NEXTFLOW_KEYS = (
     r"name|version|homePage|repository_url|release_url|description|author|"
     r"nextflowVersion|doi|license|docsUrl"
 )
+# Groovy strings: triple-quoted (multi-line) or single-line, either quote.
+_STRING = (
+    r"(?:(?P<quote>'{3}|\"{3})(?P<long>(?s:.+?))(?P=quote)"
+    r"|(?P<short_quote>['\"])(?P<value>.+?)(?P=short_quote))"
+)
 _ASSIGNMENT = re.compile(
-    rf"(?m)(?:^|(?<=[{{;]))\s*(?P<key>{_NEXTFLOW_KEYS})\s*=\s*"
-    r"(?P<quote>['\"])(?P<value>.+?)(?P=quote)"
+    rf"(?m)(?:^|(?<=[{{;]))\s*(?P<key>{_NEXTFLOW_KEYS})\s*=\s*{_STRING}"
 )
 _NEXTFLOW_METADATA_DOTTED = re.compile(
-    rf"(?m)^\s*manifest\.(?P<key>{_NEXTFLOW_KEYS})"
-    r"\s*=\s*(?P<quote>['\"])(?P<value>.+?)(?P=quote)"
+    rf"(?m)^\s*manifest\.(?P<key>{_NEXTFLOW_KEYS})\s*=\s*{_STRING}"
 )
 _CONTRIBUTOR = re.compile(r"\[\s*(?P<body>name\s*:[^\[\]]*(?:\[[^\]]*\][^\[\]]*)*)\]")
 _CONTRIBUTOR_FIELD = re.compile(
@@ -274,10 +277,22 @@ def _readme_values(root: Path) -> list[IdentityValue]:
     text = _read_text(root / "README.md")
     if text is None:
         return []
-    heading = re.search(r"(?m)^#\s+(?P<title>[^\n#!\[]+?)\s*$", text)
-    if heading is None:
+    # The first top-level heading, in Markdown or in HTML (many READMEs lay
+    # out a banner table with an <h1>).
+    found = [
+        item
+        for item in (
+            re.search(r"(?m)^#\s+(?P<title>[^\n#!\[]+?)\s*$", text),
+            re.search(r"(?is)<h1[^>]*>(?P<title>.*?)</h1>", text),
+        )
+        if item is not None
+    ]
+    if not found:
         return []
-    title = heading.group("title").strip()
+    heading = min(found, key=lambda item: item.start())
+    title = " ".join(re.sub(r"<[^>]+>", " ", heading.group("title")).split())
+    if not title:
+        return []
     line = text.count("\n", 0, heading.start()) + 1
     return [
         IdentityValue(
@@ -311,7 +326,11 @@ def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection
             )
         for match in sorted(matches, key=lambda item: item.start()):
             field = _FIELD_NAMES[match.group("key")]
-            raw = match.group("value").strip()
+            raw = (
+                " ".join(match.group("long").split())
+                if match.group("long") is not None
+                else match.group("value").strip()
+            )
             value: Any = raw
             if field == "authors":
                 value = [

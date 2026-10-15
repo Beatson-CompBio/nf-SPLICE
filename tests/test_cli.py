@@ -215,3 +215,27 @@ def test_containers_commands() -> None:
         app, ["containers", "cache-name", "biocontainers/x:1", "--registry", "quay.io"]
     )
     assert cache.output.strip() == "quay.io-biocontainers-x-1.img"
+
+
+def test_input_decision_file_errors_are_explained(tmp_path: Path) -> None:
+    from layer_fixtures import write_pipeline
+
+    write_pipeline(tmp_path)
+    decisions = tmp_path / "decisions.json"
+    decisions.write_text('[{"name": "outdir", "editable_by": ["platform"]}]', "utf-8")
+    result = runner.invoke(
+        app,
+        [
+            "--actor",
+            "Ada",
+            "configure",
+            "inputs",
+            "--repository",
+            str(tmp_path),
+            "--decision-file",
+            str(decisions),
+        ],
+    )
+    assert result.exit_code == 2
+    assert "needs a 'parameter' key" in result.output
+    assert "Traceback" not in result.output

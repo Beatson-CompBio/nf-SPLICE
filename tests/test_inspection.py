@@ -251,3 +251,33 @@ def test_inspection_never_changes_an_existing_tree(tmp_path: Path) -> None:
     inspect_repository(tmp_path)
 
     assert _snapshot(tmp_path) == before
+
+
+def test_identity_reads_triple_quoted_manifest_and_html_heading(
+    tmp_path: Path,
+) -> None:
+    """Found on a real pipeline: a Groovy '''...''' description and an <h1>."""
+    from nf_splice.inspectors.identity import inspect_pipeline_identity
+
+    (tmp_path / "nextflow.config").write_text(
+        "manifest {\n"
+        "    name        = 'org/pipe'\n"
+        "    description = '''\n"
+        "    First line.\n"
+        "    Second line.\n"
+        "    '''.trim()\n"
+        "    version     = '1.2.3'\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "<table><tr><td>\n<h1>My <b>Pipeline</b></h1>\n</td></tr></table>\n\n"
+        "# Introduction\n",
+        encoding="utf-8",
+    )
+    values = {
+        item.field: item.value for item in inspect_pipeline_identity(tmp_path).values
+    }
+    assert values["description"] == "First line. Second line."
+    assert values["version"] == "1.2.3" and values["name"] == "org/pipe"
+    assert values["title"] == "My Pipeline"

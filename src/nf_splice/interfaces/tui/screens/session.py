@@ -191,7 +191,26 @@ class SessionScreen(ModalScreen[None]):
             self.refresh_session()
 
     def _title(self, text: str) -> None:
-        self.query_one("#session-title", Static).update(f"[b]{text}[/b]")
+        self.query_one("#session-title", Static).update(
+            f"[b]{text}[/b]" + self._disclosure()
+        )
+
+    def _disclosure(self) -> str:
+        """Which provider and model runs, where inference happens, who pays."""
+        provider = self.wizard.agent_provider
+        if provider is None:
+            return ""
+        try:
+            capabilities = provider.capabilities
+        except Exception:  # a provider that cannot describe itself stays quiet
+            return ""
+        model = getattr(provider, "model", None)
+        return (
+            f"\n[dim]Provider {capabilities.name}"
+            + (f" ({model})" if model else "")
+            + f"; inference {capabilities.inference}; billing "
+            f"{capabilities.billing}[/dim]"
+        )
 
     # -------------------------------------------------------- rendering
 

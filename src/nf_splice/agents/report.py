@@ -134,7 +134,15 @@ def build_report(
             "offline scripted provider: no live model was used"
             if state.provider.name == "scripted"
             else f"live provider {state.provider.name}"
+            + (f" ({state.provider.model})" if state.provider.model else "")
+            + f"; inference {state.provider.inference}; billing "
+            f"{state.provider.billing}"
         ),
+        "providers_used": [
+            {"provider": name, **values}
+            for name, values in sorted(state.usage.by_provider.items())
+        ],
+        "provider_history": list(state.provider_history),
         "outstanding_questions": [state.pending.summary] if state.pending else [],
         "approvals": [item.model_dump(mode="json") for item in state.approvals],
         "applied_operations": origins,
@@ -145,7 +153,11 @@ def build_report(
             "checkpoints": [item.id for item in state.checkpoints],
             "tool_calls": state.usage.tool_calls,
             "provider_turns": state.usage.provider_turns,
-            "cost_usd": round(state.usage.cost_usd, 4),
+            "cost_usd": (
+                round(state.usage.cost_usd, 4)
+                if state.usage.cost_reported
+                else "not_reported"
+            ),
         },
         "limitations": limitations,
     }

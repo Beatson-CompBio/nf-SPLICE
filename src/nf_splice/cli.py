@@ -449,6 +449,12 @@ def _configure_inputs(
         loaded = json.loads(decision_file.read_text(encoding="utf-8"))
         if not isinstance(loaded, list):
             raise typer.BadParameter("input decision file must be a JSON array")
+        for index, entry in enumerate(loaded):
+            if not isinstance(entry, dict) or "parameter" not in entry:
+                raise typer.BadParameter(
+                    f"input decision {index + 1} needs a 'parameter' key, for "
+                    'example {"parameter": "outdir", "editable_by": ["platform"]}'
+                )
         reviews.extend(loaded)
     reviews.extend(
         {"parameter": name, "editable_by": value} for name, value in assignments
