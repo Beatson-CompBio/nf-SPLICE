@@ -18,6 +18,7 @@ from nf_splice.cli import app
 ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = [
     ROOT / "README.md",
+    ROOT / "CONTRIBUTING.md",
     *sorted((ROOT / "docs").rglob("*.md")),
 ]
 _FENCE = re.compile(r"```bash\n(.*?)```", re.DOTALL)
@@ -182,3 +183,30 @@ def test_companion_reference_lists_every_lock_and_catalogue_key() -> None:
     catalogue = yaml.safe_load((bundle / "outputs.yaml").read_text(encoding="utf-8"))
     for key in [*lock, *catalogue]:
         assert f"`{key}" in page, key
+
+
+def _anchors(path: Path) -> set[str]:
+    """GitHub-style heading anchors of a Markdown page."""
+    anchors = set()
+    text = re.sub(r"```.*?```", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
+    for heading in re.findall(r"^#{1,6} (.+)$", text, re.MULTILINE):
+        slug = re.sub(r"[^\w\- ]", "", heading.replace("`", "").lower())
+        anchors.add(slug.replace(" ", "-"))
+    return anchors
+
+
+def test_link_anchors_resolve() -> None:
+    for path in DOCUMENTS:
+        text = path.read_text(encoding="utf-8")
+        for target, anchor in re.findall(r"\]\(([^)#\s]*)#([^)\s]+)\)", text):
+            if "://" in target:
+                continue
+            page = (path.parent / target) if target else path
+            if page.suffix == ".md":
+                assert anchor in _anchors(page), (path.name, target, anchor)
+
+
+def test_every_guide_page_is_in_the_user_guide_index() -> None:
+    index = (ROOT / "docs" / "USAGE.md").read_text(encoding="utf-8")
+    for page in sorted((ROOT / "docs" / "guide").glob("*.md")):
+        assert f"(guide/{page.name})" in index, page.name

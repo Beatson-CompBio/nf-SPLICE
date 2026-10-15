@@ -1,0 +1,66 @@
+# Troubleshooting
+
+Every problem nf-splice reports names the draft file, the field (as a path
+such as `/pipeline/licence`) and a code. Errors block publication; warnings
+do not.
+
+```text
+error: splice/drafts/bundle.draft.yaml#/pipeline/id [missing_required] pipeline.id is required for an ingestion-ready bundle
+```
+
+Run `nf-splice plan` to see everything still open, or
+`nf-splice draft inspect <layer>` for one layer.
+
+## Common codes
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `missing_required` | A required value is empty. | Set it with `nf-splice configure` or in the draft. |
+| `unconfirmed_detected_value` | A value was detected but not yet confirmed. | Confirm it with `nf-splice draft confirm`, or edit it. |
+| `conflicting_evidence` | Sources disagree about a value. | Set the value yourself. |
+| `placeholder` | A value looks like template text, such as `TODO`. | Replace it with the real value. |
+| `invalid_value` | A value has the wrong form, such as a malformed URL or ORCID iD. | Correct it. |
+| `recommended` | A recommended value is missing. | Optional; add it for a better listing. |
+| `pending_candidate` | A discovered output, module or profile needs a decision. | Accept or reject it. |
+| `access_unreviewed` | A parameter has no access policy. | See [Inputs](inputs.md). |
+| `missing_default` | No default execution profile is chosen. | See [Execution profiles](execution-profiles.md#4-choose-the-default). |
+| `identity_not_ready` | Another layer is waiting for the identity. | Finish [Identity](identity.md) first. |
+| `identity_mismatch` | A layer repeats an outdated identity. | Run `nf-splice draft sync-identity`. |
+| `inputs_not_ready` | Profile parameter overrides need a ready inputs layer. | Finish [Inputs](inputs.md) first. |
+| `needs_materialisation` | Images must be downloadable but one is not verified. | See [Components](components.md#3-verify-image-files). |
+
+## Common situations
+
+**"was edited after it was published".** A published file in `splice/` was
+changed by hand. Copy the change into the draft, or overwrite it
+explicitly; see [Publishing](publishing.md#published-files-edited-by-hand).
+
+**"file changed on disk".** The draft changed while
+nf-splice was writing it, for example in an editor. Nothing was lost. Run
+the command again.
+
+**An edit conflicts with a change in the draft.** nf-splice applies its own
+changes only where the draft still holds the value it expects. If you
+changed the same field, it stops and names the field instead of
+overwriting your edit. Resolve the field in the draft and repeat.
+
+**Publication was interrupted.** Run `nf-splice draft recover` to restore
+the previous bundle.
+
+**`legacy_bundle`.** The repository holds files from a pre-release test
+version of nf-splice. Convert them into drafts with a preview first:
+
+```bash
+nf-splice migrate drafts
+nf-splice migrate drafts --apply
+```
+
+## Getting more detail
+
+```bash
+nf-splice status --json
+nf-splice inspect
+```
+
+`status` reports each layer's state. `inspect` shows the evidence nf-splice
+found in the repository. Neither changes any file.

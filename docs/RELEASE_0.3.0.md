@@ -43,7 +43,9 @@ checks that every ADR exists, every path exists and every test file exists.
 | Guided Textual wizard and CLI/TUI equivalence | ADR-0038 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |
 | Optional approval-gated agents (scripted + Claude providers) | ADR-0039 | `src/nf_splice/agents/`, `docs/AGENTS.md` | `tests/test_agents.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
-| User, platform and migration documentation with verified commands | ADR-0023, ADR-0027, ADR-0037 | `README.md`, `docs/USAGE.md`, `docs/CONTRACT_MIGRATION_0.3.0.md`, `docs/TUI.md`, `docs/CONTAINERS.md`, `docs/PROVENANCE.md` | `tests/test_docs.py` | Current |
+| Task-based user guide, contributor guide and migration notes with verified commands | ADR-0023, ADR-0027, ADR-0037 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/`, `docs/CONTRACT_MIGRATION_0.3.0.md` | `tests/test_docs.py` | Current |
+| Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
+| Integrator overview, `analysis_output.json` and companion-file references | ADR-0024, ADR-0028 | `docs/CONTRACTS.md`, `docs/schemas/README.md`, `docs/schemas/analysis-output.md`, `docs/schemas/companion-files.md` | `tests/test_docs.py` | Current |
 | Reference validated bundle and incomplete draft fixtures | ADR-0030, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
 | CI matrix 3.10-3.14, packaging and hygiene gates | ADR-0040 | `.github/workflows/ci.yml`, `pyproject.toml` | `tests/test_packaging.py` | Current |
 

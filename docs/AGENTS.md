@@ -1,4 +1,7 @@
-# Optional agent assistance
+# Agent tool contract
+
+Developer reference for assistant integrations: modes, tools, policy and
+providers. To use the assistant, see [AI assistance](guide/ai-assistant.md).
 
 nf-splice works completely without AI. The agent integration is **off by
 default**, never imported at CLI/TUI start-up, and can only *propose*

@@ -39,7 +39,7 @@ conventions). Depending on what was reviewed, it is one of the following:
 
 The developer's file in the workflow repository is never modified. Enriched
 and generated crates record nf-splice as the creating software. See the
-[provenance guide](../PROVENANCE.md).
+[provenance guide](../guide/provenance.md).
 
 ## `configs/<profile>.config`
 
