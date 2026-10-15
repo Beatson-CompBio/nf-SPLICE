@@ -21,7 +21,7 @@ from nf_splice.contracts import (
     validate_contract_document,
 )
 from nf_splice.domain.access import LEGACY_CLASSIFICATION_ACCESS
-from nf_splice.domain.audit import ChangeOrigin
+from nf_splice.domain.audit import ActorKind, ChangeOrigin
 from nf_splice.domain.inputs import InputClassification
 from nf_splice.drafts import DraftConflictError, DraftStoreError
 from nf_splice.inspectors.containers import classify_reference, nextflow_cache_filename
@@ -106,6 +106,11 @@ migrate_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(migrate_app, name="migrate")
+agent_app = typer.Typer(
+    help="Optional AI assistance: tools, runs, proposals and human approval.",
+    no_args_is_help=True,
+)
+app.add_typer(agent_app, name="agent")
 preview_app = typer.Typer(
     help="Show derived, non-authoritative previews of published files.",
     no_args_is_help=True,
@@ -1555,11 +1560,137 @@ def audit_show_command(
     typer.echo(json.dumps({"records": records}, indent=2))
 
 
+def _agent_book(repository: Path) -> Any:
+    from nf_splice.agents import ProposalBook
+    from nf_splice.agents.orchestration import proposal_book_path
+    from nf_splice.interfaces.tui.state import default_session_directory
+
+    return ProposalBook.load(
+        proposal_book_path(default_session_directory(), repository)
+    )
+
+
+@agent_app.command("tools")
+def agent_tools_command(
+    repository: RepositoryOption = Path("."),
+    mode: str = typer.Option("suggest", help="ask, suggest, draft or apply."),
+) -> None:
+    """Print the structured tool schemas available to an agent (offline)."""
+    from nf_splice.agents import AgentMode, AgentPolicy, AgentToolbox
+
+    policy = AgentPolicy(repository=repository, mode=AgentMode(mode))
+    typer.echo(dumps(AgentToolbox(repository, policy).schemas()))
+
+
+@agent_app.command("run")
+def agent_run_command(
+    prompt: Annotated[str, typer.Argument(help="What the assistant should help with.")],
+    repository: RepositoryOption = Path("."),
+    provider: str = typer.Option(..., help="claude, or scripted (requires --script)."),
+    mode: str = typer.Option("suggest", help="ask, suggest or draft."),
+    script: OptionalExistingPath = None,
+    allow_remote_model: bool = typer.Option(
+        False, help="Consent to sending bounded repository context to a remote model."
+    ),
+    model: str | None = typer.Option(None, help="Explicit provider model name."),
+    max_turns: int = typer.Option(12, help="Maximum agent turns."),
+    max_budget_usd: float | None = typer.Option(None, help="Spending cap (provider)."),
+) -> None:
+    """Run an assistant session; it can only propose, never apply."""
+    import asyncio
+
+    from nf_splice.agents import AgentMode, SessionLimits, run_agent
+    from nf_splice.agents.orchestration import dumps as dump_run
+
+    selected = AgentMode(mode)
+    if selected in {AgentMode.OFF, AgentMode.APPLY}:
+        raise typer.BadParameter("use ask, suggest or draft; approvals are human-only")
+    agent_provider: Any
+    if provider == "claude":
+        from nf_splice.agents.providers.claude import ClaudeProvider
+
+        agent_provider = ClaudeProvider()
+    elif provider == "scripted":
+        if script is None:
+            raise typer.BadParameter("--provider scripted requires --script")
+        from nf_splice.agents.providers.mock import ScriptedProvider
+
+        agent_provider = ScriptedProvider(
+            json.loads(script.read_text(encoding="utf-8"))
+        )
+    else:
+        raise typer.BadParameter("provider must be claude or scripted")
+    book = _agent_book(repository)
+    try:
+        result = asyncio.run(
+            run_agent(
+                repository,
+                agent_provider,
+                prompt,
+                mode=selected,
+                book=book,
+                allow_remote=allow_remote_model,
+                limits=SessionLimits(
+                    max_turns=max_turns, max_budget_usd=max_budget_usd, model=model
+                ),
+            )
+        )
+    except (PermissionError, RuntimeError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(dump_run(result))
+
+
+@agent_app.command("proposals")
+def agent_proposals_command(repository: RepositoryOption = Path(".")) -> None:
+    """List agent proposals and their status."""
+    book = _agent_book(repository)
+    typer.echo(dumps([item.to_json() for item in book.proposals.values()]))
+
+
+@agent_app.command("approve")
+def agent_approve_command(
+    proposal: str,
+    repository: RepositoryOption = Path("."),
+) -> None:
+    """Approve (and apply) one proposal as the human actor (--actor)."""
+    from nf_splice.agents import approve
+
+    actor = resolve_actor(_STATE["actor"])
+    if actor.kind is not ActorKind.HUMAN:
+        typer.echo("approval needs a human actor label (--actor)", err=True)
+        raise typer.Exit(code=2)
+    book = _agent_book(repository)
+    result = _run(lambda: approve(repository, book, proposal, actor))
+    typer.echo(dumps(result.to_json()))
+    if result.status.value != "applied":
+        raise typer.Exit(code=2)
+
+
+@agent_app.command("reject")
+def agent_reject_command(
+    proposal: str,
+    reason: str = typer.Option(..., help="Why the proposal is rejected."),
+    repository: RepositoryOption = Path("."),
+) -> None:
+    """Reject one proposal."""
+    from nf_splice.agents import reject
+
+    book = _agent_book(repository)
+    typer.echo(dumps(_run(lambda: reject(book, proposal, reason)).to_json()))
+
+
 @app.command("tui")
 def tui_command(
     repository: RepositoryOption = Path("."),
     no_session: bool = typer.Option(
         False, "--no-session", help="Do not read or write wizard sessions."
+    ),
+    agent: str | None = typer.Option(
+        None, help="Enable the optional assistant: claude."
+    ),
+    allow_remote_model: bool = typer.Option(
+        False, help="Consent to bounded context being sent to the remote model."
     ),
 ) -> None:
     """Open the guided terminal wizard (works fully without AI)."""
@@ -1570,7 +1701,19 @@ def tui_command(
     )
 
     sessions = SessionStore(None if no_session else default_session_directory())
-    NfSpliceApp(repository, sessions=sessions, actor=_STATE["actor"]).run()
+    provider = None
+    if agent == "claude":
+        if not allow_remote_model:
+            typer.echo("--agent claude requires --allow-remote-model consent", err=True)
+            raise typer.Exit(code=2)
+        from nf_splice.agents.providers.claude import ClaudeProvider
+
+        provider = ClaudeProvider()
+    elif agent is not None:
+        raise typer.BadParameter("agent must be claude")
+    NfSpliceApp(
+        repository, sessions=sessions, actor=_STATE["actor"], agent_provider=provider
+    ).run()
 
 
 def main() -> None:

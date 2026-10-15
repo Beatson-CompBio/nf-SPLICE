@@ -69,6 +69,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Current | — |
 | ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Current | — |
 | ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Current | — |
+| ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Current | — |
 
 ---
 
@@ -1781,3 +1782,69 @@ The 0.1.0 dashboard showed every layer at once, wrote the monolithic
 ### Consequences
 
 - Replaces the dashboard and its `nf-splice.yaml` equivalence test.
+
+---
+
+## ADR-0039: Offer optional, provider-neutral agents that can only propose through deterministic tools
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 12 |
+| Scope | AI integration, permissions and privacy |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0002, ADR-0005, ADR-0014, ADR-0029, ADR-0032, ADR-0038 |
+| Implementation | `src/nf_splice/agents/`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/agent.py`, `docs/AGENTS.md`, `pyproject.toml` |
+| Tests | `tests/test_agents.py` |
+
+### Context
+
+Developers want AI help with discovery and review, but generated content
+must never become reviewed fact implicitly, and the tool must remain fully
+usable without AI, credentials or network.
+
+### Decision
+
+- `nf_splice.agents` defines a small provider protocol (capabilities,
+  cancellable streaming sessions, tool mediation) with no SDK import. Modes
+  are `off` (default), `ask`, `suggest`, `draft` and `apply`.
+- Agents see only the `AgentToolbox`: typed, schema-described read-only
+  tools and `propose_*` tools over the same services as the CLI/TUI.
+  Proposals are validated (three-way patch planning, reviewed-output
+  validation, candidate existence) and stored as pending proposals; they
+  never write files. A separate human approval (`agent approve`, wizard
+  panel) applies a proposal with origin `agent_suggestion`, the agent as
+  actor and the human as `approved_by`. Agents cannot approve their own
+  proposals; `apply_approved_proposal` exists only for human-approved ones.
+- Policy fails closed: tools outside the mode, unknown tools, paths outside
+  the repository and unapproved applications are denied and audited
+  privately. Network, image and publication operations are not exposed.
+- The Claude Agent SDK provider (optional extra `nf-splice[claude]`) is the
+  only remote provider in 0.3.0. It empties and denies the built-in tool set,
+  loads no user/project settings, configures only the in-process nf-splice
+  MCP server, and denies everything else through `can_use_tool` and a
+  `PreToolUse` hook, with turn and budget limits. Remote disclosure needs
+  explicit consent; no provider is selected silently.
+- Offline CI uses a deterministic scripted provider and a fake SDK; a live
+  test is opt-in (`live_agent`). Proposals persist outside the repository.
+
+### Alternatives rejected
+
+- Letting the model edit draft files directly: bypasses validation,
+  attribution and approval.
+- Relying on `allowed_tools` alone: it pre-approves tools but does not remove
+  others.
+
+### Consequences
+
+- Manual and AI-assisted work are interchangeable at every step and produce
+  identical drafts after approval.
+- Live Claude behaviour depends on organisational account setup, documented
+  in `docs/AGENTS.md`.
+
+### Security and privacy
+
+- No shell, file, network or upload capability is reachable by the model;
+  tool results are redacted and bounded; consent precedes remote disclosure.

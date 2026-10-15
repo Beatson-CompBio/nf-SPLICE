@@ -16,3 +16,4 @@
 DataTable { height: auto; max-height: 14; margin-bottom: 1; }
 Input { margin-bottom: 1; }
 .issues { color: $warning; height: auto; }
+#agent-dialog { width: 90%; height: 85%; border: thick $accent; background: $surface; padding: 1; }

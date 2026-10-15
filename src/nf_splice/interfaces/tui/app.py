@@ -13,6 +13,9 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, ListView, Markdown, Static
 
+from nf_splice.agents.orchestration import proposal_book_path
+from nf_splice.agents.protocol import AgentProvider
+from nf_splice.agents.tools import ProposalBook
 from nf_splice.domain.audit import ChangeOrigin
 from nf_splice.interfaces.tui.screens import VIEWS
 from nf_splice.interfaces.tui.state import (
@@ -67,6 +70,7 @@ class NfSpliceApp(App[None]):
         Binding("escape", "step_back", "Back"),
         Binding("ctrl+d", "defer", "Finish later"),
         Binding("ctrl+r", "reload", "Reload files"),
+        Binding("ctrl+a", "assistant", "Assistant"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
@@ -77,6 +81,7 @@ class NfSpliceApp(App[None]):
         sessions: SessionStore | None = None,
         actor: str | None = None,
         start: str | None = None,
+        agent_provider: AgentProvider | None = None,
     ) -> None:
         super().__init__()
         self.repository = Path(repository).resolve()
@@ -89,6 +94,12 @@ class NfSpliceApp(App[None]):
         self.current = start or self.session.current_step
         self.inspect_only = False
         self.busy = False
+        self.agent_provider = agent_provider
+        self.agent_book = ProposalBook.load(
+            proposal_book_path(self.sessions.directory, self.repository)
+            if self.sessions.directory is not None
+            else None
+        )
 
     # ------------------------------------------------------------ layout
 
@@ -263,6 +274,11 @@ class NfSpliceApp(App[None]):
         self.push_screen(
             HelpScreen(target.title, view.help_text() if view else target.help)
         )
+
+    def action_assistant(self) -> None:
+        from nf_splice.interfaces.tui.screens.agent import AgentScreen
+
+        self.push_screen(AgentScreen(self))
 
     def resume(self) -> None:
         self.show_step(resume_step(self.snapshot, visited=self._visited()))

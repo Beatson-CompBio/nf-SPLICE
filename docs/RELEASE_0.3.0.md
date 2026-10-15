@@ -33,3 +33,4 @@ checks that every ADR exists, every path exists and every test file exists.
 | Non-destructive 0.1.0 migration | ADR-0037 | `src/nf_splice/services/migration.py` | `tests/test_migration.py` | Current |
 | File-first CLI | ADR-0030, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
 | Guided Textual wizard and CLI/TUI equivalence | ADR-0038 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |
+| Optional approval-gated agents (scripted + Claude providers) | ADR-0039 | `src/nf_splice/agents/`, `docs/AGENTS.md` | `tests/test_agents.py` | Current |
