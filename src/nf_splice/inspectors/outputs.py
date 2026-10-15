@@ -7,7 +7,7 @@ import json
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml  # type: ignore[import-untyped]
@@ -20,6 +20,7 @@ from nf_splice.domain import (
     OutputFormat,
     OutputScope,
 )
+from nf_splice.inspectors.routes import CoverageStatus, analyse_routes, glob_to_regex
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -34,14 +35,7 @@ _IGNORED_DIRECTORIES = {
     "splice",
     "work",
 }
-_PROCESS = re.compile(r"\bprocess\s+([A-Za-z0-9_]+)\s*\{")
-_PUBLISH_DIR = re.compile(r"\bpublishDir\b[^\n]*?['\"]([^'\"]+)['\"]")
-_PATH_OUTPUT = re.compile(
-    r"\bpath\s*(?:\(\s*)?['\"]([^'\"]+)['\"][^\n]*?(?:emit\s*:\s*([A-Za-z0-9_]+))?"
-)
-_EMIT = re.compile(r"\bemit\s*:\s*([A-Za-z0-9_]+)")
 _WORKFLOW_OUTPUT = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*.+\.out\b")
-_OUTDIR = re.compile(r"^\$\{?\s*params\.outdir\s*\}?/?")
 _KEY = re.compile(r"[^a-z0-9]+")
 _FORMAT_BY_SUFFIX = {
     ".html": OutputFormat.HTML,
@@ -146,15 +140,6 @@ def _format_for(value: str | None) -> OutputFormat | None:
     return None
 
 
-def _glob_pattern(value: str) -> str:
-    value = _OUTDIR.sub("", value.strip()).lstrip("./")
-    escaped = re.escape(value)
-    escaped = escaped.replace(r"\*\*", ".+").replace(r"\*", "[^/]+")
-    escaped = escaped.replace(r"\?", "[^/]")
-    escaped = re.sub(r"\\\$\\\{[^}]+\\\}", "[^/]+", escaped)
-    return f"^{escaped}$"
-
-
 def _source_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for current, directory_names, file_names in os.walk(root, followlinks=False):
@@ -170,89 +155,9 @@ def _source_files(root: Path) -> list[Path]:
     return files
 
 
-def _static_candidates(root: Path) -> list[_RawCandidate]:
-    found: list[_RawCandidate] = []
-    for source_path in _source_files(root):
-        relative = source_path.relative_to(root).as_posix()
-        try:
-            lines = source_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines()
-        except OSError:
-            continue
-        process: str | None = None
-        publish_folder: str | None = None
-        for line_number, line in enumerate(lines, start=1):
-            process_match = _PROCESS.search(line)
-            if process_match:
-                process = process_match.group(1)
-                publish_folder = None
-            location = f"{relative}:{line_number}"
-            conditional = bool(
-                re.search(r"\b(?:if|when)\b|\boptional\s*:\s*true\b", line)
-            )
-            publish_match = _PUBLISH_DIR.search(line)
-            if publish_match:
-                raw = _OUTDIR.sub("", publish_match.group(1)).strip("/")
-                publish_folder = raw or None
-                if publish_folder:
-                    key = _safe_key(publish_folder.split("/")[0])
-                    found.append(
-                        _RawCandidate(
-                            key=key,
-                            path_pattern=f"^{re.escape(publish_folder)}/.+$",
-                            location=location,
-                            source="publishDir",
-                            process=process,
-                            entity_type=OutputEntityType.DIRECTORY,
-                            output_format=OutputFormat.DIRECTORY,
-                            confidence=0.65,
-                            conditional=conditional,
-                        )
-                    )
-            for path_match in _PATH_OUTPUT.finditer(line):
-                raw_path = path_match.group(1)
-                emit_match = _EMIT.search(line)
-                key = (
-                    path_match.group(2)
-                    or (emit_match.group(1) if emit_match else None)
-                    or Path(raw_path).stem
-                )
-                combined = (
-                    f"{publish_folder}/{raw_path}" if publish_folder else raw_path
-                )
-                found.append(
-                    _RawCandidate(
-                        key=_safe_key(key),
-                        path_pattern=_glob_pattern(combined),
-                        location=location,
-                        source="process_output",
-                        process=process,
-                        output_format=_format_for(raw_path),
-                        entity_type=OutputEntityType.FILE,
-                        confidence=0.85,
-                        conditional=conditional,
-                    )
-                )
-            workflow_match = _WORKFLOW_OUTPUT.search(line)
-            if workflow_match:
-                key = _safe_key(workflow_match.group(1))
-                found.append(
-                    _RawCandidate(
-                        key=key,
-                        path_pattern=None,
-                        location=location,
-                        source="workflow_output",
-                        process=process,
-                        confidence=0.55,
-                        conditional=conditional,
-                    )
-                )
-    return found
-
-
-def _meta_candidates(root: Path) -> list[_RawCandidate]:
-    found: list[_RawCandidate] = []
+def _meta_descriptions(root: Path) -> dict[tuple[str, str], str]:
+    """Module ``meta.yml`` output descriptions keyed by (module dir, emit)."""
+    found: dict[tuple[str, str], str] = {}
     for name in ("meta.yml", "meta.yaml"):
         for path in sorted(root.rglob(name)):
             if any(part in _IGNORED_DIRECTORIES for part in path.parts):
@@ -263,7 +168,6 @@ def _meta_candidates(root: Path) -> list[_RawCandidate]:
                 continue
             if not isinstance(loaded, dict):
                 continue
-            module = loaded.get("name")
             output = loaded.get("output")
             entries: list[tuple[object, object]] = []
             if isinstance(output, dict):
@@ -272,11 +176,11 @@ def _meta_candidates(root: Path) -> list[_RawCandidate]:
                 for item in output:
                     if isinstance(item, dict):
                         entries.extend(item.items())
+            directory = path.parent.relative_to(root).as_posix()
             for output_name, specification in entries:
-                description = pattern = None
+                description = None
                 if isinstance(specification, dict):
                     description = specification.get("description")
-                    pattern = specification.get("pattern")
                 elif isinstance(specification, list):
                     for nested in specification:
                         if isinstance(nested, dict):
@@ -285,19 +189,91 @@ def _meta_candidates(root: Path) -> list[_RawCandidate]:
                                     description = description or details.get(
                                         "description"
                                     )
-                                    pattern = pattern or details.get("pattern")
-                relative = path.relative_to(root).as_posix()
+                if description:
+                    found[(directory, str(output_name))] = str(description)
+    return found
+
+
+_ROUTE_CONFIDENCE = {
+    CoverageStatus.CONFIRMED_FROM_CODE: 0.85,
+    CoverageStatus.INFERRED_UNVERIFIED: 0.6,
+    CoverageStatus.UNRESOLVED: 0.4,
+    CoverageStatus.NOT_REACHABLE: 0.3,
+}
+
+
+def _route_candidates(root: Path) -> list[_RawCandidate]:
+    """Candidates for **published** process outputs only.
+
+    Declared outputs that no publication rule reaches are intermediates and
+    never become candidates; the coverage assessment lists them separately.
+    """
+    analysis = analyse_routes(root)
+    instances_by_emit: dict[str, set[str]] = {}
+    for item in analysis.published:
+        if item.emit:
+            instances_by_emit.setdefault(item.emit, set()).add(item.instance)
+    descriptions = _meta_descriptions(root)
+    found: list[_RawCandidate] = []
+    for item in analysis.published:
+        stem = Path(item.declared_path or "output").name.split(".")[0] or "output"
+        name = item.emit or stem
+        if len(instances_by_emit.get(name, {item.instance})) > 1 or not item.emit:
+            name = f"{item.instance}_{name}"
+        key = _safe_key(name)
+        pattern = glob_to_regex(item.published_glob) if item.published_glob else None
+        module_directory = (
+            item.evidence[0].rsplit("/", 1)[0] if "/" in item.evidence[0] else "."
+        )
+        description = (
+            descriptions.get((module_directory, item.emit)) if item.emit else None
+        )
+        candidate = _RawCandidate(
+            key=key,
+            path_pattern=pattern,
+            location=item.evidence[1],
+            source="process_output",
+            process=item.instance,
+            description=description,
+            output_format=_format_for(item.declared_path),
+            entity_type=OutputEntityType.FILE if item.declared_path else None,
+            confidence=_ROUTE_CONFIDENCE.get(item.status, 0.5),
+            conditional=item.conditional or item.status is CoverageStatus.NOT_REACHABLE,
+        )
+        found.append(candidate)
+        if item.publication is not None:
+            found.append(
+                replace(
+                    candidate,
+                    location=item.publication.location,
+                    source="publish_rule",
+                )
+            )
+    return found
+
+
+def _workflow_output_candidates(root: Path) -> list[_RawCandidate]:
+    found: list[_RawCandidate] = []
+    for source_path in _source_files(root):
+        if source_path.suffix != ".nf":
+            continue
+        relative = source_path.relative_to(root).as_posix()
+        try:
+            lines = source_path.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()
+        except OSError:
+            continue
+        for line_number, line in enumerate(lines, start=1):
+            workflow_match = _WORKFLOW_OUTPUT.search(line)
+            if workflow_match:
                 found.append(
                     _RawCandidate(
-                        key=_safe_key(str(output_name)),
-                        path_pattern=_glob_pattern(str(pattern)) if pattern else None,
-                        location=relative,
-                        source="module_metadata",
-                        process=str(module) if module else None,
-                        description=str(description) if description else None,
-                        output_format=_format_for(str(pattern)) if pattern else None,
-                        entity_type=OutputEntityType.FILE if pattern else None,
-                        confidence=0.8,
+                        key=_safe_key(workflow_match.group(1)),
+                        path_pattern=None,
+                        location=f"{relative}:{line_number}",
+                        source="workflow_output",
+                        confidence=0.55,
                     )
                 )
     return found
@@ -503,7 +479,11 @@ def discover_output_candidates(
     """Discover stable, merged candidates without making review decisions."""
     root = Path(repository_root).resolve()
     revision = _repository_revision(root)
-    raw = [*_static_candidates(root), *_meta_candidates(root), *_existing_outputs(root)]
+    raw = [
+        *_route_candidates(root),
+        *_workflow_output_candidates(root),
+        *_existing_outputs(root),
+    ]
     if example_output_tree is not None:
         raw.extend(_tree_candidates(Path(example_output_tree), "example_output_tree"))
     if publish_directory is not None:

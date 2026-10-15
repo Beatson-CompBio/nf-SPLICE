@@ -15,32 +15,33 @@
 <button Discover>
 [analysis-output schema version X.Y.Z] 1.0.0
 <button Set version>
-publishDir: main.nf:2 (confidence 0.65)
-[stable key] reports
-[title] Reports
-[description]
+process_output: main.nf:4 (confidence 0.85)
+publish_rule: main.nf:2 (confidence 0.85)
+[stable key] report
+[title] Report
+[description] Job report.
 [category (free text)] job_report
 [stage (optional free text)]
-<output-format> directory
-directory
+<output-format> html
+html
 ▼
 ▲
-<output-scope> Select.NULL
-scope
+<output-scope> job
+job
 ▼
 ▲
-<output-entity> directory
-directory
+<output-entity> file
+file
 ▼
 ▲
-[anchored path pattern(s), comma separated] ^reports/.+$
-^reports/.+$: matches 0 example path(s) []
-[reject reason] Not published
+[anchored path pattern(s), comma separated] ^reports/report\.html$
+^reports/report\.html$: matches 0 example path(s) []
+[reject reason]
 <button Accept>
 <button Reject>
 <button Merge marked>
 <button Split patterns>
 <button Preview JSON>
-Reviewed outputs in draft: 1. Candidates: accepted=1, rejected=1
+Reviewed outputs in draft: 1. Candidates: accepted=1
 
 No issues: this layer is ready to promote.
