@@ -23,6 +23,8 @@ async def settle(app: NfSpliceApp, pilot: object) -> None:
 async def press(app: NfSpliceApp, pilot: object, selector: str) -> None:
     """Press a button as a user would and wait for its action."""
     app.query_one(selector, Button).press()
+    # Let Textual dispatch the button event before checking for spawned workers.
+    await pilot.pause()  # type: ignore[attr-defined]
     await settle(app, pilot)
 
 

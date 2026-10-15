@@ -48,13 +48,16 @@ jobs:
       - name: Test (offline; live Nextflow and AI tests are opt-in)
         run: pytest -m "not live_agent and not nextflow"
       - name: Code quality
+        if: ${{ !cancelled() }}
         run: |
           ruff check src tests scripts
           ruff format --check src tests scripts
           mypy
       - name: Generated contract references are current
+        if: ${{ !cancelled() }}
         run: python scripts/generate_schema_docs.py --check
       - name: Contract registry and installed CLI
+        if: ${{ !cancelled() }}
         run: |
           python -m pip check
           nf-splice --version
