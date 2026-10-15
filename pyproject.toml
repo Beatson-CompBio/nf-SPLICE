@@ -59,6 +59,10 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-config", "--strict-markers"]
+markers = [
+  "nextflow: opt-in integration test requiring a local Nextflow installation",
+  "live_agent: opt-in test calling a real AI provider with real credentials",
+]
 testpaths = ["tests"]
 
 [tool.ruff]

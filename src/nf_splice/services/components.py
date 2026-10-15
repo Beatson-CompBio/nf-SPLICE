@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
-from typing import Any
 
-import yaml  # type: ignore[import-untyped]
 from pydantic import ValidationError
 
 from nf_splice.domain import (
@@ -21,6 +18,11 @@ from nf_splice.domain import (
     ReviewedComponent,
     UnresolvedDecision,
 )
+from nf_splice.inspectors.modules import ModuleDiscoveryError, module_items
+from nf_splice.inspectors.modules import conda_packages as _conda_packages
+from nf_splice.inspectors.modules import detected_versions as _versions
+from nf_splice.inspectors.modules import module_metadata as _metadata
+from nf_splice.inspectors.modules import tool_name as _tool_name
 from nf_splice.services.authoring import (
     load_repository_document,
     save_repository_document,
@@ -41,48 +43,6 @@ def _replace_layer(
     retained = [item for item in layers if item.name != replacement.name]
     retained.append(replacement)
     return tuple(sorted(retained, key=lambda item: item.name))
-
-
-def _module_items(root: Path) -> tuple[dict[str, Any], ...]:
-    path = root / "modules.json"
-    if not path.is_file():
-        raise ComponentReviewError("modules.json is required for component discovery")
-    try:
-        loaded: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise ComponentReviewError(f"invalid modules.json: {error}") from error
-    if not isinstance(loaded, dict) or not isinstance(loaded.get("items"), list):
-        raise ComponentReviewError("modules.json must contain an items array")
-    return tuple(
-        item
-        for item in loaded["items"]
-        if isinstance(item, dict) and item.get("kind") == "module"
-    )
-
-
-def _metadata(path: Path) -> dict[str, Any]:
-    for name in ("meta.yml", "meta.yaml"):
-        candidate = path / name
-        if not candidate.is_file():
-            continue
-        try:
-            loaded: object = yaml.safe_load(candidate.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, yaml.YAMLError):
-            return {}
-        return loaded if isinstance(loaded, dict) else {}
-    return {}
-
-
-def _tool_name(metadata: dict[str, Any], item: dict[str, Any], path: str) -> str:
-    tools = metadata.get("tools")
-    if isinstance(tools, list):
-        for tool in tools:
-            if isinstance(tool, dict) and tool:
-                return str(next(iter(tool)))
-    detected = item.get("tool")
-    if isinstance(detected, str) and detected:
-        return detected
-    return Path(path).name
 
 
 def _container_uris(path: Path) -> tuple[str, ...]:
@@ -106,46 +66,15 @@ def _container_uris(path: Path) -> tuple[str, ...]:
     return tuple(sorted(uris))
 
 
-def _conda_packages(path: Path) -> tuple[str, ...]:
-    environment = path / "environment.yml"
-    if not environment.is_file():
-        return ()
-    try:
-        loaded: object = yaml.safe_load(environment.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError):
-        return ()
-    if not isinstance(loaded, dict) or not isinstance(loaded.get("dependencies"), list):
-        return ()
-    return tuple(
-        sorted(item for item in loaded["dependencies"] if isinstance(item, str))
-    )
-
-
-def _versions(
-    item: dict[str, Any], path: str, uris: tuple[str, ...]
-) -> tuple[str, ...]:
-    values: set[str] = set()
-    detected = item.get("tool_version")
-    if isinstance(detected, str) and detected:
-        values.add(detected)
-    path_version = _SEMVER.match(Path(path).name)
-    if path_version:
-        values.add(path_version.group(1))
-    for uri in uris:
-        basename = uri.rsplit("/", 1)[-1]
-        if ":" not in basename:
-            continue
-        match = _SEMVER.match(basename.split(":", 1)[1])
-        if match:
-            values.add(match.group(1))
-    return tuple(sorted(values))
-
-
 def _discover(
     root: Path,
 ) -> tuple[tuple[ComponentCandidate, tuple[Evidence, ...]], ...]:
     discovered = []
-    for item in sorted(_module_items(root), key=lambda value: str(value.get("path"))):
+    try:
+        items = module_items(root)
+    except ModuleDiscoveryError as error:
+        raise ComponentReviewError(str(error)) from error
+    for item in sorted(items, key=lambda value: str(value.get("path"))):
         relative = item.get("path")
         if not isinstance(relative, str) or not relative:
             continue

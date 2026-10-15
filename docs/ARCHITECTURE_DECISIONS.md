@@ -63,6 +63,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Proposed | — |
 | ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Proposed | — |
 | ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Proposed | — |
+| ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Proposed | — |
 
 ---
 
@@ -1389,3 +1390,87 @@ user-configurable parameters, dropped `hidden`, rebuilt groups without their
 ### Security and privacy
 
 - Permission checks cannot be bypassed by low-level service calls.
+
+---
+
+## ADR-0033: Separate container sources, runtime variants and verified downloadable distributions
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 6 |
+| Scope | Component inventory and container provenance |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0005, ADR-0024, ADR-0029, ADR-0030 |
+| Implementation | `src/nf_splice/domain/components.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/inspectors/modules.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` |
+| Tests | `tests/test_containers.py`, `tests/test_components.py` |
+
+### Context
+
+0.1.0 stored one `container_uri` per component and inferred its type from
+URI prefixes, labelling most unmatched values `docker`. A Quay OCI reference
+could therefore be presented as if a static image file could be downloaded.
+
+### Decision
+
+- Discovery records every container reference with its file/line and
+  runtime condition. The nf-core ternary on `workflow.containerEngine ==
+  'singularity'|'apptainer'` yields distinct Singularity/Apptainer and Docker
+  sources; `withName` config overrides are recorded as additional sources;
+  any other Groovy expression is kept as an unresolved expression, never
+  evaluated. Raw values are preserved verbatim.
+- References are classified (OCI registry, `docker://`, `oras://`, HTTPS
+  static-image candidate, insecure HTTP, local image, unresolved,
+  unsupported). A URL ending in `.img`/`.sif` is only a candidate.
+- A reviewed container is one logical image with `source_images` per
+  concrete runtime. Same-runtime alternatives, unresolved or unsupported
+  references and conflicting versions require explicit resolution; selected
+  sources must come from detected evidence. Container IDs keep the 0.1.0
+  rule (`container-` + 12 hex of the SHA-256 of the primary, preferably
+  Docker, reference) so unchanged legacy IDs stay stable; `legacy_ids`
+  records explicit remappings.
+- A `distribution` (HTTPS download URI, SHA-256, size, file name, `sif`/`img`
+  format, Nextflow cache file name, source runtime) is recorded only by the
+  verification operation, which downloads the image and checks HTTP status,
+  content type, signature, size quota and checksum. A distribution whose
+  checksum does not match a recorded verification is rejected as
+  unverified. `require_downloadable_images` must be reviewed; when true a
+  container without a verified distribution blocks promotion.
+- `components.json` keeps `id`/`type`/`uri`: a verified distribution is
+  published as its Singularity/Apptainer runtime with the download URI;
+  otherwise the native Docker/OCI reference is published as `docker`. Native
+  sources always remain in `source_images`, and `resolution.status` states
+  `verified` or `resolved`.
+- Network, materialisation and upload are explicit, opt-in operations with
+  injectable transports: HTTPS only, no embedded credentials, no private,
+  loopback, link-local, multicast or reserved targets (checked at every
+  redirect hop), bounded streaming to temporary files and atomic placement.
+  Materialisation uses an installed Apptainer/Singularity (never sudo or
+  Docker) and leaves no partial file. Uploads go only to an operator-
+  configured target (`NF_SPLICE_IMAGE_STORE_URL` with an
+  `NF_SPLICE_IMAGE_STORE_ALLOWED_HOSTS` allowlist), reuse an identical object
+  by digest and never overwrite an object with a different checksum. No
+  organisation URL or credential is built in.
+- The Nextflow cache file name follows the published Nextflow
+  `SingularityCache.simpleName` rule (scheme stripped, `:`/`/` → `-`,
+  `.img`/`.sif`). It is checked against a live Nextflow only by the opt-in
+  `nextflow` integration test.
+
+### Alternatives rejected
+
+- Inferring runtime type from URI shape: mislabels OCI references as
+  downloadable images.
+- Accepting checksums typed into a draft: unverifiable placeholders.
+
+### Consequences
+
+- Ingestion can distinguish registry references from curl-able images.
+- The real organisational object store has not been tested; it needs
+  credentials and explicit authorisation.
+
+### Security and privacy
+
+- External URLs are untrusted (SSRF, redirect and quota protections); no
+  credentials enter the bundle.
