@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -191,7 +192,7 @@ def test_unsafe_adopted_configs_are_reported(
 def test_review_requires_one_explicit_route_and_detected_values(tmp_path: Path) -> None:
     _repository(tmp_path)
     discover_execution(tmp_path)
-    common = {
+    common: dict[str, Any] = {
         "profile_type": "development",
         "description": "x",
         "container_engine": "singularity",

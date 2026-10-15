@@ -65,6 +65,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Proposed | — |
 | ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Proposed | — |
 | ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Proposed | — |
+| ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Proposed | — |
 
 ---
 
@@ -1532,3 +1533,60 @@ notion of a platform default profile.
 ### Consequences
 
 - Site details are an operator concern recorded as `site_parameters`.
+
+---
+
+## ADR-0035: Validate, repair or generate the RO-Crate by review while preserving the root source
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 7 and 0.3 (ADR-0022 row) |
+| Scope | Workflow provenance and integration-review provenance |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0022, ADR-0029, ADR-0030, ADR-0034 |
+| Implementation | `src/nf_splice/layers/provenance.py` |
+| Tests | `tests/test_layer_provenance.py`, `tests/test_provenance.py` |
+
+### Context
+
+ADR-0022 required the root RO-Crate to be copied byte-for-byte after a few
+structural checks, so stale versions or template placeholders were published
+unchanged and a pipeline without an RO-Crate could not be integrated.
+
+### Decision
+
+- The root `ro-crate-metadata.json` is analysed for RO-Crate 1.1 structure
+  (context, object graph, unique `@id`s, metadata descriptor about `./`,
+  `conformsTo`), Workflow RO-Crate conventions (`mainEntity` typed
+  `ComputationalWorkflow`), placeholders, malformed ORCIDs and field-level
+  differences from the reviewed identity (name, version, description,
+  licence, workflow URL and credited authors), each with severity, crate
+  value and reviewed value.
+- `ro-crate-metadata.draft.yaml` records one reviewed strategy:
+  `include` (allowed only without blocking differences; publishes the root
+  bytes unchanged), `enriched` (a corrected copy of the root graph stored as
+  YAML JSON-LD only if it round-trips losslessly) or `generated` (a minimal
+  RO-Crate 1.1 + Workflow RO-Crate graph built from reviewed identity). The
+  reviewed root hash is recorded; a later change to the root file makes the
+  strategy stale until reviewed again. The root file is never modified;
+  `nf-core pipelines rocrate .` may be run only by explicit request and only
+  when no root file exists.
+- Integration-review provenance is added as namespaced `#nf-splice`
+  `SoftwareApplication` and `CreateAction` entities (instrument, result,
+  optional source object with its SHA-256, reviewer by public label). The
+  action's `endTime` is the approval time stored in the draft, so rebuilding
+  produces identical bytes. Pipeline authors and integration reviewers stay
+  distinct roles.
+
+### Alternatives rejected
+
+- Editing the developer's root RO-Crate in place.
+- Timestamps at render time: non-deterministic builds.
+
+### Consequences
+
+- Together with ADR-0034 this replaces ADR-0022's "copy unchanged only"
+  rule; ADR-0022 is superseded when these layers become Current.
