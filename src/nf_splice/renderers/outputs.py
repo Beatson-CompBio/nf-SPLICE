@@ -15,17 +15,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import ValidationError
 
 from nf_splice.contracts import OUTPUTS_FAMILY, contract_extension, current_revision
 from nf_splice.domain import (
-    AuthoringDocument,
-    DecisionStatus,
     OutputScope,
     ReviewedOutput,
     expand_output_path_pattern,
 )
-from nf_splice.domain.identity import derive_pipeline_id
 
 #: Format revision of the developer-readable ``outputs.yaml`` companion.
 OUTPUT_CATALOGUE_FORMAT_VERSION = "0.3.0"
@@ -398,67 +394,3 @@ def render_outputs(contract: OutputContractInput) -> RenderedOutputContracts:
     return RenderedOutputContracts(
         catalogue=catalogue, schema=schema, schema_document=schema_document
     )
-
-
-def _reviewed_outputs(document: AuthoringDocument) -> tuple[ReviewedOutput, ...]:
-    layer = next((item for item in document.layers if item.name == "outputs"), None)
-    if layer is None or not layer.configured:
-        raise OutputContractError("output review is not configured")
-    if layer.unresolved:
-        raise OutputContractError(
-            f"output contract is blocked by {len(layer.unresolved)} unresolved "
-            "decision(s)"
-        )
-    decisions = {item.id: item for item in document.decisions}
-    outputs: list[ReviewedOutput] = []
-    for decision_id in layer.decision_ids:
-        decision = decisions[decision_id]
-        if decision.status is DecisionStatus.REJECTED:
-            continue
-        if decision.status is not DecisionStatus.REVIEWED:
-            raise OutputContractError(
-                f"output decision {decision_id!r} is not reviewed"
-            )
-        try:
-            outputs.append(ReviewedOutput.model_validate(decision.value))
-        except ValidationError as error:
-            raise OutputContractError(
-                f"reviewed output decision {decision_id!r} is invalid: {error}"
-            ) from error
-    return tuple(outputs)
-
-
-def output_contract_input(document: AuthoringDocument) -> OutputContractInput:
-    """Adapt reviewed authoring state into the typed output-contract input."""
-    outputs = _reviewed_outputs(document)
-    if document.output_contract is None:
-        raise OutputContractError(
-            "output contract version is not reviewed; run configure outputs "
-            "--contract-version X.Y.Z"
-        )
-    pipeline = document.pipeline
-    missing = [
-        name
-        for name in ("name", "version", "repository_url")
-        if getattr(pipeline, name) is None
-    ]
-    if missing:
-        raise OutputContractError(
-            f"reviewed pipeline identity is missing: {', '.join(missing)}"
-        )
-    return OutputContractInput(
-        pipeline=OutputPipeline(
-            id=derive_pipeline_id(str(pipeline.name)),
-            name=str(pipeline.name),
-            version=str(pipeline.version),
-            repository_url=str(pipeline.repository_url),
-            release_url=pipeline.release_url,
-        ),
-        schema_version=document.output_contract.schema_version,
-        outputs=outputs,
-    )
-
-
-def render_output_contracts(document: AuthoringDocument) -> RenderedOutputContracts:
-    """Render both output files from reviewed authoring state."""
-    return render_outputs(output_contract_input(document))

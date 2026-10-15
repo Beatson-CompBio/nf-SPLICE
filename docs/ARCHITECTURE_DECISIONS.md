@@ -1005,11 +1005,12 @@ draft from a model would discard developer edits and comments.
 | Superseded by | — |
 | Related | ADR-0024, ADR-0025, ADR-0028 |
 | Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/` |
-| Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_authoring.py` |
+| Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_output_discovery.py` |
 
 Correction 2026-10-15: the Implementation row now names the `interfaces/tui/`
-wizard package that replaced `interfaces/tui.py` (ADR-0038); the decision is
-unchanged.
+wizard package that replaced `interfaces/tui.py` (ADR-0038), and the Tests row
+names `tests/test_output_discovery.py`, which replaced the removed
+monolithic-state `tests/test_authoring.py`; the decision is unchanged.
 
 ### Context
 
@@ -1414,7 +1415,7 @@ user-configurable parameters, dropped `hidden`, rebuilt groups without their
 | Superseded by | — |
 | Related | ADR-0005, ADR-0024, ADR-0029, ADR-0030 |
 | Implementation | `src/nf_splice/domain/components.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/inspectors/modules.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` |
-| Tests | `tests/test_containers.py`, `tests/test_components.py` |
+| Tests | `tests/test_containers.py` |
 
 ### Context
 
@@ -1498,7 +1499,7 @@ could therefore be presented as if a static image file could be downloaded.
 | Superseded by | — |
 | Related | ADR-0022, ADR-0030, ADR-0032 |
 | Implementation | `src/nf_splice/layers/execution.py`, `src/nf_splice/inspectors/profiles.py` |
-| Tests | `tests/test_layer_execution.py`, `tests/test_execution.py` |
+| Tests | `tests/test_layer_execution.py` |
 
 ### Context
 
@@ -1555,7 +1556,7 @@ notion of a platform default profile.
 | Superseded by | — |
 | Related | ADR-0022, ADR-0029, ADR-0030, ADR-0034 |
 | Implementation | `src/nf_splice/layers/provenance.py` |
-| Tests | `tests/test_layer_provenance.py`, `tests/test_provenance.py` |
+| Tests | `tests/test_layer_provenance.py` |
 
 ### Context
 

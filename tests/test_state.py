@@ -37,12 +37,8 @@ def _document() -> str:
 def test_initialisation_creates_and_inspection_recognizes_control_files(
     tmp_path: Path,
 ) -> None:
-    ApplicationService().initialise(
-        tmp_path,
-        name="pipeline",
-        version="1.0.0",
-        repository_url="https://github.com/org/pipeline",
-    )
+    (tmp_path / "splice").mkdir()
+    (tmp_path / "splice" / "nf-splice.yaml").write_text(_document(), encoding="utf-8")
     lock = tmp_path / "splice" / "nf-splice.lock.json"
     lock.write_text(
         json.dumps(

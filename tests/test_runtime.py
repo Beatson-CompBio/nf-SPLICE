@@ -7,98 +7,27 @@ from pathlib import Path
 
 import pytest
 
-from nf_splice.domain import (
-    DEFAULT_JOB_CATEGORY,
-    AuthoringDocument,
-    Decision,
-    DecisionStatus,
-    LayerState,
-    OutputContractSettings,
-    OutputEntityType,
-    OutputFormat,
-    OutputScope,
-    PipelineIdentity,
-    ReviewedOutput,
-    dump_authoring_document,
-)
+from nf_splice.renderers import render_outputs
 from nf_splice.runtime import (
     ANALYSIS_OUTPUT_FILENAME,
     AnalysisOutputError,
     generate_analysis_output,
     load_and_validate_analysis_output,
 )
-from nf_splice.services import build_output_contracts
 
 JOB = {"job_id_short": "A123"}
 
 
-def _reviewed_document() -> AuthoringDocument:
-    outputs = (
-        ReviewedOutput(
-            key="run_report_html",
-            title="Run report",
-            description="Run-level HTML report.",
-            category=DEFAULT_JOB_CATEGORY,
-            formats=(OutputFormat.HTML,),
-            scopes=(OutputScope.JOB,),
-            entity_types=(OutputEntityType.FILE,),
-            path_patterns=(r"^reports/report\.html$",),
-        ),
-        ReviewedOutput(
-            key="sample_metrics_json",
-            title="Sample metrics",
-            description="Per-sample JSON metrics.",
-            category="quality_control",
-            formats=(OutputFormat.JSON,),
-            scopes=(OutputScope.SAMPLE,),
-            entity_types=(OutputEntityType.FILE,),
-            path_patterns=(r"^metrics/{sample}\.json$",),
-        ),
-        ReviewedOutput(
-            key="sample_quantification",
-            title="Sample quantification directory",
-            description="Complete per-sample quantification results.",
-            category="quantification",
-            formats=(OutputFormat.DIRECTORY,),
-            scopes=(OutputScope.SAMPLE,),
-            entity_types=(OutputEntityType.DIRECTORY,),
-            path_patterns=(r"^quant/{sample}$",),
-        ),
-    )
-    decisions = tuple(
-        Decision(
-            id=f"output:{index}",
-            status=DecisionStatus.REVIEWED,
-            value=output.model_dump(mode="json"),
-        )
-        for index, output in enumerate(outputs)
-    )
-    return AuthoringDocument(
-        pipeline=PipelineIdentity(
-            name="pipeline",
-            version="2.3.4",
-            repository_url="https://github.com/org/pipeline",
-        ),
-        output_contract=OutputContractSettings(schema_version="1.2.0"),
-        decisions=decisions,
-        layers=(
-            LayerState(
-                name="outputs",
-                configured=True,
-                decision_ids=tuple(item.id for item in decisions),
-            ),
-        ),
-    )
-
-
 def _contracts(root: Path) -> bytes:
-    (root / "splice").mkdir(exist_ok=True)
-    (root / "splice" / "nf-splice.yaml").write_text(
-        dump_authoring_document(_reviewed_document()), encoding="utf-8"
-    )
-    authoring = (root / "splice" / "nf-splice.yaml").read_bytes()
-    build_output_contracts(root)
-    return authoring
+    """Publish a reviewed output contract; return its bytes for comparison."""
+    from test_output_contracts import contract
+
+    rendered = render_outputs(contract())
+    splice = root / "splice"
+    splice.mkdir(exist_ok=True)
+    (splice / "outputs.yaml").write_text(rendered.catalogue, encoding="utf-8")
+    (splice / "outputs.schema.json").write_text(rendered.schema, encoding="utf-8")
+    return rendered.schema.encode("utf-8")
 
 
 def _publish_directory(root: Path) -> Path:
@@ -117,7 +46,7 @@ def _publish_directory(root: Path) -> Path:
 def test_publish_directory_generates_valid_inventory_without_static_mutation(
     tmp_path: Path,
 ) -> None:
-    original_authoring = _contracts(tmp_path)
+    original_schema = _contracts(tmp_path)
     contract_bytes = {
         path.name: path.read_bytes() for path in (tmp_path / "splice").iterdir()
     }
@@ -153,7 +82,7 @@ def test_publish_directory_generates_valid_inventory_without_static_mutation(
     assert "checksum" in by_path["reports/report.html"]
     assert result.document["job_metadata"] == {"annotations": {"instrument": "NovaSeq"}}
     assert "run_metadata" not in result.document
-    assert (tmp_path / "splice" / "nf-splice.yaml").read_bytes() == original_authoring
+    assert (tmp_path / "splice" / "outputs.schema.json").read_bytes() == original_schema
     assert {
         path.name: path.read_bytes() for path in (tmp_path / "splice").iterdir()
     } == contract_bytes
