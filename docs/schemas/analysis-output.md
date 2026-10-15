@@ -175,7 +175,3 @@ Validate a document from the command line:
 ```bash
 nf-splice analysis-output validate results/analysis_output.json
 ```
-
-Documents written by nf-splice 0.1.0 used `scope: run` for job-wide outputs.
-See the [migration guide](../CONTRACT_MIGRATION_0.3.0.md) before reading
-them.

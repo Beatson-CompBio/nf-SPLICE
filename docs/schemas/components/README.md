@@ -73,11 +73,11 @@ Container images. No other keys are allowed.
 | --- | --- | --- | --- |
 | `id` | `container-` followed by 12 hexadecimal characters | yes | Stable container identifier. Modules link to it through `container_id`. |
 | `type` | one of `docker`, `singularity`, `apptainer`, `oras` | yes | Runtime of `uri`: `singularity` or `apptainer` for a verified distribution, otherwise the runtime of the native reference. |
-| `uri` | non-empty string | yes | The verified download URL when a distribution exists, otherwise the native reference. Kept for readers of 0.1.0 bundles; new code should use `distribution` and `source_images`. |
+| `uri` | non-empty string | yes | The verified download URL when a distribution exists, otherwise the native reference. A convenience summary: prefer `distribution` and `source_images`, which say exactly what can be downloaded and for which runtime. |
 | `source_images` | object (at least 1 key) | yes | Native references. |
 | `distribution` | object | no | Verified image file. |
 | `resolution` | object | yes | Readiness. |
-| `legacy_ids` | array of strings: `container-` followed by 12 hexadecimal characters (no duplicates) | no | Identifiers this container had in a 0.1.0 bundle. |
+| `legacy_ids` | array of strings: `container-` followed by 12 hexadecimal characters (no duplicates) | no | Earlier identifiers of this container, kept when a pre-release test bundle was rebuilt. Usually absent. |
 
 ### `containers[].source_images`
 

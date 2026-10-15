@@ -47,8 +47,7 @@ There is no `outputs.json`. Output metadata lives only in
 ## Reading a bundle
 
 1. Read `bundle.json`. Check `schema_id` and `schema_version`, and reject
-   revisions you do not support. A `bundle.json` with `schema_version`
-   `1.0` and no `schema_id` comes from nf-splice 0.1.0.
+   revisions you do not support.
 2. For each entry in `schemas`, open the file at `path` and validate it
    against the family revision given by `version`.
 3. Check that the workflow identity in every file (`pipeline`,
@@ -126,6 +125,10 @@ itself as a schema of its own dialect (2020-12 and draft-07 respectively).
 
 ## Compatibility
 
+Revision `0.3.0` is the first supported revision of every family. Bundles
+from earlier pre-release test versions of nf-splice are not supported
+contracts; rebuild them with nf-splice 0.3.0.
+
 A contract revision never changes once published. A new revision is needed
 to remove or rename a key, narrow a type or an allowed set of values, change
 a fixed value, close an object or make a key required. Adding an optional
@@ -140,13 +143,7 @@ registry.
 
 | nf-splice | bundle | inputs | outputs | components | execution-profiles |
 | --- | --- | --- | --- | --- | --- |
-| 0.1.0 | legacy 1.0 (unregistered) | unversioned | unversioned | legacy 1.0 | legacy 1.0 |
 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 | 0.3.0 |
-
-A consumer that understands only 0.1.0 bundles cannot read 0.3.0 bundles
-without an adapter. See the
-[migration guide](CONTRACT_MIGRATION_0.3.0.md) for field mappings and the
-recommended roll-out order.
 
 ## Terms
 
