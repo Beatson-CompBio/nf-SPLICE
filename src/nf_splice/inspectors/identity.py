@@ -25,7 +25,7 @@ _NEXTFLOW_KEYS = (
     r"nextflowVersion|doi|license|docsUrl"
 )
 _ASSIGNMENT = re.compile(
-    rf"(?m)^\s*(?P<key>{_NEXTFLOW_KEYS})\s*=\s*"
+    rf"(?m)(?:^|(?<=[{{;]))\s*(?P<key>{_NEXTFLOW_KEYS})\s*=\s*"
     r"(?P<quote>['\"])(?P<value>.+?)(?P=quote)"
 )
 _NEXTFLOW_METADATA_DOTTED = re.compile(
@@ -323,7 +323,7 @@ def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection
                 value = {"doi": raw.removeprefix("https://doi.org/")}
             elif field == "engine_version_min":
                 value = re.sub(r"^[!>=\s]+", "", raw)
-            line = content.count("\n", 0, match.start()) + 1
+            line = content.count("\n", 0, match.start("key")) + 1
             values.append(
                 IdentityValue(
                     field,

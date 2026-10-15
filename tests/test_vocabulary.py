@@ -91,3 +91,19 @@ def test_upstream_nextflow_metadata_scope_is_still_parsed(tmp_path: Path) -> Non
     assert ("name", "block-name") in values
     assert ("version", "2.0.0") in values
     assert ("repository_url", "https://github.com/org/block-name") in values
+
+
+def test_single_line_nextflow_metadata_block_keeps_line_numbers(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "nextflow.config").write_text(
+        "// header\nmanifest { name = 'one-line'; version = '3.1.0' }\n",
+        encoding="utf-8",
+    )
+    found = {
+        item.field: (item.value, item.evidence.provenance.location)
+        for item in inspect_pipeline_identity(tmp_path).values
+        if item.evidence.provenance.source != "git_remote"
+    }
+    assert found["name"] == ("one-line", "nextflow.config:2")
+    assert found["version"] == ("3.1.0", "nextflow.config:2")
