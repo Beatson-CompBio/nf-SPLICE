@@ -223,3 +223,7 @@ __marimo__/
 # ignored directory inside the clone. It is never part of the published
 # splice/ bundle and must never be staged (see scripts/check_staged_paths.py).
 /.nf-splice-local/
+
+# Personal Claude Code settings for this clone. A shared .claude/settings.json
+# may be committed deliberately, so only the local override file is ignored.
+/.claude/settings.local.json
