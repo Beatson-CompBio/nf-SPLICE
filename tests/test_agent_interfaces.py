@@ -351,6 +351,7 @@ def test_claude_adapter_is_least_privilege_and_resumes(
     root = copy_fixture(tmp_path)
     calls = _Calls()
     monkeypatch.setitem(sys.modules, "claude_agent_sdk", _fake_sdk(calls))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test-not-real")
     from multi_route import IDENTITY
 
     engine = SessionEngine.create(
@@ -376,6 +377,11 @@ def test_claude_adapter_is_least_privilege_and_resumes(
         options["disallowed_tools"]
     )
     assert options["setting_sources"] == [] and options["strict_mcp_config"] is True
+    # A Console API key only, with a private config folder; never a login.
+    env = options["env"]
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-test-not-real"
+    assert env["CLAUDE_CODE_OAUTH_TOKEN"] == "" and env["ANTHROPIC_AUTH_TOKEN"] == ""
+    assert Path(env["CLAUDE_CONFIG_DIR"]) != Path.home() / ".claude"
     assert all(name.startswith("mcp__nf_splice__") for name in options["allowed_tools"])
     assert "mcp__nf_splice__build_bundle" not in options["allowed_tools"]
     assert "nf-splice-agent-operations" in options["system_prompt"]

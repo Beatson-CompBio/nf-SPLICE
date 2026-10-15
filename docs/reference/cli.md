@@ -77,6 +77,12 @@ Global options go before the command name, for example
 | [`nf-splice git commit`](#nf-splice-git-commit) | Commit the validated splice/ and .gitignore with your Git identity. |
 | [`nf-splice git push`](#nf-splice-git-push) | Push the integration branch to a remote you choose (never automatic). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
+| [`nf-splice provider list`](#nf-splice-provider-list) | List the providers, how each signs in, where it runs and who pays. |
+| [`nf-splice provider doctor`](#nf-splice-provider-doctor) | Diagnose providers: installed parts, sign-in, routing and billing. |
+| [`nf-splice provider models`](#nf-splice-provider-models) | List the models the signed-in account or configuration offers. |
+| [`nf-splice provider select`](#nf-splice-provider-select) | Save the provider (and model) used when --provider is not given. |
+| [`nf-splice provider auth`](#nf-splice-provider-auth) | Sign in, save a key or choose how a provider authenticates. |
+| [`nf-splice provider test`](#nf-splice-provider-test) | Run one small real turn and check that the model calls an nf-splice tool. |
 
 ### nf-splice inspect
 
@@ -271,7 +277,7 @@ nf-splice ask [OPTIONS] QUESTION
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--provider` | `<str>` | `claude` | AI provider: claude (needs the claude extra), or scripted (offline, needs --script). |
+| `--provider` | `<str>` |  | AI provider: claude, openai, codex, opencode, or scripted (offline, needs --script). Defaults to the one saved with `nf-splice provider select`. |
 | `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
 | `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
 | `--layer` | `<str>` |  | The layer you are looking at. |
@@ -621,7 +627,7 @@ nf-splice session start [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--mode` | `<str>` | `assisted` | assisted (you approve each stage) or autonomous. |
-| `--provider` | `<str>` | `claude` | AI provider: claude (needs the claude extra), or scripted (offline, needs --script). |
+| `--provider` | `<str>` |  | AI provider: claude, openai, codex, opencode, or scripted (offline, needs --script). Defaults to the one saved with `nf-splice provider select`. |
 | `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
 | `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
 | `--objective` | `<str>` | `Integrate this Nextflow pipeline with SPLICE.` | What to achieve. |
@@ -784,6 +790,9 @@ nf-splice session resume [OPTIONS]
 | `--session` | `<str>` |  | Session ID; the most recent when omitted. |
 | `--mode` | `<str>` |  | Switch to assisted, autonomous or manual before continuing. |
 | `--allow` | `<str>` |  | Grant an extra permission: overwrite, external_tools, run_nextflow or network. Repeatable. |
+| `--provider` | `<str>` |  | Continue with another provider (the session's record carries the context; nothing is switched automatically). |
+| `--model` | `<str>` |  | Continue with another model. |
+| `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
 | `--interactive` |  |  | Converse in this terminal (default when it is a terminal). |
 | `--json` |  |  | Emit stable JSON. |
 
@@ -992,3 +1001,104 @@ nf-splice preview outputs [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--format` | `<str>` | `json` | json or yaml. |
+
+### nf-splice provider list
+
+List the providers, how each signs in, where it runs and who pays.
+
+```text
+nf-splice provider list [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice provider doctor
+
+Diagnose providers: installed parts, sign-in, routing and billing.
+
+```text
+nf-splice provider doctor [OPTIONS] [NAME]
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | no | One provider; all when omitted. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--online` |  |  | Contact the provider to verify the credential. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice provider models
+
+List the models the signed-in account or configuration offers.
+
+```text
+nf-splice provider models [OPTIONS] NAME
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | Provider name. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice provider select
+
+Save the provider (and model) used when --provider is not given.
+
+```text
+nf-splice provider select [OPTIONS] NAME
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | Provider name. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--model` | `<str>` |  | The model to use with it. |
+
+### nf-splice provider auth
+
+Sign in, save a key or choose how a provider authenticates.
+
+```text
+nf-splice provider auth [OPTIONS] NAME
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | claude, openai, codex or opencode. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--sign-in` |  |  | OpenAI: sign in with ChatGPT in your browser. |
+| `--sign-out` |  |  | OpenAI: revoke and forget the active sign-in. |
+| `--account` | `<str>` |  | OpenAI: the saved account (client ID) to use. |
+| `--api-key` |  |  | Save an API key, typed at a hidden prompt. |
+| `--forget-key` |  |  | Remove a saved key. |
+| `--use` | `<str>` |  | OpenAI: chatgpt (plan usage) or api-key (metered API billing). |
+| `--yes` |  |  | Confirm switching to metered API billing. |
+
+### nf-splice provider test
+
+Run one small real turn and check that the model calls an nf-splice tool.
+
+```text
+nf-splice provider test [OPTIONS] NAME
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | Provider name. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--model` | `<str>` |  | Model to test. |
+| `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
+| `--json` |  |  | Emit stable JSON. |

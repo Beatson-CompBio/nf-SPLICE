@@ -36,6 +36,9 @@ classifiers = [
 claude = [
   "claude-agent-sdk>=0.2.167,<0.3",
 ]
+openai = [
+  "PyJWT[crypto]>=2.10,<3",
+]
 dev = [
   "build>=1.5,<2",
   "mypy>=2.3,<3",

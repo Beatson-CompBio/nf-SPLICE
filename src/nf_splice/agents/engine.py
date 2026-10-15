@@ -46,6 +46,11 @@ from nf_splice.agents.protocol import (
     require_consent,
     require_tool_calling,
 )
+from nf_splice.agents.providers.base import (
+    RETRYABLE,
+    ProviderError,
+    ProviderErrorKind,
+)
 from nf_splice.agents.report import build_report, report_text
 from nf_splice.agents.sandbox import Sandbox
 from nf_splice.agents.stages import (
@@ -97,6 +102,14 @@ _PREVIEW_APPROVER = Actor(label="preview", kind=ActorKind.HUMAN)
 
 class StaleProposal(SessionError):
     """Files changed after a proposal was made; it must be planned again."""
+
+
+class ProviderInterrupted(SessionError):
+    """The provider stopped a turn; the session is paused, not failed."""
+
+    def __init__(self, error: ProviderError) -> None:
+        super().__init__(str(error))
+        self.error = error
 
 
 def _digest(operations: list[PlannedOperation]) -> str:
@@ -163,7 +176,12 @@ class SessionEngine:
             mode=mode,
             objective=objective,
             provider=ProviderRecord(
-                name=capabilities.name, remote=capabilities.remote, script=script
+                name=capabilities.name,
+                remote=capabilities.remote,
+                script=script,
+                model=policy.budgets.model or getattr(provider, "model", None),
+                billing=capabilities.billing,
+                inference=capabilities.inference,
             ),
             policy=policy,
         )
@@ -455,6 +473,39 @@ class SessionEngine:
 
     # -------------------------------------------------------- provider turns
 
+    def _history_context(self) -> str:
+        """A bounded summary of the session for providers without continuation."""
+        entries = [
+            item
+            for item in self.state.conversation
+            if item.kind not in {"external_change", "stage_complete"}
+        ][-12:]
+        if not entries:
+            return ""
+        lines = [
+            f"- [{item.role}/{item.kind}] {' '.join(item.text.split())[:400]}"
+            for item in entries
+        ]
+        return (
+            "\n\nEarlier in this session (nf-splice's record; the drafts and "
+            "gates are the source of truth, not this summary):\n" + "\n".join(lines)
+        )
+
+    def _account_usage(self, data: Any) -> None:
+        cost = data.get("cost_usd")
+        record = self.state.usage.by_provider.setdefault(
+            self.state.provider.name,
+            {"turns": 0, "cost_usd": 0.0, "billing": self.state.provider.billing},
+        )
+        record["turns"] = int(record.get("turns", 0)) + 1
+        if cost is not None:
+            self.state.usage.cost_usd += float(cost)
+            self.state.usage.cost_reported = True
+            record["cost_usd"] = float(record.get("cost_usd", 0.0)) + float(cost)
+        for key in ("input_tokens", "output_tokens"):
+            if data.get(key) is not None:
+                record[key] = int(record.get(key, 0)) + int(data[key])
+
     async def _turn(
         self,
         purpose: str,
@@ -474,9 +525,15 @@ class SessionEngine:
             else max(budgets.max_budget_usd - spent, 0.0)
         )
         if remaining == 0.0:
-            toolbox.outcome.budget_exhausted = True
-            toolbox.outcome.failures.append("the session's spending budget is used up")
-            return toolbox.outcome
+            raise ProviderInterrupted(
+                ProviderError(
+                    ProviderErrorKind.BUDGET_EXHAUSTED,
+                    "the session's spending budget is used up",
+                    "Resume with a larger --max-budget-usd or continue manually.",
+                )
+            )
+        if self.state.provider.conversation_ref is None:
+            instruction += self._history_context()
         request = TurnRequest(
             purpose=purpose,
             instruction=instruction,
@@ -486,10 +543,9 @@ class SessionEngine:
             max_turns=budgets.max_turns_per_step,
             timeout_seconds=budgets.turn_timeout_seconds,
             max_budget_usd=remaining,
-            model=budgets.model,
+            model=budgets.model or self.state.provider.model,
             conversation_ref=self.state.provider.conversation_ref,
         )
-        self.state.usage.provider_turns += 1
         messages: list[str] = []
 
         async def consume(events: AsyncIterator[Any]) -> None:
@@ -499,27 +555,63 @@ class SessionEngine:
                 elif event.kind is EventKind.ERROR:
                     toolbox.outcome.failures.append(event.text)
                 elif event.kind is EventKind.USAGE:
-                    self.state.usage.cost_usd += float(event.data.get("cost_usd") or 0)
+                    self._account_usage(event.data)
                 if self._cancel.is_set():
                     await session.cancel()
                     break
 
-        try:
-            await asyncio.wait_for(
-                consume(session.turn(request)), timeout=budgets.turn_timeout_seconds
-            )
-        except asyncio.TimeoutError:
-            await session.cancel()
-            toolbox.outcome.failures.append(
-                f"the provider turn exceeded {budgets.turn_timeout_seconds:.0f} s"
-            )
-        except ProviderUnavailable:
-            raise
-        except Exception as error:
-            # A provider failure ends the turn; the gate still decides the stage.
-            toolbox.outcome.failures.append(
-                f"provider error: {type(error).__name__}: {error}"
-            )
+        attempt = 0
+        while True:
+            # Persist before every provider request, so nothing is lost if the
+            # process, the network or the provider stops here.
+            self.state.usage.provider_turns += 1
+            self.store.save(self.state)
+            try:
+                await asyncio.wait_for(
+                    consume(session.turn(request)),
+                    timeout=budgets.turn_timeout_seconds,
+                )
+                break
+            except asyncio.TimeoutError:
+                await session.cancel()
+                toolbox.outcome.failures.append(
+                    f"the provider turn exceeded {budgets.turn_timeout_seconds:.0f} s"
+                )
+                break
+            except ProviderUnavailable:
+                raise
+            except ProviderError as error:
+                untouched = not (
+                    toolbox.outcome.staged
+                    or toolbox.outcome.executed
+                    or toolbox.outcome.denied
+                    or messages
+                )
+                if (
+                    error.kind in RETRYABLE
+                    and attempt < 2
+                    and untouched
+                    and not self._cancel.is_set()
+                ):
+                    attempt += 1
+                    delay = min(error.retry_after or 2.0 * 2**attempt, 60.0)
+                    self.state.say(
+                        "system",
+                        "provider_retry",
+                        f"{error} Retrying in {delay:.0f} s (attempt {attempt} of 2).",
+                        stage=stage,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                self.state.provider.conversation_ref = session.conversation_ref
+                raise ProviderInterrupted(error) from error
+            except Exception as error:
+                # An unclassified provider failure ends the turn; the gate
+                # still decides the stage.
+                toolbox.outcome.failures.append(
+                    f"provider error: {type(error).__name__}: {error}"
+                )
+                break
         self.state.provider.conversation_ref = session.conversation_ref
         toolbox.outcome.messages = messages
         if messages:
@@ -527,6 +619,59 @@ class SessionEngine:
         for failure in toolbox.outcome.failures:
             self.state.say("system", "failure", failure, stage=stage)
         return toolbox.outcome
+
+    def _pause_for_provider(self, interruption: ProviderInterrupted) -> SessionState:
+        """Stop safely after a provider problem; the session resumes later."""
+        error = interruption.error
+        self.state.transaction = None
+        for stage in ORDER:
+            record = self.state.stages[stage]
+            if record.status in {StageStatus.EXECUTING, StageStatus.REPAIRING}:
+                record.status = StageStatus.PENDING
+                record.attempts = max(record.attempts - 1, 0)
+        self.state.interruption = error.to_json()
+        self.state.status = SessionStatus.PAUSED
+        self.state.say(
+            "system",
+            "provider_interrupted",
+            f"The provider stopped the session: {error}. Your work is saved; resume "
+            "with `nf-splice session resume` (optionally with another provider), "
+            "or continue manually.",
+            data=error.to_json(),
+        )
+        self._save()
+        return self.state
+
+    def switch_provider(
+        self, provider: AgentProvider, actor: Actor, *, model: str | None = None
+    ) -> SessionState:
+        """Use another provider or model; nf-splice's record carries the context."""
+        require_tool_calling(provider)
+        require_consent(provider, self.state.policy.allow_remote_model)
+        self._require_idle()
+        capabilities = provider.capabilities
+        previous = self.state.provider
+        self.state.provider_history.append(
+            {"provider": previous.name, "model": previous.model or "", "until": now()}
+        )
+        self.state.provider = ProviderRecord(
+            name=capabilities.name,
+            remote=capabilities.remote,
+            model=model or getattr(provider, "model", None),
+            billing=capabilities.billing,
+            inference=capabilities.inference,
+            script=previous.script if capabilities.name == previous.name else None,
+        )
+        self.provider = provider
+        self._session = None
+        self.state.say(
+            "user",
+            "provider",
+            f"{actor.label} switched the provider from {previous.name} to "
+            f"{capabilities.name}" + (f" ({model})" if model else "") + ".",
+        )
+        self._save()
+        return self.state
 
     def _toolbox(
         self,
@@ -945,7 +1090,7 @@ class SessionEngine:
 
     # -------------------------------------------------------- assisted mode
 
-    async def advance(self) -> SessionState:
+    async def _advance(self) -> SessionState:
         """Move the session forward until it needs the user or finishes."""
         self._prepare()
         state = self.state
@@ -1045,7 +1190,7 @@ class SessionEngine:
         self._save()
         return state
 
-    async def approve(self, actor: Actor) -> SessionState:
+    async def _approve(self, actor: Actor) -> SessionState:
         """Apply the pending proposal exactly as shown, then validate it."""
         if actor.kind is not ActorKind.HUMAN:
             raise SessionError("approval needs a person's actor label (--actor)")
@@ -1112,7 +1257,7 @@ class SessionEngine:
         if result.passed:
             self._complete(stage, result)
             self._save()
-            return await self.advance()
+            return await self._advance()
         record = self.state.stages[stage]
         record.status = StageStatus.VALIDATION_FAILED
         record.issues = list(result.issues)
@@ -1134,7 +1279,7 @@ class SessionEngine:
         self._save()
         return self.state
 
-    async def object(self, text: str, actor: Actor) -> SessionState:
+    async def _object(self, text: str, actor: Actor) -> SessionState:
         """Investigate the user's objection; never treat it as approval."""
         self._prepare()
         proposal = self.state.pending
@@ -1195,7 +1340,7 @@ class SessionEngine:
         self._save()
         return self.state
 
-    async def reply(self, text: str, actor: Actor) -> SessionState:
+    async def _reply(self, text: str, actor: Actor) -> SessionState:
         """Answer the agent's question and let it plan the stage again."""
         self._prepare()
         if self.state.pending is not None:
@@ -1219,7 +1364,7 @@ class SessionEngine:
         ):
             self.state.status = SessionStatus.ACTIVE
             self._save()
-            return await self.advance()
+            return await self._advance()
         record = self.state.stages[stage]
         record.status = StageStatus.PENDING
         record.attempts = 0
@@ -1243,7 +1388,7 @@ class SessionEngine:
         self._save()
         return self.state
 
-    async def ask(self, text: str, actor: Actor) -> str:
+    async def _ask(self, text: str, actor: Actor) -> str:
         """Answer a question within the session without changing anything."""
         self._prepare()
         self.state.say("user", "question", text, stage=self.state.current_stage)
@@ -1454,6 +1599,44 @@ class SessionEngine:
             self.store.save(state)
         if not self._cancel.is_set():
             self._finish()
+
+    # -------------------------------------------------------- public steps
+
+    async def advance(self) -> SessionState:
+        """Move the session forward until it needs the user or finishes."""
+        try:
+            return await self._advance()
+        except ProviderInterrupted as interruption:
+            return self._pause_for_provider(interruption)
+
+    async def approve(self, actor: Actor) -> SessionState:
+        """Apply the pending proposal exactly as shown, then validate it."""
+        try:
+            return await self._approve(actor)
+        except ProviderInterrupted as interruption:
+            return self._pause_for_provider(interruption)
+
+    async def object(self, text: str, actor: Actor) -> SessionState:
+        """Investigate the user's objection; never treat it as approval."""
+        try:
+            return await self._object(text, actor)
+        except ProviderInterrupted as interruption:
+            return self._pause_for_provider(interruption)
+
+    async def reply(self, text: str, actor: Actor) -> SessionState:
+        """Answer the agent's question and let it plan the stage again."""
+        try:
+            return await self._reply(text, actor)
+        except ProviderInterrupted as interruption:
+            return self._pause_for_provider(interruption)
+
+    async def ask(self, text: str, actor: Actor) -> str:
+        """Answer a question within the session without changing anything."""
+        try:
+            return await self._ask(text, actor)
+        except ProviderInterrupted as interruption:
+            self._pause_for_provider(interruption)
+            return f"The provider could not answer: {interruption.error}"
 
     # -------------------------------------------------------- control
 

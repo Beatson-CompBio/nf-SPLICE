@@ -54,6 +54,8 @@ class ProviderCapabilities:
     cancellation: bool
     budgets: bool
     continuation: bool
+    inference: str = "remote"
+    billing: str = "unknown"
 
 
 class ProviderUnavailable(RuntimeError):

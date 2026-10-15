@@ -208,6 +208,8 @@ class Usage(_Model):
     tool_calls: int = 0
     provider_turns: int = 0
     cost_usd: float = 0.0
+    cost_reported: bool = False
+    by_provider: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class ProviderRecord(_Model):
@@ -215,6 +217,10 @@ class ProviderRecord(_Model):
     remote: bool
     conversation_ref: str | None = None
     script: str | None = None
+    model: str | None = None
+    account: str | None = None
+    billing: str = "unknown"
+    inference: str = "remote"
 
 
 class SessionState(_Model):
@@ -252,6 +258,8 @@ class SessionState(_Model):
     commit: dict[str, Any] | None = None
     mode_history: list[dict[str, str]] = Field(default_factory=list)
     events_logged: int = 0
+    interruption: dict[str, Any] | None = None
+    provider_history: list[dict[str, Any]] = Field(default_factory=list)
 
     def say(
         self,

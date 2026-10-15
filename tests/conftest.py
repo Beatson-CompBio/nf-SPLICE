@@ -28,3 +28,17 @@ def _isolate_git_discovery(
             os.environ.pop("GIT_CEILING_DIRECTORIES", None)
         else:
             os.environ["GIT_CEILING_DIRECTORIES"] = previous
+
+
+@pytest.fixture(autouse=True)
+def _isolate_credentials(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Never read or write the person's real provider credentials in tests."""
+    if os.environ.get("NF_SPLICE_LIVE_AGENT") == "1":
+        return
+    monkeypatch.setenv(
+        "NF_SPLICE_CONFIG_DIR", str(tmp_path_factory.mktemp("nf-splice-config"))
+    )
+    for variable in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(variable, raising=False)

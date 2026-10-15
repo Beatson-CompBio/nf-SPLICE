@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Iterable
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, ParamSpec, TypeVar
 
@@ -119,6 +120,11 @@ preview_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(preview_app, name="preview")
+provider_app = typer.Typer(
+    help="Choose, sign in to, diagnose and test AI providers.",
+    no_args_is_help=True,
+)
+app.add_typer(provider_app, name="provider")
 
 RepositoryOption = Annotated[
     Path,
@@ -1971,11 +1977,12 @@ def audit_show_command(
 # ---------------------------------------------------------------- agentic AI
 
 ProviderOption = Annotated[
-    str,
+    str | None,
     typer.Option(
         "--provider",
-        help="AI provider: claude (needs the claude extra), or scripted (offline, "
-        "needs --script).",
+        help="AI provider: claude, openai, codex, opencode, or scripted (offline, "
+        "needs --script). Defaults to the one saved with "
+        "`nf-splice provider select`.",
     ),
 ]
 ScriptOption = Annotated[
@@ -2020,6 +2027,7 @@ def _agent_errors() -> tuple[type[BaseException], ...]:
         ProviderUnavailable,
         SessionError,
     )
+    from nf_splice.agents.providers.base import ProviderError
 
     return (
         SessionError,
@@ -2027,6 +2035,7 @@ def _agent_errors() -> tuple[type[BaseException], ...]:
         PermissionError,
         CapabilityError,
         ProviderUnavailable,
+        ProviderError,
         *_ERRORS,
     )
 
@@ -2051,11 +2060,25 @@ def _human() -> Any:
     return actor
 
 
-def _make_provider(name: str, script: Path | None, progress: Path | None = None) -> Any:
-    from nf_splice.agents.providers import provider_for
+def _make_provider(
+    name: str | None,
+    script: Path | None,
+    progress: Path | None = None,
+    model: str | None = None,
+) -> Any:
+    from nf_splice.agents.providers import provider_for, selected
 
+    if name is None:
+        name = "scripted" if script is not None else selected()[0]
+    if name is None:
+        typer.echo(
+            "choose a provider with --provider, or save one with "
+            "`nf-splice provider select` (see `nf-splice provider list`)",
+            err=True,
+        )
+        raise typer.Exit(code=2)
     try:
-        return provider_for(name, script=script, progress=progress)
+        return provider_for(name, script=script, progress=progress, model=model)
     except (ValueError, OSError) as error:
         raise typer.BadParameter(str(error)) from error
 
@@ -2065,10 +2088,12 @@ def _open_engine(repository: Path, session: str | None) -> Any:
 
     engine = _agent_run(lambda: SessionEngine.open(repository, session))
     record = engine.state.provider
-    name = "claude" if record.name == "claude-agent-sdk" else record.name
     progress = engine.session_directory / "scripted-progress.json"
     engine.provider = _make_provider(
-        name, Path(record.script) if record.script else None, progress
+        record.name,
+        Path(record.script) if record.script else None,
+        progress,
+        record.model,
     )
     return engine
 
@@ -2221,7 +2246,7 @@ def _interactive(engine: Any) -> None:
 def ask_command(
     question: Annotated[str, typer.Argument(help="What you want to know.")],
     repository: RepositoryOption = Path("."),
-    provider: ProviderOption = "claude",
+    provider: ProviderOption = None,
     script: ScriptOption = None,
     allow_remote_model: AllowRemoteOption = False,
     layer: str | None = typer.Option(None, help="The layer you are looking at."),
@@ -2247,7 +2272,7 @@ def ask_command(
         }.items()
         if value
     }
-    agent = _make_provider(provider, script)
+    agent = _make_provider(provider, script, model=model)
     answer = _agent_run(
         lambda: asyncio.run(
             ask_for_help(
@@ -2281,7 +2306,7 @@ def session_start_command(
     mode: str = typer.Option(
         "assisted", help="assisted (you approve each stage) or autonomous."
     ),
-    provider: ProviderOption = "claude",
+    provider: ProviderOption = None,
     script: ScriptOption = None,
     allow_remote_model: AllowRemoteOption = False,
     objective: str = typer.Option(
@@ -2320,7 +2345,7 @@ def session_start_command(
         model=model,
         turn_timeout=turn_timeout,
     )
-    agent = _make_provider(provider, script)
+    agent = _make_provider(provider, script, model=model)
     engine = _agent_run(
         lambda: SessionEngine.create(
             repository,
@@ -2502,6 +2527,14 @@ def session_resume_command(
         None, help="Switch to assisted, autonomous or manual before continuing."
     ),
     allow: AllowOption = None,
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        help="Continue with another provider (the session's record carries the "
+        "context; nothing is switched automatically).",
+    ),
+    model: str | None = typer.Option(None, help="Continue with another model."),
+    allow_remote_model: AllowRemoteOption = False,
     interactive: bool | None = typer.Option(
         None,
         "--interactive/--no-interactive",
@@ -2526,10 +2559,20 @@ def session_resume_command(
 
         policy = engine.state.policy.model_copy(deep=True)
         policy.grants = _agent_run(lambda: validate_grants(list(allow)))
+    if provider is not None or model is not None:
+        from nf_splice.agents.providers import canonical
+
+        name = canonical(provider or engine.state.provider.name)
+        replacement = _make_provider(name, None, model=model)
+        if allow_remote_model and not engine.state.policy.allow_remote_model:
+            engine.state.policy.allow_remote_model = True
+        human = _human()
+        _agent_run(lambda: engine.switch_provider(replacement, human, model=model))
     if target is not engine.state.mode or policy is not None:
         _agent_run(lambda: engine.switch_mode(target, actor, policy=policy))
     elif engine.state.status is SessionStatus.PAUSED:
         engine.state.status = SessionStatus.ACTIVE
+        engine.state.interruption = None
     if target is InteractionMode.MANUAL:
         typer.echo(
             f"{engine.state.id} is paused for manual work. Edit with nf-splice "
@@ -2640,6 +2683,265 @@ def skills_export_command(
 
     for path in skills.export(destination):
         typer.echo(f"wrote: {path}")
+
+
+# ---------------------------------------------------------------- providers
+
+
+def _diagnosis_text(diagnosis: Any) -> str:
+    state = "ready" if diagnosis.ready else "not ready"
+    lines = [
+        f"{diagnosis.provider}: {state}",
+        f"  auth:      {diagnosis.auth_method}"
+        + (f" ({diagnosis.account})" if diagnosis.account else ""),
+        f"  inference: {diagnosis.inference}",
+        f"  billing:   {diagnosis.billing}",
+    ]
+    for check in diagnosis.checks:
+        mark = "ok " if check.ok else "-- "
+        lines.append(f"  {mark}{check.name}: {check.detail}")
+    for item in diagnosis.models[:20]:
+        lines.append(f"  model: {item.id}")
+    for line in diagnosis.guidance:
+        lines.append(f"  next: {line}")
+    return "\n".join(lines)
+
+
+def _provider_name(name: str) -> str:
+    from nf_splice.agents.providers import NAMES, canonical
+
+    name = canonical(name)
+    if name not in NAMES:
+        raise typer.BadParameter(f"choose one of: {', '.join(NAMES)}")
+    return name
+
+
+@provider_app.command("list")
+def provider_list_command(json_output: JsonOption = False) -> None:
+    """List the providers, how each signs in, where it runs and who pays."""
+    from nf_splice.agents.providers import PROVIDERS, selected
+
+    chosen, model = selected()
+    rows = [
+        {
+            "name": info.name,
+            "selected": info.name == chosen,
+            "model": model if info.name == chosen else None,
+            "summary": info.summary,
+            "auth": info.auth,
+            "inference": info.inference,
+            "billing": info.billing,
+        }
+        for info in PROVIDERS.values()
+    ]
+    if json_output:
+        typer.echo(dumps({"providers": rows}))
+        return
+    for row in rows:
+        marker = "*" if row["selected"] else " "
+        typer.echo(f"{marker} {row['name']:<9} {row['summary']}")
+        typer.echo(f"    sign-in: {row['auth']}")
+        typer.echo(f"    runs:    {row['inference']}; billing: {row['billing']}")
+    if chosen is None:
+        typer.echo("No provider selected; run `nf-splice provider select`.")
+
+
+@provider_app.command("doctor")
+def provider_doctor_command(
+    name: Annotated[
+        str | None, typer.Argument(help="One provider; all when omitted.")
+    ] = None,
+    online: bool = typer.Option(
+        False, "--online", help="Contact the provider to verify the credential."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Diagnose providers: installed parts, sign-in, routing and billing."""
+    from nf_splice.agents.providers import NAMES, diagnose
+
+    names = [_provider_name(name)] if name else list(NAMES)
+    found = []
+    for item in names:
+        found.append(_agent_run(partial(diagnose, item, online=online)))
+    if json_output:
+        typer.echo(dumps({"providers": [item.to_json() for item in found]}))
+        return
+    typer.echo("\n\n".join(_diagnosis_text(item) for item in found))
+
+
+@provider_app.command("models")
+def provider_models_command(
+    name: Annotated[str, typer.Argument(help="Provider name.")],
+    json_output: JsonOption = False,
+) -> None:
+    """List the models the signed-in account or configuration offers."""
+    from nf_splice.agents.providers import models
+
+    found = _agent_run(lambda: models(_provider_name(name)))
+    if json_output:
+        typer.echo(dumps({"models": [item.to_json() for item in found]}))
+        return
+    if not found:
+        typer.echo(f"{name} reports no models.")
+    for item in found:
+        tools = {True: "tools", False: "no tools", None: "tools unknown"}
+        typer.echo(f"{item.id}  ({item.location}; {tools[item.tool_calling]})")
+
+
+@provider_app.command("select")
+def provider_select_command(
+    name: Annotated[str, typer.Argument(help="Provider name.")],
+    model: str | None = typer.Option(None, help="The model to use with it."),
+) -> None:
+    """Save the provider (and model) used when --provider is not given."""
+    from nf_splice.agents.providers import select
+
+    try:
+        select(_provider_name(name), model)
+    except ValueError as error:
+        raise typer.BadParameter(str(error)) from error
+    typer.echo(f"selected: {name}" + (f" with model {model}" if model else ""))
+
+
+@provider_app.command("auth")
+def provider_auth_command(
+    name: Annotated[str, typer.Argument(help="claude, openai, codex or opencode.")],
+    sign_in: bool = typer.Option(
+        False, "--sign-in", help="OpenAI: sign in with ChatGPT in your browser."
+    ),
+    sign_out: bool = typer.Option(
+        False, "--sign-out", help="OpenAI: revoke and forget the active sign-in."
+    ),
+    account: str | None = typer.Option(
+        None, "--account", help="OpenAI: the saved account (client ID) to use."
+    ),
+    api_key: bool = typer.Option(
+        False, "--api-key", help="Save an API key, typed at a hidden prompt."
+    ),
+    forget_key: bool = typer.Option(False, "--forget-key", help="Remove a saved key."),
+    use: str | None = typer.Option(
+        None,
+        "--use",
+        help="OpenAI: chatgpt (plan usage) or api-key (metered API billing).",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="Confirm switching to metered API billing."
+    ),
+) -> None:
+    """Sign in, save a key or choose how a provider authenticates."""
+    from nf_splice import credentials
+
+    provider = _provider_name(name)
+    if forget_key:
+        removed = credentials.delete_secret(f"keys/{provider}.json")
+        typer.echo("removed the saved key" if removed else "no saved key")
+        return
+    if api_key:
+        if provider not in {"claude", "openai"}:
+            raise typer.BadParameter(f"{provider} does not use an nf-splice API key")
+        value = typer.prompt("API key", hide_input=True).strip()
+        if not value:
+            raise typer.BadParameter("no key entered")
+        path = credentials.store_api_key(provider, value)
+        typer.echo(f"saved the key owner-only in {path.parent}")
+        if provider == "openai":
+            typer.echo(
+                "It is used only after "
+                "`nf-splice provider auth openai --use api-key --yes`."
+            )
+        return
+    if provider == "openai":
+        _openai_auth(sign_in, sign_out, account, use, yes)
+        return
+    if provider == "claude":
+        from nf_splice.agents.providers.claude import CREDITS_GUIDANCE
+
+        typer.echo(
+            "Claude uses a Claude Platform API key, from ANTHROPIC_API_KEY or "
+            "`nf-splice provider auth claude --api-key`. " + CREDITS_GUIDANCE
+        )
+        return
+    typer.echo(f"See `nf-splice provider doctor {provider}` for how to set it up.")
+
+
+def _openai_auth(
+    sign_in: bool, sign_out: bool, account: str | None, use: str | None, yes: bool
+) -> None:
+    from nf_splice import credentials
+    from nf_splice.agents.providers import openai_auth
+
+    if use is not None:
+        if use not in {"chatgpt", "api-key"}:
+            raise typer.BadParameter("--use must be chatgpt or api-key")
+        if use == "api-key" and not yes:
+            typer.echo(
+                "API-key mode bills your OpenAI Platform organisation per request. "
+                "Repeat with --yes to choose it.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        saved = credentials.preferences()
+        saved["openai_auth"] = use
+        credentials.save_preferences(saved)
+        typer.echo(f"OpenAI will authenticate with: {use}")
+    try:
+        if sign_in:
+            record = openai_auth.sign_in(client_id=account, announce=typer.echo)
+            typer.echo(
+                f"signed in: {openai_auth.account_label(record)}; plan usage "
+                + ("granted" if record["plan_usage"] else "NOT granted")
+            )
+        elif account is not None:
+            openai_auth.select_account(account)
+            typer.echo(f"active account: {account}")
+        if sign_out:
+            active = openai_auth.active_account()
+            if active is None:
+                typer.echo("no ChatGPT account is signed in")
+            else:
+                revoked = openai_auth.sign_out(active)
+                typer.echo(
+                    "signed out" + ("" if revoked else " (revocation not confirmed)")
+                )
+    except openai_auth.SignInError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if not (sign_in or sign_out or account or use):
+        current = openai_auth.active_account()
+        for record in openai_auth.accounts():
+            marker = "*" if record == current else " "
+            typer.echo(
+                f"{marker} {openai_auth.account_label(record)} "
+                f"(client {record['client_id']}; plan usage "
+                f"{'granted' if record.get('plan_usage') else 'not granted'})"
+            )
+        typer.echo("Sign in with `nf-splice provider auth openai --sign-in`.")
+
+
+@provider_app.command("test")
+def provider_test_command(
+    name: Annotated[str, typer.Argument(help="Provider name.")],
+    model: str | None = typer.Option(None, help="Model to test."),
+    allow_remote_model: AllowRemoteOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Run one small real turn and check that the model calls an nf-splice tool."""
+    import asyncio
+
+    from nf_splice.agents.protocol import require_consent
+    from nf_splice.agents.providers.check import tool_call_check
+
+    provider = _make_provider(_provider_name(name), None, model=model)
+    _agent_run(lambda: require_consent(provider, allow_remote_model))
+    result = _agent_run(lambda: asyncio.run(tool_call_check(provider, model)))
+    if json_output:
+        typer.echo(dumps(result))
+    else:
+        typer.echo(
+            f"{name}: {'passed' if result['passed'] else 'FAILED'} - {result['detail']}"
+        )
+    if not result["passed"]:
+        raise typer.Exit(code=1)
 
 
 @app.command("tui")
