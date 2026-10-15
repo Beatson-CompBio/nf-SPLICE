@@ -450,6 +450,8 @@ def _check_targets(
     replace_existing: bool,
     overwrite_edited: Sequence[str],
 ) -> None:
+    # Accept paths as error messages print them (splice/<file>) or bare.
+    allowed = {item.removeprefix(f"{SPLICE}/") for item in overwrite_edited}
     splice = root / SPLICE
     if splice.exists() and (splice.is_symlink() or not splice.is_dir()):
         raise LifecycleError("repository-root splice path must be a regular directory")
@@ -463,7 +465,7 @@ def _check_targets(
             raise LifecycleError(
                 f"refusing to replace unrecognised content at splice/{change.path}"
             )
-        if change.state is FinalState.DRIFTED and change.path not in overwrite_edited:
+        if change.state is FinalState.DRIFTED and change.path not in allowed:
             raise LifecycleError(
                 f"splice/{change.path} was edited after it was published; reconcile "
                 "the edit into the draft or pass --overwrite-edited explicitly"

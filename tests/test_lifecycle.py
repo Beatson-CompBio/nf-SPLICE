@@ -100,7 +100,7 @@ def test_external_final_edits_are_detected_and_never_overwritten(
         None,
         ADA,
         replace_existing=True,
-        overwrite_edited=["outputs.schema.json"],
+        overwrite_edited=["splice/outputs.schema.json"],
     )
     assert validate_bundle(tmp_path).valid
 
