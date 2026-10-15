@@ -182,7 +182,7 @@ def test_specific_identity_review_issues(tmp_path: Path) -> None:
             "engine_version_min": "23.04.0",
             "licence": "TODO",
             "authors": [{"name": "Org", "type": "organization", "orcid": "x"}],
-            "maintainers": [{"name": "Ada", "email": "ada@lab.ac.uk"}],
+            "maintainers": [{"name": "Ada", "email": "ada@example.org"}],
         },
         ADA,
     )
