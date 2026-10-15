@@ -41,7 +41,6 @@ from nf_splice.services.containers import (
     verify_image_url,
 )
 
-LEGACY = Path(__file__).parent / "fixtures" / "legacy-0.1.0"
 SIF = (
     b"#!/usr/bin/env run-singularity\n".ljust(32, b"\n") + b"SIF_MAGIC\x00" + b"x" * 500
 )
@@ -341,16 +340,6 @@ def test_ambiguous_and_unknown_selections_need_explicit_resolution(
         )
     with pytest.raises(LayerError, match="unknown component"):
         accept_component(tmp_path, "component:invented", ADA)
-
-
-def test_legacy_container_ids_remain_stable() -> None:
-    legacy = json.loads(
-        (LEGACY / "repository" / "splice" / "components.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    entry = legacy["containers"][0]
-    assert container_id(entry["uri"]) == entry["id"]
 
 
 def test_materialisation_and_upload_require_explicit_approval(tmp_path: Path) -> None:

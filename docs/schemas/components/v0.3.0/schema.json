@@ -216,14 +216,6 @@
             }
           },
           "additionalProperties": false
-        },
-        "legacy_ids": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "pattern": "^container-[0-9a-f]{12}$"
-          },
-          "uniqueItems": true
         }
       },
       "additionalProperties": false

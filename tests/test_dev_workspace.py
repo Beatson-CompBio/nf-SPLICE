@@ -48,7 +48,7 @@ def test_guard_rejects_development_only_and_secret_paths(path: str) -> None:
     "path",
     [
         "src/nf_splice/cli.py",
-        "tests/fixtures/legacy-0.1.0/repository/splice/bundle.json",
+        "tests/fixtures/example-0.3.0/repository/splice/bundle.json",
         "docs/ARCHITECTURE_DECISIONS.md",
         "splice/drafts/outputs.draft.yaml",
     ],

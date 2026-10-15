@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from nf_splice.domain.authoring import Evidence, EvidenceProvenance
+from nf_splice.domain.base import Evidence, EvidenceProvenance
 from nf_splice.domain.execution import ExecutionProfileCandidate
 
 

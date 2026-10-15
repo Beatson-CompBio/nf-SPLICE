@@ -85,7 +85,7 @@ _SECRET_NAME = re.compile(r"(?i)(password|passwd|secret|token|credential|api_?ke
 
 
 def profile_id(source_profile: str) -> str:
-    """Stable, reversible-token profile ID (unchanged from 0.1.0)."""
+    """Stable, reversible-token profile ID."""
     slug = re.sub(r"[^a-z0-9_-]+", "-", source_profile.lower()).strip("-_") or "profile"
     return f"profile-{slug}-{source_profile.encode('utf-8').hex()}"
 

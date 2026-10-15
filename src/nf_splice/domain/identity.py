@@ -8,7 +8,7 @@ from typing import Annotated
 
 from pydantic import StringConstraints, model_validator
 
-from nf_splice.domain.authoring import DomainModel, NonEmptyString
+from nf_splice.domain.base import DomainModel, NonEmptyString
 
 
 class PipelineIdError(ValueError):

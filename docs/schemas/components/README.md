@@ -77,7 +77,6 @@ Container images. No other keys are allowed.
 | `source_images` | object (at least 1 key) | yes | Native references. |
 | `distribution` | object | no | Verified image file. |
 | `resolution` | object | yes | Readiness. |
-| `legacy_ids` | array of strings: `container-` followed by 12 hexadecimal characters (no duplicates) | no | Earlier identifiers of this container, kept when a pre-release test bundle was rebuilt. Usually absent. |
 
 ### `containers[].source_images`
 

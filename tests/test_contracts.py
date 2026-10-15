@@ -28,7 +28,6 @@ from nf_splice.contracts import (
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs" / "schemas"
-LEGACY_SPLICE = ROOT / "tests" / "fixtures" / "legacy-0.1.0" / "repository" / "splice"
 runner = CliRunner()
 
 EXPECTED = {
@@ -63,8 +62,7 @@ def test_registry_enumerates_exactly_five_engine_neutral_families() -> None:
 def test_every_tool_release_has_an_explicit_mapping() -> None:
     assert __version__ == "0.3.0"
     versions = [item.tool_version for item in releases()]
-    assert versions == ["0.1.0", "0.3.0"]
-    assert release("0.1.0").contracts == ()
+    assert versions == ["0.3.0"]
     assert dict(release().contracts) == dict.fromkeys(FAMILY_IDS, "0.3.0")
     with pytest.raises(ContractRegistryError, match=r"0\.2\.0"):
         release("0.2.0")
@@ -101,9 +99,13 @@ def test_contract_metadata_never_abuses_json_schema_identity() -> None:
     assert data_document_header("components")["schema_id"] == family("components").id
 
 
-def test_legacy_and_future_documents_fail_explicitly() -> None:
-    legacy = json.loads((LEGACY_SPLICE / "bundle.json").read_text(encoding="utf-8"))
-    report = validate_contract_document(legacy, filename="bundle.json")
+def test_undeclared_and_future_documents_fail_explicitly() -> None:
+    undeclared = {
+        key: value
+        for key, value in _example("bundle").items()
+        if key not in {"schema_id", "schema_version"}
+    }
+    report = validate_contract_document(undeclared, filename="bundle.json")
     assert not report.valid
     assert report.issues[0].rule == "declaration"
 
@@ -153,10 +155,9 @@ def test_schema_cli_lists_shows_validates_and_checks(tmp_path: Path) -> None:
     example = DOCS / "components" / "v0.3.0" / "example.json"
     valid = runner.invoke(app, ["schema", "validate", str(example), "--json"])
     assert valid.exit_code == 0, valid.output
-    legacy = runner.invoke(
-        app, ["schema", "validate", str(LEGACY_SPLICE / "components.json")]
-    )
-    assert legacy.exit_code == 2
+    undeclared = tmp_path / "components.json"
+    undeclared.write_text('{"containers": [], "components": []}', encoding="utf-8")
+    assert runner.invoke(app, ["schema", "validate", str(undeclared)]).exit_code == 2
 
     splice = tmp_path / "splice"
     splice.mkdir()

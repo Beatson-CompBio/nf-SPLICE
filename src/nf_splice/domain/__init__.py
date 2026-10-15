@@ -1,4 +1,4 @@
-"""Public domain API for canonical nf-splice authoring state."""
+"""Public domain API for nf-splice review, inspection and contract models."""
 
 from nf_splice.domain.audit import (
     UNATTRIBUTED,
@@ -8,40 +8,18 @@ from nf_splice.domain.audit import (
     ChangeOrigin,
     ReviewEvent,
 )
-from nf_splice.domain.authoring import (
-    AUTHORING_SCHEMA_VERSION,
-    AuthoringDocument,
-    Decision,
-    DecisionStatus,
-    Evidence,
-    EvidenceProvenance,
-    InvalidDecisionTransition,
-    LayerState,
-    LayerStatus,
-    OutputContractSettings,
-    PipelineIdentity,
-    UnresolvedDecision,
-)
-from nf_splice.domain.components import ComponentCandidate, ReviewedComponent
+from nf_splice.domain.base import Evidence, EvidenceProvenance
 from nf_splice.domain.execution import (
     ContainerEngine,
     ExecutionEngine,
     ExecutionExecutor,
     ExecutionProfileCandidate,
     ExecutionProfileType,
-    ReviewedExecutionProfile,
-)
-from nf_splice.domain.inputs import (
-    InputCandidate,
-    InputClassification,
-    ReviewedInput,
 )
 from nf_splice.domain.inspection import (
     EntryType,
     EvidenceKind,
     InspectedPath,
-    LegacyStateClassification,
-    LegacyStatePath,
     PathClassification,
     RepositoryEvidence,
     RepositoryInspection,
@@ -53,7 +31,6 @@ from nf_splice.domain.outputs import (
     DEFAULT_JOB_CATEGORY,
     SUGGESTED_OUTPUT_CATEGORIES,
     SUGGESTED_OUTPUT_STAGES,
-    LegacyOutputScope,
     OutputCandidate,
     OutputEntityType,
     OutputFormat,
@@ -62,20 +39,8 @@ from nf_splice.domain.outputs import (
     ReviewedOutput,
     expand_output_path_pattern,
 )
-from nf_splice.domain.provenance import (
-    ProvenanceCandidate,
-    ReviewedProvenance,
-)
-from nf_splice.domain.serialization import (
-    AuthoringDocumentError,
-    InvalidAuthoringDocument,
-    UnsupportedSchemaVersion,
-    dump_authoring_document,
-    load_authoring_document,
-)
 
 __all__ = [
-    "AUTHORING_SCHEMA_VERSION",
     "DEFAULT_JOB_CATEGORY",
     "SUGGESTED_OUTPUT_CATEGORIES",
     "SUGGESTED_OUTPUT_STAGES",
@@ -83,13 +48,8 @@ __all__ = [
     "Actor",
     "ActorKind",
     "ApprovalStatus",
-    "AuthoringDocument",
-    "AuthoringDocumentError",
     "ChangeOrigin",
-    "ComponentCandidate",
     "ContainerEngine",
-    "Decision",
-    "DecisionStatus",
     "EntryType",
     "Evidence",
     "EvidenceKind",
@@ -98,39 +58,19 @@ __all__ = [
     "ExecutionExecutor",
     "ExecutionProfileCandidate",
     "ExecutionProfileType",
-    "InputCandidate",
-    "InputClassification",
     "InspectedPath",
-    "InvalidAuthoringDocument",
-    "InvalidDecisionTransition",
-    "LayerState",
-    "LayerStatus",
-    "LegacyOutputScope",
-    "LegacyStateClassification",
-    "LegacyStatePath",
     "OutputCandidate",
-    "OutputContractSettings",
     "OutputEntityType",
     "OutputFormat",
     "OutputLabel",
     "OutputScope",
     "PathClassification",
-    "PipelineIdentity",
-    "ProvenanceCandidate",
     "RepositoryEvidence",
     "RepositoryInspection",
     "ReviewEvent",
-    "ReviewedComponent",
-    "ReviewedExecutionProfile",
-    "ReviewedInput",
     "ReviewedOutput",
-    "ReviewedProvenance",
     "SpliceTreeInspection",
     "TreeState",
-    "UnresolvedDecision",
     "UnsafeCollision",
-    "UnsupportedSchemaVersion",
-    "dump_authoring_document",
     "expand_output_path_pattern",
-    "load_authoring_document",
 ]

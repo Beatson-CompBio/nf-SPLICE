@@ -59,15 +59,15 @@ def test_example_tree_and_existing_output_catalogue_are_discovery_evidence(
     splice = tmp_path / "splice"
     splice.mkdir()
     (splice / "outputs.yaml").write_text(
-        """schema_version: '1.0'
-vocabulary_version: 1.0.0
+        """catalogue_format_version: 0.3.0
+schema_version: 1.0.0
 pipeline: {}
 outputs:
   - key: multiqc_report
     title: MultiQC report
     description: Aggregate quality-control report.
     category: quality_control
-    scope: [run]
+    scope: [job]
     entity_type: [file]
     format: [html]
     path_patterns: ['^multiqc/multiqc_report\\.html$']
@@ -80,9 +80,9 @@ outputs:
     assert by_key["fastp_fastp_html"].candidate.path_pattern == (
         r"^fastp/(?P<sample_id>[^/]+)\.fastp\.html$"
     )
-    legacy = by_key["multiqc_report"].candidate
-    assert legacy.suggested_description == "Aggregate quality-control report."
-    assert legacy.likely_scope is OutputScope.JOB  # legacy run means job
+    existing = by_key["multiqc_report"].candidate
+    assert existing.suggested_description == "Aggregate quality-control report."
+    assert existing.likely_scope is OutputScope.JOB
     sources = {
         evidence.provenance.source for item in discovered for evidence in item.evidence
     }

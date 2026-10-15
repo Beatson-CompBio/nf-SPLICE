@@ -80,7 +80,7 @@ _SINGULARITY_KINDS = {
 
 
 def container_id(primary: str) -> str:
-    """Stable container ID; identical to 0.1.0 IDs for the same reference."""
+    """Stable container ID derived from the primary reference."""
     return f"container-{hashlib.sha256(primary.encode('utf-8')).hexdigest()[:12]}"
 
 
@@ -616,8 +616,6 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
                 mode="json", exclude_none=True
             )
         record["resolution"] = {"status": status}
-        if container.legacy_ids:
-            record["legacy_ids"] = list(container.legacy_ids)
         rendered_containers.append(record)
     document = {
         **data_document_header(COMPONENTS_FAMILY),

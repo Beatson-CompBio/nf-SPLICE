@@ -147,8 +147,8 @@ def validate_contract_document(
                 ContractIssue(
                     "",
                     "declaration",
-                    "document does not declare its contract family and revision "
-                    "(legacy documents need a version-aware migration)",
+                    "document does not declare its contract family and revision; "
+                    "rebuild it with nf-splice 0.3.0 or later",
                 ),
             ),
         )

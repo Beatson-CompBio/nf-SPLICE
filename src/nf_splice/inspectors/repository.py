@@ -9,19 +9,13 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from nf_splice.domain.authoring import EvidenceProvenance
+from nf_splice.domain.base import EvidenceProvenance
 from nf_splice.domain.inspection import (
     EvidenceKind,
-    LegacyStateClassification,
-    LegacyStatePath,
     RepositoryEvidence,
     RepositoryInspection,
 )
-from nf_splice.inspectors.splice_tree import (
-    inspect_splice_tree,
-    validate_authoring_state,
-    validate_lock_state,
-)
+from nf_splice.inspectors.splice_tree import inspect_splice_tree
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -175,36 +169,9 @@ def inspect_repository(repository_root: str | Path) -> RepositoryInspection:
                     confidence=0.9,
                 )
 
-    legacy_state: list[LegacyStatePath] = []
-    validators = {
-        "nf-splice.yaml": validate_authoring_state,
-        "nf-splice.lock.json": validate_lock_state,
-    }
-    for name, validator in validators.items():
-        path = root / name
-        if not path.exists() and not path.is_symlink():
-            continue
-        if path.is_symlink() or not path.is_file():
-            result: tuple[str, str | None] = (
-                "malformed",
-                "legacy state must be a regular file",
-            )
-        else:
-            result = validator(path)
-        classification, detail = result
-        legacy_state.append(
-            LegacyStatePath(
-                path=name,
-                destination=f"splice/{name}",
-                classification=LegacyStateClassification(classification),
-                detail=detail,
-            )
-        )
-
     return RepositoryInspection(
         root=str(root),
         repository_revision=revision,
         evidence=tuple(evidence),
         splice_tree=inspect_splice_tree(root),
-        legacy_state=tuple(legacy_state),
     )

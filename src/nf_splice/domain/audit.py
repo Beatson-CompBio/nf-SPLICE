@@ -7,7 +7,7 @@ from enum import Enum
 
 from pydantic import Field, field_validator
 
-from nf_splice.domain.authoring import DomainModel, NonEmptyString
+from nf_splice.domain.base import DomainModel, NonEmptyString
 
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -21,7 +21,6 @@ class ChangeOrigin(str, Enum):
     AGENT_SUGGESTION = "agent_suggestion"
     AGENT_PROPOSED_BATCH = "agent_proposed_batch"
     AUTOMATION = "automation"
-    MIGRATION = "migration"
     DISCOVERY = "discovery"
 
 

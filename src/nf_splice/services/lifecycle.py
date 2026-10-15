@@ -723,18 +723,6 @@ def validate_bundle(repository_root: str | Path) -> BundleReport:
     bundle = _load_json(bundle_path, issues, "splice/bundle.json")
     if not isinstance(bundle, dict):
         return BundleReport(tuple(issues), 0)
-    if bundle.get("schema_version") == "1.0":
-        return BundleReport(
-            (
-                BundleIssue(
-                    "splice/bundle.json",
-                    "legacy_bundle",
-                    "bundle schema 1.0 from nf-splice 0.1.0; run "
-                    "`nf-splice migrate drafts`",
-                ),
-            ),
-            0,
-        )
     report = validate_contract_document(bundle, filename="bundle.json")
     issues.extend(
         BundleIssue(
@@ -764,13 +752,11 @@ def validate_bundle(repository_root: str | Path) -> BundleReport:
         )
     for name in FORBIDDEN_FINALS:
         if (splice / name).exists():
-            severity = Severity.WARNING if name == "nf-splice.yaml" else Severity.ERROR
             issues.append(
                 BundleIssue(
                     f"splice/{name}",
                     "forbidden_artefact",
                     f"{name} is not part of a 0.3.0 bundle",
-                    severity,
                 )
             )
     for item in families():

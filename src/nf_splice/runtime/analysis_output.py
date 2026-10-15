@@ -2,9 +2,7 @@
 
 For 0.3.0 bundles the classification catalogue is read only from
 ``outputs.schema.json`` -> ``x-output-catalog``; the same file validates the
-generated document. ``outputs.yaml`` is never consulted for a 0.3.0 contract.
-Bundles produced by nf-splice 0.1.0 are read through an explicit,
-version-gated legacy path that keeps their original output semantics.
+generated document. ``outputs.yaml`` is never consulted.
 """
 
 from __future__ import annotations
@@ -34,19 +32,6 @@ _PATH_KEYS = ("path", "target", "publishedPath", "published_path", "file")
 #: Top-level job identity and context fields of a 0.3.0 analysis output.
 _JOB_FIELDS = ("job_id_short", "job_id_long", "config_profile", "execution_timestamp")
 _JOB_METADATA_FIELDS = ("engine", "engine_execution_id", "nextflow", "annotations")
-#: Top-level fields of the legacy (0.1.0) per-workflow-execution document.
-_LEGACY_RUN_FIELDS = (
-    "job_id_short",
-    "job_id_long",
-    "platform_run_id",
-    "workflow_run_id",
-    "nextflow_session_id",
-    "nextflow_run_name",
-    "config_profile",
-    "execution_timestamp",
-)
-CONTRACT_0_3_0 = "0.3.0"
-CONTRACT_LEGACY = "legacy-0.1.0"
 _FORMAT_SUFFIXES = {
     ".html": "html",
     ".json": "json",
@@ -116,18 +101,13 @@ def _load_mapping(path: Path, label: str) -> dict[str, Any]:
 
 @dataclass(frozen=True, slots=True)
 class OutputCatalogue:
-    """Runtime view of one static output contract and its semantics."""
+    """Runtime view of one published output contract."""
 
-    semantics: str
     schema: dict[str, Any]
     schema_version: str
     schema_id: str
     pipeline: dict[str, Any]
     output_types: tuple[dict[str, Any], ...]
-
-    @property
-    def legacy(self) -> bool:
-        return self.semantics == CONTRACT_LEGACY
 
 
 _OUTPUT_TYPE_KEYS = (
@@ -166,82 +146,19 @@ def _const(schema: Mapping[str, Any], name: str) -> Any:
     return item.get("const") if isinstance(item, dict) else None
 
 
-def _legacy_bundle_version(root: Path) -> str | None:
-    bundle = root / "splice" / "bundle.json"
-    if not bundle.is_file():
-        return None
-    try:
-        loaded = json.loads(bundle.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError):
-        return None
-    version = loaded.get("schema_version") if isinstance(loaded, dict) else None
-    return version if isinstance(version, str) else None
-
-
-def _legacy_catalogue(root: Path, schema: dict[str, Any]) -> OutputCatalogue:
-    bundle_version = _legacy_bundle_version(root)
-    if bundle_version not in {None, "1.0"}:
-        raise AnalysisOutputError(
-            "outputs.schema.json has no x-splice-contract but bundle.json declares "
-            f"schema_version {bundle_version!r}; refusing to guess legacy semantics"
-        )
-    pipeline = {
-        "name": _const(schema, "pipeline_name"),
-        "version": _const(schema, "pipeline_version"),
-        "repository_url": _const(schema, "repository_url"),
-    }
-    catalog = schema.get("x-output-catalog")
-    output_types = _complete_output_types(
-        catalog.get("output_types") if isinstance(catalog, dict) else None
-    )
-    schema_version = _const(schema, "analysis_output_schema_version")
-    if output_types is None:
-        catalogue_path = root / "splice" / "outputs.yaml"
-        try:
-            loaded: object = yaml.safe_load(catalogue_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, yaml.YAMLError) as error:
-            raise AnalysisOutputError(
-                f"cannot load legacy output catalogue: {error}"
-            ) from error
-        if (
-            not isinstance(loaded, dict)
-            or loaded.get("vocabulary_version") != "1.0.0"
-            or "catalogue_format_version" in loaded
-        ):
-            raise AnalysisOutputError(
-                "legacy output catalogue outputs.yaml is not a recognised 0.1.0 "
-                "catalogue (vocabulary_version 1.0.0)"
-            )
-        output_types = _complete_output_types(loaded.get("outputs"))
-        if output_types is None:
-            raise AnalysisOutputError("legacy output catalogue has incomplete outputs")
-        pipeline = dict(loaded.get("pipeline") or pipeline)
-        schema_version = loaded.get("schema_version", schema_version)
-    if not all(pipeline.get(key) for key in ("name", "version")) or not schema_version:
-        raise AnalysisOutputError("legacy output contract lacks pipeline identity")
-    return OutputCatalogue(
-        semantics=CONTRACT_LEGACY,
-        schema=schema,
-        schema_version=str(schema_version),
-        schema_id=str(schema["$id"]),
-        pipeline=pipeline,
-        output_types=output_types,
-    )
-
-
 def load_output_catalogue(repository_root: str | Path) -> OutputCatalogue:
-    """Load the runtime catalogue from ``outputs.schema.json`` (no YAML for 0.3.0).
+    """Load the runtime catalogue from ``outputs.schema.json``.
 
-    A 0.3.0 contract (declaring ``x-splice-contract``) must be complete and
-    valid; it is never silently replaced by ``outputs.yaml``. Contracts
-    without the declaration are accepted only as recognised 0.1.0 legacy
-    contracts, whose catalogue is the legacy embedded extension or, failing
-    that, the version-gated legacy ``outputs.yaml``.
+    The contract must declare ``x-splice-contract`` and be complete and
+    valid; it is never replaced by ``outputs.yaml``.
     """
     root = Path(repository_root).resolve()
     schema = _load_mapping(root / "splice" / "outputs.schema.json", "output schema")
     if "x-splice-contract" not in schema:
-        return _legacy_catalogue(root, schema)
+        raise AnalysisOutputError(
+            "outputs.schema.json is not a SPLICE 0.3.0 output contract "
+            "(x-splice-contract is missing); rebuild the bundle with nf-splice"
+        )
     report = validate_contract_document(schema, OUTPUTS_FAMILY)
     if not report.valid:
         details = "; ".join(
@@ -263,7 +180,6 @@ def load_output_catalogue(repository_root: str | Path) -> OutputCatalogue:
     if release_url:
         pipeline["release_url"] = release_url
     return OutputCatalogue(
-        semantics=CONTRACT_0_3_0,
         schema=schema,
         schema_version=str(catalog["analysis_output_schema_version"]),
         schema_id=str(schema["$id"]),
@@ -562,42 +478,6 @@ def _classify(
     return files, unclassified
 
 
-def _classify_legacy(
-    outputs: tuple[dict[str, Any], ...],
-    entries: list[_Entry],
-    index: SampleIndex | None,
-) -> tuple[list[dict[str, object]], tuple[str, ...]]:
-    """Classify with nf-splice 0.1.0 semantics for a legacy static contract."""
-    matched, unclassified = _matches(outputs, entries)
-    files = []
-    for entry, match, output in matched:
-        scope = str(output["scope"][0])
-        groups = match.groupdict()
-        record = _base_record(entry, output, scope)
-        if scope == "sample":
-            sample_id = groups.get("sample_id")
-            if not sample_id:
-                raise AnalysisOutputError(
-                    f"sample-scoped output {output['key']!r} does not capture sample_id"
-                )
-            if index is not None and sample_id not in index.samples:
-                raise AnalysisOutputError(
-                    f"output path {entry.path!r} captures unknown sample {sample_id!r}"
-                )
-            record["sample_id"] = sample_id
-        if scope == "library":
-            library_id = groups.get("library_id")
-            if not library_id:
-                raise AnalysisOutputError(
-                    f"library-scoped output {output['key']!r} does not capture "
-                    "library_id"
-                )
-            record["library_id"] = library_id
-        _descriptive_fields(record, groups, output)
-        files.append(record)
-    return files, unclassified
-
-
 def _read_sample_index(path: Path | None) -> SampleIndex | None:
     if path is None:
         return None
@@ -649,54 +529,6 @@ def _checksum(path: Path, algorithm: str) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def legacy_run_metadata_to_job_metadata(
-    run_metadata: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Convert deprecated ``--run-metadata`` input into job metadata.
-
-    Legacy keys described the whole workflow execution, which is a SPLICE job.
-    ``platform_run_id`` cannot be converted safely: it is neither the job nor a
-    file-level platform run, so it requires human clarification.
-    """
-    if "platform_run_id" in run_metadata:
-        raise AnalysisOutputError(
-            "legacy platform_run_id is ambiguous in 0.3.0 (a job is not a platform "
-            "run); supply job_id_short/job_id_long and engine metadata explicitly"
-        )
-    converted: dict[str, Any] = {
-        key: run_metadata[key]
-        for key in _JOB_FIELDS
-        if run_metadata.get(key) is not None
-    }
-    job: dict[str, Any] = {}
-    nextflow: dict[str, Any] = {}
-    if run_metadata.get("workflow_run_id") is not None:
-        job["engine_execution_id"] = run_metadata["workflow_run_id"]
-    if run_metadata.get("nextflow_session_id") is not None:
-        nextflow["session_id"] = run_metadata["nextflow_session_id"]
-    if run_metadata.get("nextflow_run_name") is not None:
-        nextflow["run_name"] = run_metadata["nextflow_run_name"]
-    if nextflow:
-        job["nextflow"] = nextflow
-    if job:
-        job["engine"] = "nextflow"
-    annotations = {
-        key: value
-        for key, value in run_metadata.items()
-        if key not in (*_LEGACY_RUN_FIELDS, "run_metadata") and value is not None
-    }
-    nested = run_metadata.get("run_metadata")
-    if nested is not None and not isinstance(nested, dict):
-        raise AnalysisOutputError("run_metadata.run_metadata must be an object")
-    if isinstance(nested, dict):
-        annotations = {**nested, **annotations}
-    if annotations:
-        job["annotations"] = dict(sorted(annotations.items()))
-    if job:
-        converted["job_metadata"] = job
-    return converted
 
 
 def _job_document(job_metadata: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -755,42 +587,6 @@ def _metadata(
     return metadata
 
 
-def _legacy_metadata(
-    catalogue: OutputCatalogue,
-    job_metadata: Mapping[str, Any] | None,
-    publish_directory: Path | None,
-) -> dict[str, Any]:
-    """Build the 0.1.0 per-workflow-execution envelope for a legacy contract."""
-    pipeline = catalogue.pipeline
-    metadata: dict[str, Any] = {
-        "analysis_output_schema_version": catalogue.schema_version,
-        "schema_id": catalogue.schema_id,
-        "pipeline_name": pipeline["name"],
-        "pipeline_version": pipeline["version"],
-        "repository_url": pipeline["repository_url"],
-    }
-    if pipeline.get("release_url"):
-        metadata["release_url"] = pipeline["release_url"]
-    if publish_directory is not None:
-        metadata["publish_directory"] = str(publish_directory)
-    job = dict(job_metadata or {})
-    nested = job.get("job_metadata") or {}
-    legacy = {key: job[key] for key in _JOB_FIELDS if job.get(key) is not None}
-    if nested.get("engine_execution_id") is not None:
-        legacy["workflow_run_id"] = nested["engine_execution_id"]
-    nextflow = nested.get("nextflow") or {}
-    if nextflow.get("session_id") is not None:
-        legacy["nextflow_session_id"] = nextflow["session_id"]
-    if nextflow.get("run_name") is not None:
-        legacy["nextflow_run_name"] = nextflow["run_name"]
-    for key in _LEGACY_RUN_FIELDS:
-        if key in legacy:
-            metadata[key] = legacy[key]
-    if nested.get("annotations"):
-        metadata["run_metadata"] = dict(sorted(nested["annotations"].items()))
-    return metadata
-
-
 def _write_atomic(path: Path, content: str) -> None:
     temporary = path.with_name(f".{path.name}.nf-splice.tmp")
     try:
@@ -811,23 +607,12 @@ def generate_analysis_output(
     native_output_index: str | Path | None = None,
     output_tree: str | Path | None = None,
     job_metadata: Mapping[str, Any] | None = None,
-    run_metadata: Mapping[str, Any] | None = None,
     sample_metadata: str | Path | None = None,
     checksum_algorithm: str | None = None,
     allow_unclassified: bool = False,
     output_directory: str | Path | None = None,
 ) -> AnalysisOutputResult:
-    """Generate, validate, and optionally write one completed job's inventory.
-
-    ``run_metadata`` is the deprecated 0.1.0 input and is converted with
-    :func:`legacy_run_metadata_to_job_metadata`; supply at most one of the two.
-    """
-    if job_metadata is not None and run_metadata is not None:
-        raise AnalysisOutputError(
-            "supply job metadata or legacy run metadata, not both"
-        )
-    if run_metadata is not None:
-        job_metadata = legacy_run_metadata_to_job_metadata(run_metadata)
+    """Generate, validate, and optionally write one completed job's inventory."""
     root = Path(repository_root).resolve()
     catalogue = load_output_catalogue(root)
     entries, live_publish_directory = _runtime_entries(
@@ -842,8 +627,7 @@ def generate_analysis_output(
     index = _read_sample_index(
         Path(sample_metadata).resolve() if sample_metadata is not None else None
     )
-    classify = _classify_legacy if catalogue.legacy else _classify
-    files, unclassified = classify(catalogue.output_types, entries, index)
+    files, unclassified = _classify(catalogue.output_types, entries, index)
     if unclassified and not allow_unclassified:
         raise AnalysisOutputError(
             f"{len(unclassified)} produced path(s) are not in the reviewed output "
@@ -860,8 +644,7 @@ def generate_analysis_output(
                 record["size_bytes"] = path.stat().st_size
                 record["checksum"] = _checksum(path, checksum_algorithm)
                 record["checksum_algorithm"] = checksum_algorithm
-    build_metadata = _legacy_metadata if catalogue.legacy else _metadata
-    document = build_metadata(catalogue, job_metadata, live_publish_directory)
+    document = _metadata(catalogue, job_metadata, live_publish_directory)
     document["files"] = files
     validation = validate_analysis_output(document, catalogue.schema)
     if not validation.valid:

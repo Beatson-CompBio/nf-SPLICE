@@ -7,7 +7,6 @@ from nf_splice.runtime.analysis_output import (
     OutputCatalogue,
     SampleIndex,
     generate_analysis_output,
-    legacy_run_metadata_to_job_metadata,
     load_and_validate_analysis_output,
     load_output_catalogue,
 )
@@ -19,7 +18,6 @@ __all__ = [
     "OutputCatalogue",
     "SampleIndex",
     "generate_analysis_output",
-    "legacy_run_metadata_to_job_metadata",
     "load_and_validate_analysis_output",
     "load_output_catalogue",
 ]

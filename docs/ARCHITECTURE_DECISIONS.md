@@ -67,10 +67,11 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Current | — |
 | ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Current | — |
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Current | — |
-| ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Current | — |
+| ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Superseded | ADR-0041 |
 | ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Current | — |
 | ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Current | — |
 | ADR-0040 | Gate releases on a Python 3.10-3.14 matrix, packaging and repository hygiene | Current | — |
+| ADR-0041 | Support only 0.3.0 contracts and remove pre-release 0.1.0 compatibility | Current | — |
 
 ---
 
@@ -1005,7 +1006,7 @@ draft from a model would discard developer edits and comments.
 | Scope | Output contract semantics and nomenclature |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0024, ADR-0025, ADR-0028 |
+| Related | ADR-0024, ADR-0025, ADR-0028, ADR-0041 |
 | Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/` |
 | Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_output_discovery.py` |
 
@@ -1013,6 +1014,9 @@ Correction 2026-10-15: the Implementation row now names the `interfaces/tui/`
 wizard package that replaced `interfaces/tui.py` (ADR-0038), and the Tests row
 names `tests/test_output_discovery.py`, which replaced the removed
 monolithic-state `tests/test_authoring.py`; the decision is unchanged.
+
+
+Amended by ADR-0041 (2026-10-15): the version-gated reading of 0.1.0 scopes and the deprecated `--run-metadata` alias described below were removed; only 0.3.0 catalogues and `--job-metadata` are supported.
 
 ### Context
 
@@ -1086,9 +1090,12 @@ enums also imposed a central scientific vocabulary.
 | Scope | Runtime boundary and output contract authority |
 | Supersedes | ADR-0015 |
 | Superseded by | — |
-| Related | ADR-0024, ADR-0027 |
+| Related | ADR-0024, ADR-0027, ADR-0041 |
 | Implementation | `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/contracts/data/schemas/outputs/0.3.0.schema.json` |
-| Tests | `tests/test_output_scopes.py`, `tests/test_runtime.py`, `tests/test_output_contracts.py`, `tests/test_legacy_fixtures.py` |
+| Tests | `tests/test_output_scopes.py`, `tests/test_runtime.py`, `tests/test_output_contracts.py` |
+
+
+Amended by ADR-0041 (2026-10-15): the version-gated legacy runtime path described below was removed; an `outputs.schema.json` without `x-splice-contract` is rejected.
 
 ### Context
 
@@ -1416,9 +1423,12 @@ user-configurable parameters, dropped `hidden`, rebuilt groups without their
 | Scope | Component inventory and container provenance |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0005, ADR-0024, ADR-0029, ADR-0030 |
+| Related | ADR-0005, ADR-0024, ADR-0029, ADR-0030, ADR-0041 |
 | Implementation | `src/nf_splice/domain/components.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/inspectors/modules.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` |
 | Tests | `tests/test_containers.py` |
+
+
+Amended by ADR-0041 (2026-10-15): the `legacy_ids` field was removed from `components.json` before revision 0.3.0 was published.
 
 ### Context
 
@@ -1670,12 +1680,12 @@ build could leave a mixed bundle that looked complete.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 14 |
 | Scope | Legacy compatibility and migration |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0041 |
 | Related | ADR-0021, ADR-0027, ADR-0030, ADR-0032, ADR-0033 |
 | Implementation | `src/nf_splice/services/migration.py`, `src/nf_splice/services/lifecycle.py` |
 | Tests | `tests/test_migration.py`, `tests/test_legacy_fixtures.py` |
@@ -1733,9 +1743,12 @@ Existing integrations store reviewed decisions in `splice/nf-splice.yaml`
 | Scope | Terminal user interface |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0014, ADR-0029, ADR-0030, ADR-0036 |
+| Related | ADR-0014, ADR-0029, ADR-0030, ADR-0036, ADR-0041 |
 | Implementation | `src/nf_splice/interfaces/tui/`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_tui.py`, `tests/tui_helpers.py` |
+
+
+Amended by ADR-0041 (2026-10-15): the Migration step was removed from the wizard.
 
 ### Context
 
@@ -1898,3 +1911,59 @@ AI extra and committed byte-exact fixtures.
 ### Consequences
 
 - CI cost grows with the matrix; failures are reported per interpreter.
+
+---
+
+## ADR-0041: Support only 0.3.0 contracts and remove pre-release 0.1.0 compatibility
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer decision during review of the 0.3.0 branch |
+| Scope | Supported versions, migration and legacy code |
+| Supersedes | ADR-0037 |
+| Superseded by | — |
+| Related | ADR-0023, ADR-0027, ADR-0028, ADR-0033, ADR-0038 |
+| Implementation | `src/nf_splice/cli.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/inspectors/splice_tree.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/contracts/data/registry.json` |
+| Tests | `tests/test_state.py`, `tests/test_output_scopes.py`, `tests/test_contracts.py`, `tests/test_cli.py` |
+
+### Context
+
+nf-splice 0.1.0 was a pre-release test version. Its bundles were never used
+in production, so the compatibility code built for them (the `migrate`
+commands, repository-root state relocation, the version-gated legacy runtime,
+legacy scope interpretation, the `--run-metadata` alias, the wizard's
+Migration step, the single-file authoring model and the frozen 0.1.0
+fixtures) protected no real users while adding code, tests and documentation
+that new users and integrators had to read past.
+
+### Decision
+
+- nf-splice supports only the 0.3.0 contract revisions and lock format 2.0.
+  Compatibility guarantees start at 0.3.0.
+- All 0.1.0 compatibility is removed: `nf-splice migrate drafts`,
+  `nf-splice migrate-state`, `--run-metadata`, the legacy catalogue and
+  runtime paths, legacy scope interpretation, 0.1.0 input classifications,
+  the wizard's Migration step, the 0.1.0 authoring-document model and its
+  serialisation, recognition of 1.0 bundles and locks, and the 0.1.0 entry
+  of the contract registry.
+- `legacy_ids` is removed from the components 0.3.0 definition before that
+  revision is first published.
+- A document that does not declare a 0.3.0 contract is rejected with a
+  message to rebuild it with nf-splice.
+
+### Alternatives rejected
+
+- Keeping migration code for test bundles: maintenance and documentation
+  cost with no production users.
+- Keeping only the runtime legacy path: the same cost for the same reason.
+
+### Consequences
+
+- Leftover test bundles must be rebuilt from their pipeline repositories
+  with `nf-splice init` and a normal review.
+- Specification scenarios S05 (legacy bundle migration) and S14 (scope
+  migration) no longer apply; mixed job/sample/run granularity from S14
+  stays covered by `tests/test_output_scopes.py`.
+- ADR-0027, ADR-0028, ADR-0033 and ADR-0038 carry amendment notes.

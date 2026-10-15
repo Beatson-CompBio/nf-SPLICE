@@ -255,7 +255,6 @@ components:
   containers[].resolution: "Readiness."
   containers[].resolution.status: "Readiness state. Published bundles contain `resolved` (native reference only) or `verified` (downloadable file)."
   containers[].resolution.reasons: "Machine-readable reasons for the state."
-  containers[].legacy_ids: "Earlier identifiers of this container, kept when a pre-release test bundle was rebuilt. Usually absent."
   components: "Workflow modules."
   components[].id: "Stable module identifier."
   components[].type: "Kind of component. Always `workflow_module` in this revision."

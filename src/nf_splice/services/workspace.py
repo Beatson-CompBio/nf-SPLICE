@@ -1,7 +1,7 @@
 """File-first operations shared by every interface (CLI, TUI, agents, CI).
 
 This module is the single application boundary over per-layer drafts,
-promotion, publication, migration and container operations. Interfaces call
+promotion, publication and container operations. Interfaces call
 these functions instead of duplicating business rules (ADR-0014).
 """
 
@@ -17,7 +17,7 @@ from typing import Any
 from nf_splice.domain import EvidenceKind, RepositoryInspection
 from nf_splice.drafts import PatchOp
 from nf_splice.inspectors import inspect_repository
-from nf_splice.layers import ChangeContext, LayerError, confirm_values
+from nf_splice.layers import ChangeContext, confirm_values
 from nf_splice.layers.base import (
     LAYERS,
     EditResult,
@@ -40,7 +40,6 @@ from nf_splice.services.lifecycle import (
     list_artifacts,
     validate_layer,
 )
-from nf_splice.services.migration import LEGACY_STATE
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,20 +95,10 @@ def workspace_status(repository_root: str | Path) -> WorkspaceStatus:
     ]
     if unknown:
         warnings.append(f"{len(unknown)} unknown splice/ path(s) will be preserved.")
-    if (root / LEGACY_STATE).is_file():
-        warnings.append(
-            f"{LEGACY_STATE} is 0.1.0 legacy state (read-only migration input); "
-            "preview `nf-splice migrate drafts`."
-        )
     if (root / "splice" / JOURNAL).exists():
         warnings.append(
             "An interrupted publication was found; run nf-splice draft recover."
         )
-    warnings.extend(
-        f"Legacy root state {item.path} is {item.classification.value}; "
-        f"migrate it with nf-splice migrate-state"
-        for item in inspection.legacy_state
-    )
     return WorkspaceStatus(inspection, counts, list_artifacts(root), tuple(warnings))
 
 
@@ -136,19 +125,6 @@ def initialise(
 ) -> InitialisationReport:
     """Seed every applicable draft from evidence; existing drafts are kept."""
     root = Path(repository_root).resolve()
-    if (root / LEGACY_STATE).is_file() and not (
-        root / layer_spec("bundle").draft
-    ).exists():
-        raise LayerError(
-            f"{LEGACY_STATE} holds 0.1.0 authoring state; preview and apply "
-            "`nf-splice migrate drafts` instead of initialising"
-        )
-    for name in ("nf-splice.yaml", "nf-splice.lock.json"):
-        if (root / name).exists():
-            raise LayerError(
-                f"legacy repository-root {name} exists; preview and apply "
-                "nf-splice migrate-state first"
-            )
     before = {spec.name for spec in LAYERS if (root / spec.draft).exists()}
     notes: list[str] = []
     seeded = seed_bundle_draft(root, explicit=identity)

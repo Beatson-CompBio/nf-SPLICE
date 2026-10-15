@@ -26,7 +26,6 @@ Global options go before the command name, for example
 | [`nf-splice plan`](#nf-splice-plan) | Preview promotion/publication changes and blockers (read-only). |
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
 | [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
-| [`nf-splice migrate-state`](#nf-splice-migrate-state) | Preview or apply relocation of repository-root legacy state into splice/. |
 | [`nf-splice tui`](#nf-splice-tui) | Open the guided terminal wizard (works fully without AI). |
 | [`nf-splice analysis-output generate`](#nf-splice-analysis-output-generate) | Generate and schema-validate analysis_output.json for one completed job. |
 | [`nf-splice analysis-output validate`](#nf-splice-analysis-output-validate) | Validate an existing analysis_output.json against the static contract. |
@@ -48,7 +47,6 @@ Global options go before the command name, for example
 | [`nf-splice containers classify`](#nf-splice-containers-classify) | Classify a container reference without network access. |
 | [`nf-splice containers cache-name`](#nf-splice-containers-cache-name) | Print the Nextflow Singularity/Apptainer cache file name. |
 | [`nf-splice containers verify`](#nf-splice-containers-verify) | Download and verify an image, then record its distribution (network). |
-| [`nf-splice migrate drafts`](#nf-splice-migrate-drafts) | Preview (default) or apply migration of splice/nf-splice.yaml to drafts. |
 | [`nf-splice agent tools`](#nf-splice-agent-tools) | Print the structured tool schemas available to an agent (offline). |
 | [`nf-splice agent run`](#nf-splice-agent-run) | Run an assistant session; it can only propose, never apply. |
 | [`nf-splice agent proposals`](#nf-splice-agent-proposals) | List agent proposals and their status. |
@@ -186,19 +184,6 @@ nf-splice validate [OPTIONS]
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--json` |  |  | Emit stable JSON. |
 
-### nf-splice migrate-state
-
-Preview or apply relocation of repository-root legacy state into splice/.
-
-```text
-nf-splice migrate-state [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-| --- | --- | --- | --- |
-| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--apply` |  |  | Apply the displayed relocation. |
-
 ### nf-splice tui
 
 Open the guided terminal wizard (works fully without AI).
@@ -229,7 +214,6 @@ nf-splice analysis-output generate [OPTIONS]
 | `--native-output-index` | `<path>` |  | Output index written by the pipeline (.json, .yaml, .csv or .tsv), instead of walking a directory. |
 | `--output-tree` | `<path>` |  | Saved 'ls -R' or 'tree' listing of the publish directory. Supply exactly one of the three sources. |
 | `--job-metadata` | `<path>` |  | JSON job identity and job-wide metadata (job_id_short/job_id_long, config_profile, execution_timestamp, job_metadata.*). |
-| `--run-metadata` | `<path>` |  | Deprecated 0.1.0 alias: legacy workflow-execution metadata, converted to job metadata. Use --job-metadata. |
 | `--sample-metadata` | `<path>` |  | CSV of known samples; optional run_id column maps runs to samples. |
 | `--output-directory` | `<directory>` | `.` | Directory in which to write analysis_output.json. |
 | `--checksum` | `<str>` |  | Optional hashlib algorithm for completed published files. |
@@ -525,21 +509,6 @@ nf-splice containers verify [OPTIONS] CONTAINER URL
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--registry` | `<str>` |  | Configured Nextflow registry. |
-
-### nf-splice migrate drafts
-
-Preview (default) or apply migration of splice/nf-splice.yaml to drafts.
-
-```text
-nf-splice migrate drafts [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-| --- | --- | --- | --- |
-| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--apply` |  |  | Create the previewed drafts. |
-| `--map-library-to-run` |  |  | Reviewed: legacy library IDs are platform run IDs. |
-| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice agent tools
 

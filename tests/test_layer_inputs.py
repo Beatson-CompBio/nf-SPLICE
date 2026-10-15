@@ -216,10 +216,10 @@ def test_identity_envelope_drift_and_draft07_import(tmp_path: Path) -> None:
     sync_identity(tmp_path, ADA)
     assert _compiled(tmp_path)["x-splice-pipeline"]["version"] == "1.3.0"
 
-    legacy = tmp_path / "legacy"
-    legacy.mkdir()
-    ready_identity(legacy)
-    (legacy / "nextflow_schema.json").write_text(
+    draft07 = tmp_path / "draft07"
+    draft07.mkdir()
+    ready_identity(draft07)
+    (draft07 / "nextflow_schema.json").write_text(
         json.dumps(
             {
                 "$schema": "http://json-schema.org/draft-07/schema",
@@ -236,9 +236,9 @@ def test_identity_envelope_drift_and_draft07_import(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    import_inputs(legacy)
-    set_access(legacy, ["pair"], ["user"], ADA)
-    compiled = _compiled(legacy)
+    import_inputs(draft07)
+    set_access(draft07, ["pair"], ["user"], ADA)
+    compiled = _compiled(draft07)
     assert compiled["allOf"] == [{"$ref": "#/$defs/g"}]
     assert compiled["$defs"]["g"]["properties"]["pair"]["prefixItems"] == [
         {"type": "string"}

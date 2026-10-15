@@ -20,9 +20,7 @@ from nf_splice.contracts import (
     release,
     validate_contract_document,
 )
-from nf_splice.domain.access import LEGACY_CLASSIFICATION_ACCESS
 from nf_splice.domain.audit import ActorKind, ChangeOrigin
-from nf_splice.domain.inputs import InputClassification
 from nf_splice.drafts import DraftConflictError, DraftStoreError
 from nf_splice.inspectors.containers import classify_reference, nextflow_cache_filename
 from nf_splice.layers import ChangeContext, LayerError, confirm_values
@@ -52,16 +50,6 @@ from nf_splice.services.lifecycle import (
     recover,
     validate_bundle,
     validate_layer,
-)
-from nf_splice.services.migration import (
-    MigrationError,
-    apply_draft_migration,
-    plan_draft_migration,
-)
-from nf_splice.services.state import (
-    StateMigrationError,
-    apply_state_migration,
-    plan_state_migration,
 )
 from nf_splice.services.workspace import (
     dumps,
@@ -101,11 +89,6 @@ containers_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(containers_app, name="containers")
-migrate_app = typer.Typer(
-    help="Preview or apply migration of 0.1.0 authoring state into drafts.",
-    no_args_is_help=True,
-)
-app.add_typer(migrate_app, name="migrate")
 agent_app = typer.Typer(
     help="Optional AI assistance: tools, runs, proposals and human approval.",
     no_args_is_help=True,
@@ -417,17 +400,11 @@ def _configure_identity(
 
 
 def _access_for(value: str) -> list[str]:
-    try:
-        principals, _visibility = LEGACY_CLASSIFICATION_ACCESS[
-            InputClassification(value)
-        ]
-        return [item.value for item in principals]
-    except ValueError:
-        return [
-            item.strip()
-            for item in value.split(",")
-            if item.strip() and item.strip() != "none"
-        ]
+    return [
+        item.strip()
+        for item in value.split(",")
+        if item.strip() and item.strip() != "none"
+    ]
 
 
 def _configure_inputs(
@@ -453,18 +430,9 @@ def _configure_inputs(
     hidden = dict(visibility)
     for review in reviews:
         name = str(review["parameter"]).removeprefix("input:")
-        value = review.get("editable_by", review.get("classification", ""))
+        value = review.get("editable_by", "")
         principals = value if isinstance(value, list) else _access_for(str(value))
-        legacy_visibility = None
-        try:
-            legacy_visibility = LEGACY_CLASSIFICATION_ACCESS[
-                InputClassification(str(value))
-            ][1]
-        except ValueError:
-            pass
-        selected = hidden.pop(name, review.get("visibility")) or (
-            legacy_visibility.value if legacy_visibility else None
-        )
+        selected = hidden.pop(name, review.get("visibility"))
         _call(
             input_layer.set_access,
             repository,
@@ -1159,81 +1127,6 @@ def containers_verify_command(
     typer.echo("Verified distribution recorded.")
 
 
-# ---------------------------------------------------------------- migration
-
-
-@migrate_app.command("drafts")
-def migrate_drafts_command(
-    repository: RepositoryOption = Path("."),
-    apply: bool = typer.Option(False, "--apply", help="Create the previewed drafts."),
-    map_library_to_run: bool = typer.Option(
-        False, help="Reviewed: legacy library IDs are platform run IDs."
-    ),
-    json_output: JsonOption = False,
-) -> None:
-    """Preview (default) or apply migration of splice/nf-splice.yaml to drafts."""
-    try:
-        plan = (
-            apply_draft_migration(
-                repository,
-                _context(ChangeOrigin.MIGRATION),
-                map_library_to_run=map_library_to_run,
-            )
-            if apply
-            else plan_draft_migration(repository, map_library_to_run=map_library_to_run)
-        )
-    except (MigrationError, *_ERRORS) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    if json_output:
-        typer.echo(dumps(plan.to_json() | {"applied": apply}))
-        return
-    for note in plan.notes:
-        typer.echo(f"{note.kind}: {note.layer}{note.pointer}: {note.message}")
-    typer.echo(
-        "Drafts created; legacy state preserved."
-        if apply
-        else "Preview only; pass --apply to create drafts."
-    )
-
-
-@app.command("migrate-state")
-def migrate_state_command(
-    repository: RepositoryOption = Path("."),
-    apply: bool = typer.Option(
-        False, "--apply", help="Apply the displayed relocation."
-    ),
-) -> None:
-    """Preview or apply relocation of repository-root legacy state into splice/."""
-    try:
-        result = (
-            apply_state_migration(repository)
-            if apply
-            else plan_state_migration(repository)
-        )
-    except (OSError, StateMigrationError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    if not result.changes:
-        typer.echo("No repository-root legacy state was detected.")
-        return
-    for change in result.changes:
-        typer.echo(
-            f"{change.kind.value}: {change.source.relative_to(repository)} -> "
-            f"{change.destination.relative_to(repository)}"
-        )
-    if apply:
-        typer.echo(
-            "Migration applied atomically; legacy source files were preserved."
-            if result.wrote
-            else "Destination is already byte-identical; no files changed."
-        )
-    else:
-        typer.echo(
-            "Preview complete; repository was not changed. Pass --apply to migrate."
-        )
-
-
 # ---------------------------------------------------------------- analysis output
 
 
@@ -1278,17 +1171,6 @@ def generate_analysis_output_command(
             ),
         ),
     ] = None,
-    run_metadata: Annotated[
-        Path | None,
-        typer.Option(
-            exists=True,
-            resolve_path=True,
-            help=(
-                "Deprecated 0.1.0 alias: legacy workflow-execution metadata, "
-                "converted to job metadata. Use --job-metadata."
-            ),
-        ),
-    ] = None,
     sample_metadata: Annotated[
         Path | None,
         typer.Option(
@@ -1308,19 +1190,12 @@ def generate_analysis_output_command(
 ) -> None:
     """Generate and schema-validate analysis_output.json for one completed job."""
     try:
-        if run_metadata is not None:
-            typer.echo(
-                "warning: --run-metadata is deprecated; its workflow-execution fields "
-                "are converted to job metadata (use --job-metadata).",
-                err=True,
-            )
         result = generate_analysis_output(
             repository,
             publish_directory=publish_directory,
             native_output_index=native_output_index,
             output_tree=output_tree,
             job_metadata=_metadata_file(job_metadata, "job metadata"),
-            run_metadata=_metadata_file(run_metadata, "run metadata"),
             sample_metadata=sample_metadata,
             checksum_algorithm=checksum,
             allow_unclassified=allow_unclassified,

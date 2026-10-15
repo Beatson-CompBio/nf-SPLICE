@@ -58,14 +58,6 @@ STEPS: tuple[Step, ...] = (
         "Review detected pipeline evidence and the state of splice/.",
     ),
     Step(
-        "migration",
-        "Migration",
-        None,
-        ("repository",),
-        lambda snapshot: not snapshot.legacy_state or snapshot.has_drafts,
-        "Migrate 0.1.0 authoring state into editable drafts (preview first).",
-    ),
-    Step(
         "identity",
         "Identity",
         "bundle",

@@ -8,7 +8,6 @@ from nf_splice.interfaces.tui.screens.done import DoneView
 from nf_splice.interfaces.tui.screens.drafts import DraftsView
 from nf_splice.interfaces.tui.screens.identity import IdentityView
 from nf_splice.interfaces.tui.screens.inputs import InputsView
-from nf_splice.interfaces.tui.screens.migration import MigrationView
 from nf_splice.interfaces.tui.screens.outputs import OutputsView
 from nf_splice.interfaces.tui.screens.profiles import ProfilesView
 from nf_splice.interfaces.tui.screens.provenance import ProvenanceView
@@ -22,7 +21,6 @@ VIEWS: dict[str, type[StepView]] = {
     for view in (
         WelcomeView,
         RepositoryView,
-        MigrationView,
         IdentityView,
         InputsView,
         OutputsView,

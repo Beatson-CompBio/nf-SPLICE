@@ -47,14 +47,6 @@ overwriting your edit. Resolve the field in the draft and repeat.
 **Publication was interrupted.** Run `nf-splice draft recover` to restore
 the previous bundle.
 
-**`legacy_bundle`.** The repository holds files from a pre-release test
-version of nf-splice. Convert them into drafts with a preview first:
-
-```bash
-nf-splice migrate drafts
-nf-splice migrate drafts --apply
-```
-
 ## Getting more detail
 
 ```bash

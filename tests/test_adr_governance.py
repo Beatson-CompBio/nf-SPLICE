@@ -107,10 +107,13 @@ def test_incremental_records_carry_traceability_metadata_and_sections() -> None:
             assert record.metadata.get(key), (identifier, key)
         for section in _REQUIRED_SECTIONS:
             assert section in record.sections, (identifier, section)
-        for path in _paths(record.metadata["Implementation"]):
-            assert (ROOT / path).exists(), (identifier, path)
         tests = _paths(record.metadata["Tests"])
         assert tests, identifier
+        if record.metadata["Status"] == "Superseded":
+            # History: the superseding record owns the current code and tests.
+            continue
+        for path in _paths(record.metadata["Implementation"]):
+            assert (ROOT / path).exists(), (identifier, path)
         for path in tests:
             assert (ROOT / path).is_file(), (identifier, path)
 

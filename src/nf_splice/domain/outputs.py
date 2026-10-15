@@ -8,7 +8,7 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints, model_validator
 
-from nf_splice.domain.authoring import DomainModel, NonEmptyString
+from nf_splice.domain.base import DomainModel, NonEmptyString
 
 #: Developer-chosen descriptive label: safe, non-empty free text. Scientific
 #: categories and stages are never restricted to a central vocabulary.
@@ -85,18 +85,6 @@ class OutputScope(str, Enum):
     JOB = "job"
     SAMPLE = "sample"
     RUN = "run"
-
-
-class LegacyOutputScope(str, Enum):
-    """Scope values of nf-splice 0.1.0 contracts, read only for migration.
-
-    Legacy ``run`` meant workflow-wide (now ``job``); legacy ``library`` meant
-    per-library and becomes ``run`` only with a reviewed platform-run mapping.
-    """
-
-    RUN = "run"
-    SAMPLE = "sample"
-    LIBRARY = "library"
 
 
 class OutputEntityType(str, Enum):

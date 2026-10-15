@@ -32,22 +32,14 @@ class WelcomeView(StepView):
             if snapshot.has_drafts
             else "No drafts exist yet: create new drafts from repository evidence."
         )
-        legacy = (
-            "\n\n0.1.0 legacy state was found; the Migration step previews it."
-            if snapshot.legacy_state
-            else ""
-        )
         self.query_one("#welcome-summary", Markdown).update(
-            f"**Repository:** `{snapshot.repository.name}`\n\n{drafts}{legacy}"
+            f"**Repository:** `{snapshot.repository.name}`\n\n{drafts}"
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app = self.wizard
         if event.button.id == "welcome-create":
             event.stop()
-            if app.snapshot.legacy_state and not app.snapshot.has_drafts:
-                app.show_step("migration")
-                return
             app.perform(
                 "Creating drafts from evidence",
                 lambda: initialise(app.repository, app.change_context()),

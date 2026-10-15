@@ -128,9 +128,6 @@ async def _author_with_tui(root: Path, snapshots: bool = False) -> None:
         assert app.current == "repository"
         if snapshots:
             check_snapshot("repository", screen_text(app))
-            app.show_step("migration")
-            await settle(app, pilot)
-            check_snapshot("migration-empty", screen_text(app))
 
         app.show_step("identity")
         await settle(app, pilot)
@@ -281,7 +278,7 @@ async def test_navigation_locking_back_defer_and_help(tmp_path: Path) -> None:
         await press(app, pilot, "#welcome-create")
         await pilot.press("ctrl+n")
         await settle(app, pilot)
-        assert app.current == "migration"
+        assert app.current == "identity"
         await pilot.press("escape")
         await settle(app, pilot)
         assert app.current == "repository"
@@ -336,7 +333,7 @@ async def test_inspect_only_mode_never_writes(tmp_path: Path) -> None:
     async with app.run_test(size=SIZE) as pilot:
         await settle(app, pilot)
         await press(app, pilot, "#welcome-inspect")
-        app.show_step("migration")
+        app.show_step("identity")
         await settle(app, pilot)
         app.perform("write", lambda: None)
         assert "Inspect-only" in str(app.query_one("#status").render())

@@ -8,14 +8,9 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from layer_fixtures import ready_repository, write_pipeline
+from layer_fixtures import ready_repository
 from nf_splice import __version__
 from nf_splice.cli import app
-from nf_splice.domain import (
-    AuthoringDocument,
-    PipelineIdentity,
-    dump_authoring_document,
-)
 
 runner = CliRunner()
 
@@ -50,14 +45,13 @@ def test_help_lists_every_command_group() -> None:
         "validate",
         "preview",
         "containers",
-        "migrate",
-        "migrate-state",
         "schema",
         "audit",
         "analysis-output",
         "tui",
     ):
         assert command in result.output
+    assert "migrate" not in result.output.split("Commands", 1)[-1]
     for group, commands in (
         (
             "draft",
@@ -74,7 +68,6 @@ def test_help_lists_every_command_group() -> None:
             ),
         ),
         ("containers", ("classify", "cache-name", "verify")),
-        ("migrate", ("drafts",)),
         ("analysis-output", ("generate", "validate")),
     ):
         help_output = runner.invoke(app, [group, "--help"]).output
@@ -95,26 +88,6 @@ def test_inspect_and_status_are_read_only(tmp_path: Path) -> None:
     assert {item["state"] for item in payload["artifacts"]} == {"missing"}
     assert payload["ready"] is False
     assert not (tmp_path / "splice").exists()
-
-
-def test_cli_previews_and_applies_root_state_relocation(tmp_path: Path) -> None:
-    document = AuthoringDocument(
-        pipeline=PipelineIdentity(
-            name="pipeline", version="1.0.0", repository_url="https://github.com/org/p"
-        )
-    )
-    source = tmp_path / "nf-splice.yaml"
-    source.write_text(dump_authoring_document(document), encoding="utf-8")
-    preview = runner.invoke(app, ["migrate-state", "--repository", str(tmp_path)])
-    applied = runner.invoke(
-        app, ["migrate-state", "--repository", str(tmp_path), "--apply"]
-    )
-    assert preview.exit_code == 0 and "repository was not changed" in preview.output
-    assert applied.exit_code == 0 and "source files were preserved" in applied.output
-    assert (tmp_path / "splice" / "nf-splice.yaml").read_bytes() == source.read_bytes()
-    blocked = runner.invoke(app, ["init", "--repository", str(tmp_path)])
-    assert blocked.exit_code == 2
-    assert "migrate drafts" in blocked.output
 
 
 def test_unknown_layer_fails_truthfully(tmp_path: Path) -> None:
@@ -235,13 +208,10 @@ def test_draft_edit_plans_then_applies_and_reports_conflicts(tmp_path: Path) -> 
     assert "Hand edit." in draft.read_text()
 
 
-def test_containers_and_migration_commands(tmp_path: Path) -> None:
+def test_containers_commands() -> None:
     classify = runner.invoke(app, ["containers", "classify", "quay.io/a/b:1"])
     assert classify.output.strip() == "oci_registry"
     cache = runner.invoke(
         app, ["containers", "cache-name", "biocontainers/x:1", "--registry", "quay.io"]
     )
     assert cache.output.strip() == "quay.io-biocontainers-x-1.img"
-    write_pipeline(tmp_path)
-    missing = runner.invoke(app, ["migrate", "drafts", "--repository", str(tmp_path)])
-    assert missing.exit_code == 2 and "does not exist" in missing.output

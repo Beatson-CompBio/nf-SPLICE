@@ -1,7 +1,7 @@
 """One application facade shared by the CLI, the TUI and agent tools.
 
 Every method delegates to the file-first services; interfaces never
-re-implement inspection, review, validation, promotion or migration rules
+re-implement inspection, review, validation or promotion rules
 (ADR-0014). Drafts below ``splice/drafts/`` are the authoring source.
 """
 
@@ -19,7 +19,7 @@ from nf_splice.layers import outputs as output_layer
 from nf_splice.layers import provenance as provenance_layer
 from nf_splice.layers.base import EditResult, LayerValidation
 from nf_splice.layers.bundle import set_identity_fields
-from nf_splice.services import lifecycle, migration, state, workspace
+from nf_splice.services import lifecycle, workspace
 
 
 class ApplicationService:
@@ -131,7 +131,7 @@ class ApplicationService:
     ) -> provenance_layer.CrateAnalysis:
         return provenance_layer.analyse_ro_crate(repository)
 
-    # Publication and migration --------------------------------------------
+    # Publication ---------------------------------------------------------
 
     def promote(
         self,
@@ -144,23 +144,3 @@ class ApplicationService:
 
     def recover(self, repository: str | Path) -> lifecycle.RecoveryResult:
         return lifecycle.recover(repository)
-
-    def plan_draft_migration(
-        self, repository: str | Path, **options: Any
-    ) -> migration.MigrationPlan:
-        return migration.plan_draft_migration(repository, **options)
-
-    def apply_draft_migration(
-        self, repository: str | Path, context: ChangeContext, **options: Any
-    ) -> migration.MigrationPlan:
-        return migration.apply_draft_migration(repository, context, **options)
-
-    def plan_state_migration(
-        self, repository: str | Path
-    ) -> state.StateMigrationResult:
-        return state.plan_state_migration(repository)
-
-    def apply_state_migration(
-        self, repository: str | Path
-    ) -> state.StateMigrationResult:
-        return state.apply_state_migration(repository)

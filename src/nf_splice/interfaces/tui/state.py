@@ -20,7 +20,6 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from nf_splice import __version__
 from nf_splice.layers.base import LAYERS
 from nf_splice.services.lifecycle import plan_promotion, validate_bundle
-from nf_splice.services.migration import LEGACY_STATE
 from nf_splice.services.workspace import WorkspaceStatus, workspace_status
 
 
@@ -30,7 +29,6 @@ class WizardSnapshot:
 
     repository: Path
     status: WorkspaceStatus | None
-    legacy_state: bool = False
     publish_ready: bool = False
     bundle_valid: bool = False
     publish_blockers: tuple[str, ...] = ()
@@ -77,7 +75,6 @@ def build_snapshot(repository: str | Path) -> WizardSnapshot:
     return WizardSnapshot(
         repository=root,
         status=status,
-        legacy_state=(root / LEGACY_STATE).is_file(),
         publish_ready=ready,
         bundle_valid=valid,
         publish_blockers=blockers,

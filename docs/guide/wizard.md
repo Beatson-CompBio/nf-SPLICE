@@ -15,10 +15,6 @@ Welcome → Repository → Identity → Inputs → Outputs → Components
         → Execution profiles → Provenance → Drafts → Readiness → Build → Done
 ```
 
-The rail also shows a Migration step. It applies only to repositories that
-still hold files from a pre-release test version of nf-splice; otherwise
-skip it.
-
 On the Welcome step, choose:
 
 - **Create new** to create drafts from your repository;

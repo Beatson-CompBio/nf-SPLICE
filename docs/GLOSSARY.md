@@ -43,10 +43,3 @@ scope and keys such as `manifest.name` in `nextflow.config`. The Nextflow
 identity inspector must keep recognising that literal token to read pipeline
 metadata as evidence. It is an input-parser token only, never an output name
 or SPLICE concept.
-
-## Legacy vocabulary
-
-Bundles produced by nf-splice 0.1.0 used `run` for workflow-wide outputs,
-`library` for per-library outputs and `run_metadata`/`--run-metadata` for job
-metadata. Those meanings are read only through version-aware migration; see
-`docs/CONTRACT_MIGRATION_0.3.0.md`.

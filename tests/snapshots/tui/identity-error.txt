@@ -1,6 +1,5 @@
   ✓ Welcome
   ✓ Repository
-  ✓ Migration
 ▶ ! Identity
   ! Inputs
   ! Outputs

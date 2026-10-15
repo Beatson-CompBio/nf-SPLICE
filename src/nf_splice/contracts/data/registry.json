@@ -52,21 +52,6 @@
   "releases": [
     {
       "tool": "nf-splice",
-      "tool_version": "0.1.0",
-      "contracts": {},
-      "companion_formats": {
-        "bundle.json": "1.0",
-        "components.json": "1.0",
-        "execution-profiles.json": "1.0",
-        "inputs.schema.json": "unversioned",
-        "outputs.schema.json": "unversioned",
-        "outputs.yaml": "1.0.0",
-        "nf-splice.lock.json": "1.0",
-        "nf-splice.yaml": "1.0"
-      }
-    },
-    {
-      "tool": "nf-splice",
       "tool_version": "0.3.0",
       "contracts": {
         "https://schemas.splice-data.io/workflow-bundle/bundle": "0.3.0",

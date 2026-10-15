@@ -26,11 +26,6 @@ from nf_splice.domain.inspection import (
     TreeState,
     UnsafeCollision,
 )
-from nf_splice.domain.serialization import (
-    InvalidAuthoringDocument,
-    UnsupportedSchemaVersion,
-    load_authoring_document,
-)
 
 LayerNames = tuple[str, ...]
 Validator = Callable[[Path], str | None]
@@ -69,11 +64,10 @@ def _require_bundle(path: Path) -> str | None:
         content: Any = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as parse_error:
         return f"invalid JSON: {parse_error}"
-    if content.get("schema_version") != "1.0":
-        report = validate_contract_document(content, filename="bundle.json")
-        if not report.valid:
-            first = report.issues[0]
-            return f"{first.json_pointer or '/'}: {first.message}"
+    report = validate_contract_document(content, filename="bundle.json")
+    if not report.valid:
+        first = report.issues[0]
+        return f"{first.json_pointer or '/'}: {first.message}"
     if content.get("bundle_format") != "splice-pipeline-bundle":
         return "bundle_format must be 'splice-pipeline-bundle'"
     files = content.get("files")
@@ -202,17 +196,6 @@ def _require_execution_profiles(path: Path) -> str | None:
     return None
 
 
-def validate_authoring_state(path: Path) -> tuple[str, str | None]:
-    """Return compatibility and detail for a canonical authoring document."""
-    try:
-        load_authoring_document(path.read_text(encoding="utf-8"))
-    except UnsupportedSchemaVersion as error:
-        return "incompatible", str(error)
-    except (OSError, UnicodeError, InvalidAuthoringDocument) as error:
-        return "malformed", str(error)
-    return "recognized", None
-
-
 def validate_lock_state(path: Path) -> tuple[str, str | None]:
     """Validate the generated bundle-provenance envelope."""
     try:
@@ -222,15 +205,11 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
     if not isinstance(content, dict):
         return "malformed", "lock state must be a JSON object"
     version = content.get("schema_version")
-    if version not in {"1.0", "2.0"}:
+    if version != "2.0":
         return "incompatible", (
-            f"unsupported lock schema version {version!r}; expected '1.0' or '2.0'"
+            f"unsupported lock schema version {version!r}; expected '2.0'"
         )
-    required = (
-        ("generator", "repository", "selected_evidence", "sources", "managed_files")
-        if version == "1.0"
-        else ("generator", "repository", "contracts", "sources", "managed_files")
-    )
+    required = ("generator", "repository", "contracts", "sources", "managed_files")
     missing = [field for field in required if field not in content]
     if missing:
         return "malformed", f"missing required keys: {', '.join(missing)}"
@@ -251,8 +230,6 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
         )
     ):
         return "malformed", "repository must contain url and optional revision"
-    if version == "1.0" and not isinstance(content.get("selected_evidence"), list):
-        return "malformed", "selected_evidence must be an array"
     for field in ("sources", "managed_files"):
         inventory_error = _require_hash_inventory(content.get(field), field)
         if inventory_error is not None:
@@ -262,18 +239,12 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
     return "recognized", None
 
 
-def _require_authoring_state(path: Path) -> str | None:
-    _classification, detail = validate_authoring_state(path)
-    return detail
-
-
 def _require_lock_state(path: Path) -> str | None:
     _classification, detail = validate_lock_state(path)
     return detail
 
 
 _FIXED_ARTIFACTS: dict[str, tuple[LayerNames, Validator]] = {
-    "nf-splice.yaml": (("authoring",), _require_authoring_state),
     "nf-splice.lock.json": (("bundle",), _require_lock_state),
     "bundle.json": (("bundle",), _require_bundle),
     "components.json": (
@@ -468,7 +439,7 @@ def _tree_state(paths: list[InspectedPath]) -> TreeState:
 
 
 def _collision(item: InspectedPath) -> UnsafeCollision | None:
-    if item.path in {"nf-splice.yaml", "nf-splice.lock.json"}:
+    if item.path == "nf-splice.lock.json":
         return None
     if not item.affected_layers or item.entry_type is EntryType.DIRECTORY:
         return None
