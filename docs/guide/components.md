@@ -4,7 +4,7 @@ The components layer lists the modules your pipeline runs and the container
 images they need, so the platform can fetch images before a job starts. It is
 published as `components.json`.
 
-- **Draft:** `splice/drafts/components.draft.yaml`
+- **Draft:** `.splice-local/drafts/components.draft.yaml`
 - **Required:** a decision on every discovered module, and whether images
   must be directly downloadable
 

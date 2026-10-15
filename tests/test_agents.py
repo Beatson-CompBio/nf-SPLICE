@@ -123,7 +123,7 @@ def test_manual_mode_loads_no_ai_and_ask_ai_cannot_change_anything(
     assert answer.text.startswith("7 published routes")
     assert len(answer.denied) == 2
     assert drafts_fingerprint(root) == before
-    assert not (root / ".nf-splice-local" / "agent" / "sessions").exists()
+    assert not (root / ".splice-local" / "sessions").exists()
 
 
 # ------------------------------------------------------------ assisted mode
@@ -149,7 +149,7 @@ def test_assisted_session_proposes_waits_executes_and_validates(
     assert not (root / "splice").exists()
 
     asyncio.run(engine.approve(ADA))
-    assert (root / "splice" / "drafts" / "bundle.draft.yaml").is_file()
+    assert (root / ".splice-local" / "drafts" / "bundle.draft.yaml").is_file()
     pending = engine.state.pending
     assert pending is not None and pending.stage is Stage.IDENTITY
     assert "+  name: multiroute" in pending.diff
@@ -178,7 +178,7 @@ def test_assisted_session_proposes_waits_executes_and_validates(
     assert event["actor"] == {"label": "scripted", "kind": "agent"}
     assert event["approved_by"]["label"] == "Ada"
     # Session files stay in the ignored workspace, never in the bundle.
-    assert (root / ".nf-splice-local" / ".gitignore").read_text().endswith("*\n")
+    assert "/.splice-local/" in (root / ".gitignore").read_text().splitlines()
     assert not any("session" in path.name for path in (root / "splice").rglob("*"))
 
 
@@ -290,7 +290,9 @@ def test_assisted_objection_is_investigated_and_never_approval(
     )
 
     asyncio.run(engine.approve(ADA))
-    catalogue = (root / "splice" / "drafts" / "outputs.draft.yaml").read_text("utf-8")
+    catalogue = (root / ".splice-local" / "drafts" / "outputs.draft.yaml").read_text(
+        "utf-8"
+    )
     assert "hisat2_alignment" in catalogue
     assert engine.state.stages[Stage.OUTPUTS].status is StageStatus.COMPLETED
 
@@ -340,7 +342,7 @@ def _outputs_blocker(request: TurnRequest, tools: ToolInvoker) -> list[str]:
         "record_blocker",
         {
             "decision": "Whether Salmon quantification is a platform output",
-            "artefact": "splice/drafts/outputs.draft.yaml",
+            "artefact": ".splice-local/drafts/outputs.draft.yaml",
             "attempted_checks": ["analyse_routes", "reconcile_example_outputs"],
             "suggested_resolution": "Confirm whether users need quant.sf.",
         },
@@ -520,7 +522,7 @@ def test_interrupted_actions_are_rolled_back_on_resume(tmp_path: Path) -> None:
         operations=["set_identity"],
     )
     store.save(engine.state)
-    draft = root / "splice" / "drafts" / "bundle.draft.yaml"
+    draft = root / ".splice-local" / "drafts" / "bundle.draft.yaml"
     original = draft.read_bytes()
     draft.write_text("half-written: [", encoding="utf-8")  # the crash
 
@@ -540,7 +542,7 @@ def test_stale_approvals_and_concurrent_sessions_are_rejected(tmp_path: Path) ->
     asyncio.run(engine.advance())
     asyncio.run(engine.approve(ADA))
     assert engine.state.pending is not None
-    draft = root / "splice" / "drafts" / "bundle.draft.yaml"
+    draft = root / ".splice-local" / "drafts" / "bundle.draft.yaml"
     draft.write_text(draft.read_text("utf-8") + "# edited by hand\n", "utf-8")
     with pytest.raises(StaleProposal):
         asyncio.run(engine.approve(ADA))

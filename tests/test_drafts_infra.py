@@ -29,7 +29,7 @@ from nf_splice.drafts import (
 )
 from nf_splice.drafts import patch as patching
 
-DRAFT = "splice/drafts/example.draft.yaml"
+DRAFT = ".splice-local/drafts/example.draft.yaml"
 
 
 @pytest.mark.parametrize(
@@ -170,20 +170,21 @@ def test_malformed_drafts_are_preserved_not_regenerated(tmp_path: Path) -> None:
 
 
 def test_compare_and_swap_and_path_safety(tmp_path: Path) -> None:
-    relative = "splice/drafts/file.txt"
+    relative = ".splice-local/drafts/file.txt"
     first = replace_file(tmp_path, relative, b"one", expected_sha256=None)
     assert first == sha256(b"one")
     with pytest.raises(DraftConflictError):
         replace_file(tmp_path, relative, b"two", expected_sha256=None)
     replace_file(tmp_path, relative, b"two", expected_sha256=first)
     assert (tmp_path / relative).read_bytes() == b"two"
-    assert not list((tmp_path / "splice" / "drafts").glob(".*.tmp"))
+    assert not list((tmp_path / ".splice-local" / "drafts").glob(".*.tmp"))
 
     for unsafe in ("../x", "/etc/passwd", "splice/../x", "other/file"):
         with pytest.raises(DraftStoreError):
             replace_file(tmp_path, unsafe, b"x", expected_sha256=None)
     outside = tmp_path / "outside"
     outside.mkdir()
+    (tmp_path / "splice").mkdir(exist_ok=True)
     (tmp_path / "splice" / "linked").symlink_to(outside)
     with pytest.raises(DraftStoreError, match="symbolic link"):
         replace_file(tmp_path, "splice/linked/file", b"x", expected_sha256=None)

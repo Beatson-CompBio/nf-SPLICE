@@ -87,6 +87,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | Separate contract, observed-output and coverage assessments (`nf-splice assess`) | ADR-0042 | `src/nf_splice/services/coverage.py`, `src/nf_splice/cli.py` | `tests/test_coverage.py` | Current |
 | Optional nf-core checks behind explicit permissions | ADR-0043 | `src/nf_splice/services/checks.py` | `tests/test_coverage.py` | Current |
 | Canonical skills, root AGENTS.md and runtime skill loading | ADR-0046 | `AGENTS.md`, `skills/`, `src/nf_splice/agents/skills.py`, `docs/AGENTS.md` | `tests/test_skills.py`, `tests/test_packaging.py` | Current |
+| Private `.splice-local/` workspace, published-only `splice/`, safe ignore rule and migration | ADR-0047 | `src/nf_splice/layout.py`, `src/nf_splice/services/migration.py`, `src/nf_splice/drafts/store.py` | `tests/test_layout.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |

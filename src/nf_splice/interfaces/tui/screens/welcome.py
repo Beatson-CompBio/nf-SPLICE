@@ -15,7 +15,8 @@ from nf_splice.services.workspace import initialise
 class WelcomeView(StepView):
     step_id = "welcome"
     explanation = (
-        "nf-splice keeps one editable draft per layer under splice/drafts/. "
+        "nf-splice keeps one editable draft per layer in the private "
+        ".splice-local/ folder. "
         "Nothing is published until you review the plan and build explicitly. "
         "Detected values are suggestions until you confirm or edit them."
     )

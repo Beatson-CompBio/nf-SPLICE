@@ -15,7 +15,7 @@ references for each runtime, the modules that use them and, when one has
 been verified, a downloadable image file.
 
 - **Written by:** `nf-splice build all`, from the reviewed
-  `splice/drafts/components.draft.yaml`.
+  `.splice-local/drafts/components.draft.yaml`.
 - **Read by:** platforms that pre-fetch or cache images before running
   jobs, and software inventories.
 

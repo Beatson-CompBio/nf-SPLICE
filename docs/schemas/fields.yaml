@@ -43,7 +43,7 @@ bundle:
     other file and says where each file is.
 
     - **Written by:** `nf-splice build all`, from the reviewed
-      `splice/drafts/bundle.draft.yaml`.
+      `.splice-local/drafts/bundle.draft.yaml`.
     - **Read by:** anything that ingests a bundle. Read this file first, then
       follow `schemas` and `files` to the other four contracts.
   _sections:
@@ -111,7 +111,7 @@ inputs:
     engine.
 
     - **Written by:** `nf-splice build all`, from the reviewed
-      `splice/drafts/inputs.schema.draft.yaml` (imported from
+      `.splice-local/drafts/inputs.draft.yaml` (imported from
       `nextflow_schema.json`).
     - **Read by:** platforms that build parameter forms, validate submitted
       values and pass them to the engine.
@@ -168,7 +168,7 @@ outputs:
        it is owned (job, sample or run) and how to recognise it by path.
 
     - **Written by:** `nf-splice build all`, from the reviewed
-      `splice/drafts/outputs.draft.yaml`. `outputs.yaml` is a human-readable
+      `.splice-local/drafts/outputs.draft.yaml`. `outputs.yaml` is a human-readable
       copy of the same catalogue.
     - **Read by:** platforms that classify, store and display job outputs.
       Read the catalogue from this file only.
@@ -219,7 +219,7 @@ components:
     been verified, a downloadable image file.
 
     - **Written by:** `nf-splice build all`, from the reviewed
-      `splice/drafts/components.draft.yaml`.
+      `.splice-local/drafts/components.draft.yaml`.
     - **Read by:** platforms that pre-fetch or cache images before running
       jobs, and software inventories.
 
@@ -275,7 +275,7 @@ execution-profiles:
     one default.
 
     - **Written by:** `nf-splice build all`, from the reviewed
-      `splice/drafts/execution-profiles.draft.yaml`.
+      `.splice-local/drafts/execution-profiles.draft.yaml`.
     - **Read by:** platforms that choose a configuration when they launch a
       job.
 

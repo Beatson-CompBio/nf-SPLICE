@@ -16,7 +16,7 @@ By starting the run you approve its scope:
 
 | Scope | Default | Change with |
 | --- | --- | --- |
-| Edit drafts in `splice/drafts/` | Allowed | — |
+| Edit drafts in `.splice-local/drafts/` | Allowed | — |
 | Build the bundle into `splice/` | Allowed | — |
 | Replace hand-edited published files | Not allowed | `--allow overwrite` |
 | Run nf-core lint if installed | Not allowed | `--allow external_tools --allow run_nextflow --allow network` |
@@ -89,7 +89,7 @@ other result is reported as `partial`, with its blockers.
    ...
    Blockers:
      [outputs] Whether Salmon quantification is a platform output
-       affects: splice/drafts/outputs.draft.yaml
+       affects: .splice-local/drafts/outputs.draft.yaml
        suggestion: Confirm whether users need quant.sf.
    ```
 

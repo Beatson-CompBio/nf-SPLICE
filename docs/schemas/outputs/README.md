@@ -20,7 +20,7 @@ Workflow job output contract.
    it is owned (job, sample or run) and how to recognise it by path.
 
 - **Written by:** `nf-splice build all`, from the reviewed
-  `splice/drafts/outputs.draft.yaml`. `outputs.yaml` is a human-readable
+  `.splice-local/drafts/outputs.draft.yaml`. `outputs.yaml` is a human-readable
   copy of the same catalogue.
 - **Read by:** platforms that classify, store and display job outputs.
   Read the catalogue from this file only.

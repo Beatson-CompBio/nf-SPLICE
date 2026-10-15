@@ -183,6 +183,7 @@ def test_blocked_and_unsafe_targets(tmp_path: Path) -> None:
     other = tmp_path / "other"
     other.mkdir()
     ready_repository(other)
+    (other / "splice").mkdir(exist_ok=True)
     (other / "splice" / "outputs.yaml").symlink_to(other / "main.nf")
     with pytest.raises(LifecycleError, match="non-regular"):
         promote(other, "outputs", ADA)
@@ -199,22 +200,27 @@ def test_identical_reviewed_inputs_produce_identical_bundles(tmp_path: Path) -> 
     } == {key.removeprefix("b/"): value for key, value in _snapshot(second).items()}
 
 
-def test_tree_inspection_recognises_drafts_and_flags_leftovers(tmp_path: Path) -> None:
+def test_tree_inspection_keeps_drafts_private_and_flags_leftovers(
+    tmp_path: Path,
+) -> None:
     from nf_splice.domain import PathClassification
     from nf_splice.inspectors import inspect_splice_tree
 
     ready_repository(tmp_path)
     promote(tmp_path, None, ADA)
-    (tmp_path / "splice" / "drafts" / "stray.txt").write_text("x", encoding="utf-8")
     (tmp_path / "splice" / lifecycle.JOURNAL).write_text("{}", encoding="utf-8")
     by_path = {
         item.path: item.classification for item in inspect_splice_tree(tmp_path).paths
     }
-    assert by_path["drafts/outputs.draft.yaml"] is PathClassification.RECOGNIZED
-    assert (
-        by_path["drafts/.reviews/outputs.review.json"] is PathClassification.RECOGNIZED
-    )
+    # Drafts and reviews are private and never part of splice/.
+    assert not any(path.startswith("drafts") for path in by_path)
     assert by_path["bundle.json"] is PathClassification.RECOGNIZED
     assert by_path["nf-splice.lock.json"] is PathClassification.RECOGNIZED
-    assert by_path["drafts/stray.txt"] is PathClassification.UNKNOWN
     assert by_path[lifecycle.JOURNAL] is PathClassification.MALFORMED
+    # A drafts folder in splice/ is an earlier layout that must be migrated.
+    (tmp_path / "splice" / "drafts").mkdir()
+    (tmp_path / "splice" / "drafts" / "outputs.draft.yaml").write_text("x: 1\n")
+    by_path = {
+        item.path: item.classification for item in inspect_splice_tree(tmp_path).paths
+    }
+    assert by_path["drafts/outputs.draft.yaml"] is PathClassification.MALFORMED

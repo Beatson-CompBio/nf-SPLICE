@@ -25,7 +25,7 @@ from nf_splice.layers.outputs import (
     validate_outputs_draft,
 )
 
-DRAFT = "splice/drafts/outputs.draft.yaml"
+DRAFT = ".splice-local/drafts/outputs.draft.yaml"
 
 
 def _tree(root: Path) -> Path:

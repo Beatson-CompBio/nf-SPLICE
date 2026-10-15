@@ -51,7 +51,9 @@ def test_help_lists_every_command_group() -> None:
         "tui",
     ):
         assert command in result.output
-    assert "migrate" not in result.output.split("Commands", 1)[-1]
+    listing = result.output.split("Commands", 1)[-1]
+    assert "migrate-state" not in listing  # 0.1.0 state relocation is gone
+    assert "migrate" in listing and "workspace" in listing
     for group, commands in (
         (
             "draft",
@@ -153,7 +155,7 @@ def test_draft_edit_plans_then_applies_and_reports_conflicts(tmp_path: Path) -> 
         ),
         encoding="utf-8",
     )
-    draft = tmp_path / "splice" / "drafts" / "bundle.draft.yaml"
+    draft = tmp_path / ".splice-local" / "drafts" / "bundle.draft.yaml"
     before = draft.read_bytes()
     planned = runner.invoke(
         app,

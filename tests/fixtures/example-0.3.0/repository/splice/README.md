@@ -31,6 +31,6 @@ Workflow `rnaquant` version `1.2.0` (https://github.com/org/rnaquant). Generated
 
 ## Ownership and editing
 
-The editable authoring sources are the draft files in `drafts/`; edit them directly or through nf-splice, then validate and promote. Files in this directory are published artefacts: do not edit them by hand. The repository-root RO-Crate and adopted source configs remain developer-owned.
+The editable authoring sources are private draft files kept in the repository's ignored `.splice-local/` folder; edit them through nf-splice, then validate and promote. Files in this directory are published artefacts: do not edit them by hand. The repository-root RO-Crate and adopted source configs remain developer-owned.
 
 Each completed workflow job produces its own `analysis_output.json` in the job's output directory; it is never part of this static bundle.

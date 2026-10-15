@@ -1,4 +1,4 @@
-"""Identity layer: the authoritative ``splice/drafts/bundle.draft.yaml``.
+"""Identity layer: the authoritative ``.splice-local/drafts/bundle.draft.yaml``.
 
 The draft holds the reviewed pipeline identity and descriptive metadata that
 every detached contract reuses. Values found in ``nextflow.config``, Git,

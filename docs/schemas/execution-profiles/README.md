@@ -14,7 +14,7 @@ each with its own Nextflow configuration file under `configs/`, and names
 one default.
 
 - **Written by:** `nf-splice build all`, from the reviewed
-  `splice/drafts/execution-profiles.draft.yaml`.
+  `.splice-local/drafts/execution-profiles.draft.yaml`.
 - **Read by:** platforms that choose a configuration when they launch a
   job.
 

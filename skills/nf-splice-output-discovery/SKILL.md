@@ -7,7 +7,7 @@ description: Build the output catalogue for a Nextflow pipeline across all its r
 
 ## When to use
 
-Use this skill when reviewing `splice/drafts/outputs.draft.yaml`, deciding
+Use this skill when reviewing `.splice-local/drafts/outputs.draft.yaml`, deciding
 which outputs belong in the catalogue, or interpreting example results.
 
 ## Two different products

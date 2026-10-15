@@ -1,11 +1,11 @@
 """Durable session state, checkpoints and the repository mutation lock.
 
-Canonical authoring state stays in ``splice/``. A session stores only how
-the work is being driven (mode, stages, proposals, approvals, conversation,
-evidence, budgets) inside the repository's ignored ``.nf-splice-local/``
-workspace, which nf-splice protects with its own ``.gitignore``. Nothing here
-is ever published in the bundle. Set ``NF_SPLICE_AGENT_DIR`` to keep
-sessions elsewhere.
+Drafts live in ``.splice-local/drafts/`` and published files in ``splice/``.
+A session stores how the work is being driven (mode, stages, proposals,
+approvals, conversation, evidence, budgets) in
+``.splice-local/sessions/<id>/``: ``session.json``, the redacted
+``events.jsonl`` and ``checkpoints/``. ``.splice-local/`` is ignored by the
+working copy's ``.gitignore`` and is never published or archived.
 """
 
 from __future__ import annotations
@@ -28,10 +28,20 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from nf_splice import __version__
 from nf_splice.agents.permissions import ExecutionPolicy
 from nf_splice.agents.stages import ORDER, Stage, StageStatus
+from nf_splice.layout import (
+    DRAFTS_DIR,
+    PRIVATE_DIR,
+    PUBLISHED_DIR,
+    REVIEWS_DIR,
+    SESSIONS_DIR,
+    prepare_private_workspace,
+)
 from nf_splice.services.audit import redact
 
 FORMAT = "1"
-WORKSPACE = ".nf-splice-local"
+WORKSPACE = PRIVATE_DIR
+#: What a checkpoint captures: published files, private drafts and reviews.
+CHECKPOINT_AREAS = (PUBLISHED_DIR, DRAFTS_DIR, REVIEWS_DIR)
 _SPLICE_TRANSIENT = {
     ".nf-splice-staging",
     ".nf-splice-backup",
@@ -50,6 +60,7 @@ _SOURCE_NAMES = {
 _SKIP_DIRECTORIES = {
     ".git",
     WORKSPACE,
+    ".nf-splice-local",
     "splice",
     "work",
     ".nextflow",
@@ -237,6 +248,7 @@ class SessionState(_Model):
     sources_fingerprint: str = ""
     report: dict[str, Any] | None = None
     mode_history: list[dict[str, str]] = Field(default_factory=list)
+    events_logged: int = 0
 
     def say(
         self,
@@ -294,27 +306,27 @@ def _digest_files(paths: Iterator[tuple[str, Path]]) -> str:
 
 
 def drafts_fingerprint(root: Path, *, include_reviews: bool = True) -> str:
-    """Hash of everything under ``splice/`` (drafts, sidecars, published files).
+    """Hash of ``splice/`` and the private drafts and reviews.
 
     Without ``include_reviews`` the review sidecars are left out, so recording
     the same decision again does not count as a change.
     """
-    splice = root / "splice"
+    areas = [PUBLISHED_DIR, DRAFTS_DIR] + ([REVIEWS_DIR] if include_reviews else [])
 
     def files() -> Iterator[tuple[str, Path]]:
-        if not splice.is_dir():
-            return
-        for current, directories, names in os.walk(splice, followlinks=False):
-            directories[:] = [
-                item for item in directories if item not in _SPLICE_TRANSIENT
-            ]
-            for name in names:
-                if name in _SPLICE_TRANSIENT or (
-                    not include_reviews and name.endswith(".review.json")
-                ):
-                    continue
-                path = Path(current) / name
-                yield path.relative_to(root).as_posix(), path
+        for area in areas:
+            base = root / area
+            if not base.is_dir():
+                continue
+            for current, directories, names in os.walk(base, followlinks=False):
+                directories[:] = [
+                    item for item in directories if item not in _SPLICE_TRANSIENT
+                ]
+                for name in names:
+                    if name in _SPLICE_TRANSIENT or name.endswith(".nf-splice.tmp"):
+                        continue
+                    path = Path(current) / name
+                    yield path.relative_to(root).as_posix(), path
 
     return _digest_files(files())
 
@@ -346,29 +358,13 @@ def repository_key(root: Path) -> str:
     return hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:24]
 
 
-def ensure_workspace(root: Path) -> Path:
-    """Create ``.nf-splice-local/`` with a ``.gitignore`` that ignores it all."""
-    workspace = root / WORKSPACE
-    workspace.mkdir(parents=True, exist_ok=True, mode=0o700)
-    ignore = workspace / ".gitignore"
-    if not ignore.exists():
-        ignore.write_text(
-            "# Created by nf-splice: private local state, never commit it.\n*\n",
-            encoding="utf-8",
-        )
-    return workspace
-
-
 def agent_directory(root: Path) -> Path:
-    """Where sessions live: ``.nf-splice-local/agent`` or ``NF_SPLICE_AGENT_DIR``."""
-    override = os.environ.get("NF_SPLICE_AGENT_DIR")
-    if override:
-        directory = Path(override).expanduser() / repository_key(root)
-    else:
-        directory = ensure_workspace(root) / "agent"
-    resolved = directory.resolve() if directory.exists() else directory
-    if (root.resolve() / "splice") in [resolved, *resolved.parents]:
-        raise SessionError("agent sessions must never be stored inside splice/")
+    """``.splice-local/sessions``, prepared (ignored, untracked) before use."""
+    try:
+        prepare_private_workspace(root)
+    except ValueError as error:
+        raise SessionError(str(error)) from error
+    directory = root / SESSIONS_DIR
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     return directory
 
@@ -391,7 +387,7 @@ class SessionStore:
     def session_directory(self, session_id: str) -> Path:
         if not session_id.startswith("session-") or "/" in session_id:
             raise SessionError(f"invalid session id {session_id!r}")
-        return self.directory / "sessions" / session_id
+        return self.directory / session_id
 
     def new_id(self) -> str:
         stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d-%H%M%S")
@@ -432,7 +428,7 @@ class SessionStore:
 
     def sessions(self) -> list[SessionState]:
         found = []
-        sessions = self.directory / "sessions"
+        sessions = self.directory
         if not sessions.is_dir():
             return []
         for path in sessions.glob("session-*/session.json"):
@@ -443,14 +439,15 @@ class SessionStore:
         return sorted(found, key=lambda item: (item.updated_at, item.id), reverse=True)
 
     def log_tool(self, session_id: str, record: dict[str, Any]) -> None:
-        path = self.session_directory(session_id) / "tools.jsonl"
+        path = self.session_directory(session_id) / "events.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
             handle.write(redact(json.dumps(record, default=str, sort_keys=True)) + "\n")
 
-    def tool_log(self, session_id: str) -> list[dict[str, Any]]:
-        path = self.session_directory(session_id) / "tools.jsonl"
+    def events(self, session_id: str) -> list[dict[str, Any]]:
+        """Every logged event: tool calls and conversation, redacted."""
+        path = self.session_directory(session_id) / "events.jsonl"
         if not path.is_file():
             return []
         return [
@@ -459,25 +456,34 @@ class SessionStore:
             if line.strip()
         ]
 
+    def tool_log(self, session_id: str) -> list[dict[str, Any]]:
+        """Only the tool-call events."""
+        return [
+            item
+            for item in self.events(session_id)
+            if item.get("event") != "conversation"
+        ]
+
     # -------------------------------------------------------- checkpoints
 
     def checkpoint(
         self, state: SessionState, stage: Stage | None, reason: str
     ) -> Checkpoint:
-        """Copy ``splice/`` so a failed or unwanted change can be restored."""
+        """Copy ``splice/`` and the private drafts and reviews for restoring."""
         identifier = f"checkpoint-{len(state.checkpoints) + 1}"
         target = self.session_directory(state.id) / "checkpoints" / identifier
         if target.exists():
             shutil.rmtree(target)
         target.mkdir(parents=True, mode=0o700)
-        splice = self.root / "splice"
-        if splice.is_dir():
-            shutil.copytree(
-                splice,
-                target / "splice",
-                symlinks=True,
-                ignore=shutil.ignore_patterns(*_SPLICE_TRANSIENT),
-            )
+        for area in CHECKPOINT_AREAS:
+            source = self.root / area
+            if source.is_dir() and not source.is_symlink():
+                shutil.copytree(
+                    source,
+                    target / area,
+                    symlinks=True,
+                    ignore=shutil.ignore_patterns(*_SPLICE_TRANSIENT),
+                )
         record = Checkpoint(
             id=identifier,
             stage=stage,
@@ -489,23 +495,24 @@ class SessionStore:
         return record
 
     def restore(self, state: SessionState, checkpoint_id: str) -> None:
-        """Make ``splice/`` exactly match a checkpoint."""
+        """Make ``splice/`` and the private drafts exactly match a checkpoint."""
         if not any(item.id == checkpoint_id for item in state.checkpoints):
             raise SessionError(f"unknown checkpoint {checkpoint_id!r}")
         source = self.session_directory(state.id) / "checkpoints" / checkpoint_id
-        splice = self.root / "splice"
-        if splice.is_dir():
-            for child in splice.iterdir():
-                if child.name in _SPLICE_TRANSIENT:
-                    continue
-                if child.is_dir() and not child.is_symlink():
-                    shutil.rmtree(child)
-                else:
-                    child.unlink()
-        if (source / "splice").is_dir():
-            shutil.copytree(
-                source / "splice", splice, symlinks=True, dirs_exist_ok=True
-            )
+        for area in CHECKPOINT_AREAS:
+            current = self.root / area
+            if current.is_dir() and not current.is_symlink():
+                for child in current.iterdir():
+                    if child.name in _SPLICE_TRANSIENT:
+                        continue
+                    if child.is_dir() and not child.is_symlink():
+                        shutil.rmtree(child)
+                    else:
+                        child.unlink()
+            if (source / area).is_dir():
+                shutil.copytree(
+                    source / area, current, symlinks=True, dirs_exist_ok=True
+                )
 
     # -------------------------------------------------------- lock
 

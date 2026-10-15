@@ -23,6 +23,29 @@
       "before_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
       "after_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
       "source_revision": null
+    },
+    {
+      "id": "event:1d3feab9a22e7585",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "bundle",
+      "action": "promote",
+      "pointers": [
+        "README.md",
+        "bundle.json",
+        "nf-splice.lock.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
+      "after_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
+      "source_revision": null
     }
   ],
   "evidence": [],
@@ -30,7 +53,7 @@
   "layer": "bundle",
   "promoted": {
     "bundle.json": "0427ca165233709e587613aad69cbd4a900fe08d77438554497c0272dc7340b1",
-    "README.md": "44b16668e0f76b8b9b616ffb01025df00fda110f26a58d4ab1c5ae05b9d9c038",
-    "nf-splice.lock.json": "668bff11bc311b1ea026ef2a93139d55292bf17b14e3ebf4085dc3107e0672be"
+    "README.md": "7689d8c4f6e7b4dcf66bf0b3d13aef00a2f0ad495d1e07fe83edd731ae21eb11",
+    "nf-splice.lock.json": "4767b5ce58792a19ea7cf06215ba18cf8e48eb79901585bd2e5f7e701ea93fb1"
   }
 }

@@ -16,7 +16,7 @@ who may change each parameter, how to present it and how it maps to the
 engine.
 
 - **Written by:** `nf-splice build all`, from the reviewed
-  `splice/drafts/inputs.schema.draft.yaml` (imported from
+  `.splice-local/drafts/inputs.draft.yaml` (imported from
   `nextflow_schema.json`).
 - **Read by:** platforms that build parameter forms, validate submitted
   values and pass them to the engine.

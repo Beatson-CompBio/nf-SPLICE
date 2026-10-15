@@ -1,4 +1,4 @@
-"""Safe, hash-checked reads and writes of draft files below ``splice/``.
+"""Safe, hash-checked reads and writes below ``splice/`` and ``.splice-local/``.
 
 Writes are atomic per file, refuse symlinks and path escapes, never create a
 file that already exists unless replacing it is explicitly requested, and use
@@ -25,10 +25,11 @@ from nf_splice.drafts.yamlio import (
     dump_yaml_node,
     load_yaml_draft,
 )
+from nf_splice.layout import DRAFTS_DIR as DRAFTS_DIR
+from nf_splice.layout import PRIVATE_DIR, PUBLISHED_DIR, prepare_private_workspace
+from nf_splice.layout import REVIEWS_DIR as REVIEWS_DIR
 
-SPLICE_DIR = "splice"
-DRAFTS_DIR = "splice/drafts"
-REVIEWS_DIR = "splice/drafts/.reviews"
+SPLICE_DIR = PUBLISHED_DIR
 DRAFT_MARKER = "x-splice-draft"
 
 
@@ -102,12 +103,14 @@ def text_diff(relative: str, before: str, after: str) -> str:
 
 
 def safe_path(root: Path, relative: str) -> Path:
-    """Resolve a repository-relative path below ``splice/`` without links."""
+    """Resolve a path below ``splice/`` or ``.splice-local/`` without links."""
     pure = PurePosixPath(relative)
     if pure.is_absolute() or ".." in pure.parts or not pure.parts:
         raise DraftStoreError(f"unsafe path {relative!r}")
-    if pure.parts[0] != SPLICE_DIR:
-        raise DraftStoreError(f"draft store path must be below splice/: {relative}")
+    if pure.parts[0] not in {SPLICE_DIR, PRIVATE_DIR}:
+        raise DraftStoreError(
+            f"draft store path must be below splice/ or .splice-local/: {relative}"
+        )
     current = root
     for part in pure.parts:
         current = current / part
@@ -145,6 +148,11 @@ def read_yaml(root: Path, relative: str) -> YamlFileState:
 
 
 def _ensure_directory(root: Path, relative_directory: str) -> None:
+    if PurePosixPath(relative_directory).parts[:1] == (PRIVATE_DIR,):
+        try:
+            prepare_private_workspace(root)
+        except ValueError as error:
+            raise DraftStoreError(str(error)) from error
     current = root
     for part in PurePosixPath(relative_directory).parts:
         current = current / part

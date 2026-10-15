@@ -1,20 +1,26 @@
 # Automation and CI
 
-The committed drafts under `splice/drafts/` record every review decision, so
-a bundle can be checked and rebuilt reproducibly in CI.
+The published bundle in `splice/` is committed, so CI can check it on every
+change. Review decisions can also be kept in decision files (see below) and
+applied in CI to rebuild the bundle reproducibly; the private drafts in
+`.splice-local/` are never committed.
 
 ## Check a repository in CI
 
 ```bash
-nf-splice draft validate
-nf-splice build all --check --json
 nf-splice validate --json
 nf-splice schema check --json
 ```
 
 These commands never write files. Each exits with a non-zero status when
-something is wrong, so a CI job fails on any open review, invalid draft or
-inconsistent published bundle.
+something is wrong, so a CI job fails on an inconsistent published bundle.
+Where the drafts are present (for example in a job that first applies
+decision files), also run:
+
+```bash
+nf-splice draft validate
+nf-splice build all --check --json
+```
 
 To also check example results from a test run and report route coverage:
 

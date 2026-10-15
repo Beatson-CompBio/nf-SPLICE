@@ -32,7 +32,7 @@ class Permission(str, Enum):
 
 DESCRIPTIONS: dict[Permission, str] = {
     Permission.READ: "inspect the repository, drafts and authorised example output",
-    Permission.DRAFT_EDIT: "make reversible, audited edits to splice/drafts/",
+    Permission.DRAFT_EDIT: "make reversible, audited edits to the private drafts",
     Permission.BUILD: "publish validated drafts into splice/ (transactional)",
     Permission.OVERWRITE: "replace published files that differ or were edited by hand",
     Permission.EXTERNAL_TOOLS: "run an installed external checker such as nf-core",

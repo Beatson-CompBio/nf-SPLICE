@@ -78,6 +78,7 @@ from nf_splice.agents.state import (
 from nf_splice.agents.toolbox import SessionToolbox, ToolMode, TurnOutcome
 from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
 from nf_splice.layers import ChangeContext
+from nf_splice.layout import STAGING_DIR
 from nf_splice.services.coverage import assess
 from nf_splice.services.lifecycle import validate_layer
 
@@ -192,6 +193,9 @@ class SessionEngine:
     def session_directory(self) -> Path:
         return self.store.session_directory(self.state.id)
 
+    def _staging(self) -> Path:
+        return self.root / STAGING_DIR / self.state.id / "preview"
+
     def _examples(self) -> list[Path]:
         return [Path(item).resolve() for item in self.state.policy.examples]
 
@@ -221,6 +225,12 @@ class SessionEngine:
     def _save(self) -> None:
         self.state.drafts_fingerprint = drafts_fingerprint(self.root)
         self.state.sources_fingerprint = sources_fingerprint(self.root)
+        for entry in self.state.conversation[self.state.events_logged :]:
+            self.store.log_tool(
+                self.state.id,
+                {"event": "conversation", **entry.model_dump(mode="json")},
+            )
+        self.state.events_logged = len(self.state.conversation)
         self.store.save(self.state)
 
     def _require_provider(self) -> AgentProvider:
@@ -374,7 +384,7 @@ class SessionEngine:
         record.status = StageStatus.BLOCKED
         record.issues = list(issues)
         layer = LAYER_FOR_STAGE.get(stage)
-        artefact = f"splice/drafts ({layer})" if layer else spec(stage).title
+        artefact = f".splice-local/drafts ({layer})" if layer else spec(stage).title
         if reported:
             for item in reported:
                 self.state.blockers.append(
@@ -582,9 +592,7 @@ class SessionEngine:
     def _deterministic_proposal(
         self, stage: Stage, operations: list[PlannedOperation], summary: str
     ) -> Proposal:
-        sandbox = Sandbox(
-            self.root, self.session_directory / "sandbox", self._examples()
-        )
+        sandbox = Sandbox(self.root, self._staging(), self._examples())
         try:
             toolbox = self._toolbox(
                 ToolMode.STAGE,
@@ -613,9 +621,7 @@ class SessionEngine:
         *,
         revision: int = 1,
     ) -> tuple[Proposal | None, TurnOutcome]:
-        sandbox = Sandbox(
-            self.root, self.session_directory / "sandbox", self._examples()
-        )
+        sandbox = Sandbox(self.root, self._staging(), self._examples())
         try:
             controls = set(_PLAN_CONTROLS)
             if purpose == "objection":

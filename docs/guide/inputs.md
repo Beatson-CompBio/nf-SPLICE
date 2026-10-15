@@ -5,7 +5,7 @@ change each one when a job is submitted. It is published as
 `inputs.schema.json`, a standard JSON Schema the platform uses to build forms
 and validate values.
 
-- **Draft:** `splice/drafts/inputs.schema.draft.yaml`
+- **Draft:** `.splice-local/drafts/inputs.draft.yaml`
 - **Source:** your `nextflow_schema.json`, imported by `nf-splice init`
 - **Required:** an access policy for every parameter
 

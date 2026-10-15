@@ -99,6 +99,11 @@ skills_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(skills_app, name="skills")
+workspace_app = typer.Typer(
+    help="Check and repair the private .splice-local/ workspace.",
+    no_args_is_help=True,
+)
+app.add_typer(workspace_app, name="workspace")
 preview_app = typer.Typer(
     help="Show derived, non-authoritative previews of published files.",
     no_args_is_help=True,
@@ -1077,6 +1082,142 @@ def validate_command(
             )
     if not report.valid:
         raise typer.Exit(code=2)
+
+
+@app.command("migrate")
+def migrate_command(
+    repository: RepositoryOption = Path("."),
+    check: bool = typer.Option(False, "--check", help="Show what would move."),
+    apply: bool = typer.Option(False, "--apply", help="Back up, move and verify."),
+    rollback: bool = typer.Option(
+        False, "--rollback", help="Restore the most recent migration's originals."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Move drafts and sessions of an earlier layout into .splice-local/."""
+    from nf_splice.services.migration import (
+        MigrationError,
+        apply_migration,
+        plan_migration,
+        rollback_migration,
+    )
+
+    if sum([check, apply, rollback]) != 1:
+        raise typer.BadParameter("choose exactly one of --check, --apply, --rollback")
+    try:
+        if check:
+            document = plan_migration(repository).to_json()
+        elif apply:
+            document = apply_migration(repository)
+        else:
+            document = rollback_migration(repository)
+    except (MigrationError, OSError, ValueError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(dumps(document))
+        return
+    if check:
+        for move in document["moves"]:
+            typer.echo(f"move: {move['source']} -> {move['target']}")
+        for item in document["conflicts"]:
+            typer.echo(f"conflict: {item}", err=True)
+        for item in document["skipped"]:
+            typer.echo(f"not migrated: {item}")
+        typer.echo(
+            "Nothing to migrate."
+            if not document["needed"]
+            else "Run `nf-splice migrate --apply` to migrate (a backup is kept)."
+        )
+        if document["conflicts"]:
+            raise typer.Exit(code=2)
+    elif apply:
+        typer.echo(
+            f"Migrated {len(document['moves'])} file(s); backup and record in "
+            f".splice-local/migrations/{document['migration']}/."
+            if document.get("migrated")
+            else "Nothing to migrate."
+        )
+    else:
+        typer.echo(
+            f"Rolled back migration {document['rolled_back']} "
+            f"({document['restored']} file(s) restored)."
+        )
+
+
+@workspace_app.command("check")
+def workspace_check_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Report problems with the private workspace and published folder (read-only)."""
+    from nf_splice import layout
+
+    collisions = layout.case_collisions(repository)
+    legacy = layout.legacy_paths(repository)
+    tracked = layout.tracked_private_paths(repository)
+    ignore = repository / ".gitignore"
+    ignored = (
+        ignore.is_file()
+        and layout.IGNORE_RULE in ignore.read_text(encoding="utf-8").splitlines()
+    )
+    document: dict[str, Any] = {
+        "case_collisions": collisions,
+        "legacy_layout": legacy,
+        "tracked_private_files": tracked,
+        "ignore_rule_present": ignored,
+        "git_work_tree": layout.is_git_work_tree(repository),
+    }
+    problems = bool(collisions or legacy or tracked)
+    if json_output:
+        typer.echo(dumps(document | {"ok": not problems}))
+    else:
+        for name in collisions:
+            typer.echo(
+                f"problem: {name} collides with splice/ or .splice-local/ on "
+                "case-insensitive filesystems; rename it"
+            )
+        for name in legacy:
+            typer.echo(
+                f"problem: {name} is an earlier layout; run nf-splice migrate --check"
+            )
+        if tracked:
+            typer.echo(
+                f"problem: Git tracks {len(tracked)} file(s) "
+                "under .splice-local/; run `nf-splice workspace untrack --yes`"
+            )
+        typer.echo(
+            "Ignore rule /.splice-local/ is present."
+            if ignored
+            else "Ignore rule /.splice-local/ is added when nf-splice first writes."
+        )
+        typer.echo("Workspace OK." if not problems else "Workspace needs attention.")
+    if problems:
+        raise typer.Exit(code=2)
+
+
+@workspace_app.command("untrack")
+def workspace_untrack_command(
+    repository: RepositoryOption = Path("."),
+    yes: bool = typer.Option(
+        False, "--yes", help="Confirm: stop tracking .splice-local/."
+    ),
+) -> None:
+    """Stop Git tracking .splice-local/ (files kept; history not rewritten)."""
+    from nf_splice import layout
+
+    if not yes:
+        typer.echo(
+            "This removes .splice-local/ from Git's index (the files stay on disk and "
+            "earlier commits are unchanged). Repeat with --yes to confirm.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    removed = _run(lambda: layout.untrack_private_workspace(repository))
+    typer.echo(
+        f"Stopped tracking {len(removed)} file(s); commit the change to record it."
+        if removed
+        else "Nothing under .splice-local/ is tracked."
+    )
 
 
 @app.command("assess")
@@ -2283,7 +2424,9 @@ def tui_command(
         default_session_directory,
     )
 
-    sessions = SessionStore(None if no_session else default_session_directory())
+    sessions = SessionStore(
+        None if no_session else default_session_directory(repository)
+    )
     agent = None
     if provider is not None:
         agent = _make_provider(provider, script)

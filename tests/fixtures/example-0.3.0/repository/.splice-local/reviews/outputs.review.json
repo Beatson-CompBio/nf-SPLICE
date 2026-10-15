@@ -159,6 +159,28 @@
       "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
       "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
       "source_revision": null
+    },
+    {
+      "id": "event:1797808af4db0c26",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "outputs",
+      "action": "promote",
+      "pointers": [
+        "outputs.schema.json",
+        "outputs.yaml"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
     }
   ],
   "format": "0.3.0",

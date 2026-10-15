@@ -93,7 +93,7 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
     assert engine.state.pending.stage.value == "build"
     # External editor change to a draft, then validate/promote without import.
     for root in (manual, assisted):
-        draft = root / "splice" / "drafts" / "bundle.draft.yaml"
+        draft = root / ".splice-local" / "drafts" / "bundle.draft.yaml"
         draft.write_text(
             draft.read_text(encoding="utf-8").replace(
                 "description: Quantifies RNA-seq reads.",
@@ -113,7 +113,7 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
 
 def test_s04_preview_reflects_external_draft_edits(tmp_path: Path) -> None:
     ready_repository(tmp_path)
-    draft = tmp_path / "splice" / "drafts" / "outputs.draft.yaml"
+    draft = tmp_path / ".splice-local" / "drafts" / "outputs.draft.yaml"
     draft.write_text(
         draft.read_text(encoding="utf-8").replace(
             "Job report.", "Job report (edited)."
@@ -175,12 +175,14 @@ def test_s09_failures_never_lose_data_or_fake_readiness(tmp_path: Path) -> None:
     assert validate_bundle(tmp_path).valid  # previous release still coherent
 
     # Malformed draft edits are preserved and block, never regenerated.
-    draft = splice / "drafts" / "outputs.draft.yaml"
+    draft = tmp_path / ".splice-local" / "drafts" / "outputs.draft.yaml"
     draft.write_text("outputs: [broken\n", encoding="utf-8")
     with pytest.raises(LifecycleError, match="blocked"):
         promote(tmp_path, None, ADA, replace_existing=True)
     assert draft.read_text(encoding="utf-8") == "outputs: [broken\n"
-    assert read_yaml(tmp_path, "splice/drafts/outputs.draft.yaml").error is not None
+    assert (
+        read_yaml(tmp_path, ".splice-local/drafts/outputs.draft.yaml").error is not None
+    )
 
     # Malformed published JSON is reported, not trusted.
     (splice / "components.json").write_text("{not json", encoding="utf-8")
@@ -189,7 +191,7 @@ def test_s09_failures_never_lose_data_or_fake_readiness(tmp_path: Path) -> None:
     # Malicious draft paths are refused.
     from nf_splice.drafts import replace_file
 
-    for path in ("splice/drafts/../../escape", "/tmp/x", "drafts/x"):
+    for path in (".splice-local/drafts/../../escape", "/tmp/x", "drafts/x"):
         with pytest.raises(DraftStoreError):
             replace_file(tmp_path, path, b"x", expected_sha256=None)
 

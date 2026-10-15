@@ -2,7 +2,7 @@
 
 Each reviewed profile states its source strategy explicitly. ``adopted``
 copies a developer-owned repository ``.config`` byte-for-byte; ``generated``
-uses an editable native ``splice/drafts/configs/<id>.draft.config`` created by
+uses an editable native ``.splice-local/drafts/configs/<id>.draft.config`` created by
 a deterministic builder. Exactly one reviewed default profile is required;
 the first listed profile is never chosen implicitly. Site-specific values
 (accounts, queues, paths) are operator configuration, never literals.

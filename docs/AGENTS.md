@@ -73,21 +73,21 @@ stage's offer.
    recorded) or *executed* (approved proposals and autonomous runs).
 5. Results are redacted, size-bounded and returned as structured data;
    repository text is marked `untrusted_repository_content`. Failures are
-   returned, never raised, and every call is logged to `tools.jsonl`.
+   returned, never raised, and every call is logged to `events.jsonl`.
 
 ## Permissions
 
 | Permission | Effect |
 | --- | --- |
 | `read` | Inspect repository text, drafts and authorised examples |
-| `draft_edit` | Change `splice/drafts/` through the layer services |
+| `draft_edit` | Change `.splice-local/drafts/` through the layer services |
 | `build` | Publish into `splice/` transactionally |
 | `overwrite` | Replace differing or hand-edited published files |
 | `external_tools`, `run_nextflow`, `network` | Run nf-core lint |
 
 `install`, `publish_external`, `credentials` and `human_consent` can never
 be granted. Paths are resolved inside the repository; `..`, absolute paths,
-symbolic-link exits, `.git/`, `.nf-splice-local/` and secrets-like files are
+symbolic-link exits, `.git/`, `.splice-local/` and secrets-like files are
 refused.
 
 ## Approvals and attribution
@@ -104,9 +104,9 @@ Approved operations run under a checkpoint and are rolled back if one fails.
 
 ## Sessions
 
-Sessions are stored in `.nf-splice-local/agent/sessions/<id>/` in the
+Sessions are stored in `.splice-local/sessions/<id>/` in the
 repository (or under `NF_SPLICE_AGENT_DIR`): `session.json` (format `1`,
-validated on load), `tools.jsonl`, `checkpoints/` and the
+validated on load), `events.jsonl`, `checkpoints/` and the
 `analysis-output/` files generated during verification. A lock file stops two
 sessions changing the same drafts. An interrupted action is rolled back when
 the session is next opened.

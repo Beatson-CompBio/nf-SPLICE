@@ -1,4 +1,4 @@
-"""Output layer: the single editable ``splice/drafts/outputs.draft.yaml``.
+"""Output layer: the single editable ``.splice-local/drafts/outputs.draft.yaml``.
 
 The draft is the only authoritative output source. Promotion compiles it,
 together with the reviewed identity, into both published files:

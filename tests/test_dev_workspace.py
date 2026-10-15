@@ -50,7 +50,7 @@ def test_guard_rejects_development_only_and_secret_paths(path: str) -> None:
         "src/nf_splice/cli.py",
         "tests/fixtures/example-0.3.0/repository/splice/bundle.json",
         "docs/ARCHITECTURE_DECISIONS.md",
-        "splice/drafts/outputs.draft.yaml",
+        ".splice-local/drafts/outputs.draft.yaml",
     ],
 )
 def test_guard_accepts_committable_paths(path: str) -> None:

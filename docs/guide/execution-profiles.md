@@ -4,8 +4,8 @@ The execution-profiles layer lists the reviewed ways to run the pipeline,
 each with its own Nextflow configuration file, and names one default. It is
 published as `execution-profiles.json` and `configs/<profile>.config`.
 
-- **Draft:** `splice/drafts/execution-profiles.draft.yaml`, plus
-  `splice/drafts/configs/<profile>.draft.config` for generated configurations
+- **Draft:** `.splice-local/drafts/execution-profiles.draft.yaml`, plus
+  `.splice-local/drafts/configs/<profile>.draft.config` for generated configurations
 - **Required:** at least one supported profile and exactly one default
 
 ## 1. Review the detected profiles
@@ -48,7 +48,7 @@ Reject a profile the platform should not offer with `.action=reject` and a
 // ***** SPLICE Pipeline Input Params *****
 ```
 
-Edit the generated draft in `splice/drafts/configs/` like any other draft.
+Edit the generated draft in `.splice-local/drafts/configs/` like any other draft.
 
 ## 3. Add the SPLICE Slurm profile (optional)
 

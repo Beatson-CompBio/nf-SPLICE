@@ -14,7 +14,7 @@ the workflow, credits its authors, lists the contract revision of every
 other file and says where each file is.
 
 - **Written by:** `nf-splice build all`, from the reviewed
-  `splice/drafts/bundle.draft.yaml`.
+  `.splice-local/drafts/bundle.draft.yaml`.
 - **Read by:** anything that ingests a bundle. Read this file first, then
   follow `schemas` and `files` to the other four contracts.
 

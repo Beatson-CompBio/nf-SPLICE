@@ -20,6 +20,7 @@ from typing import Any
 from nf_splice.agents.operations import Operation, OperationContext
 from nf_splice.agents.permissions import ExecutionPolicy
 from nf_splice.layers import ChangeContext
+from nf_splice.layout import DRAFTS_DIR, PRIVATE_DIR, PUBLISHED_DIR
 from nf_splice.services.audit import suppress_private_audit
 from nf_splice.services.lifecycle import validate_layer
 
@@ -38,11 +39,16 @@ _MAX_COPY_BYTES = 5_000_000
 
 
 def _snapshot(root: Path) -> dict[str, str]:
-    splice = root / "splice"
     found: dict[str, str] = {}
-    if not splice.is_dir():
-        return found
-    for current, directories, names in os.walk(splice, followlinks=False):
+    for area in (PUBLISHED_DIR, DRAFTS_DIR):
+        _snapshot_area(root, root / area, found)
+    return found
+
+
+def _snapshot_area(root: Path, base: Path, found: dict[str, str]) -> None:
+    if not base.is_dir():
+        return
+    for current, directories, names in os.walk(base, followlinks=False):
         directories[:] = sorted(item for item in directories if item not in _SKIP)
         for name in sorted(names):
             path = Path(current) / name
@@ -54,7 +60,6 @@ def _snapshot(root: Path) -> dict[str, str]:
                 )
             except OSError:
                 continue
-    return found
 
 
 class Sandbox:
@@ -69,8 +74,13 @@ class Sandbox:
         directory.mkdir(parents=True, mode=0o700)
         skip_paths = {item.resolve() for item in examples}
 
+        private = self.source / PRIVATE_DIR
+
         def ignore(current: str, names: list[str]) -> set[str]:
             ignored = set()
+            if Path(current) == private:
+                # Only the drafts and reviews; never sessions, caches or staging.
+                return {name for name in names if name not in {"drafts", "reviews"}}
             for name in names:
                 path = Path(current) / name
                 if name in _SKIP or path.is_symlink() or path.resolve() in skip_paths:

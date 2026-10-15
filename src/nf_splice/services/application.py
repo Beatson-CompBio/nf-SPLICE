@@ -2,7 +2,7 @@
 
 Every method delegates to the file-first services; interfaces never
 re-implement inspection, review, validation or promotion rules
-(ADR-0014). Drafts below ``splice/drafts/`` are the authoring source.
+(ADR-0014). Drafts below ``.splice-local/drafts/`` are the authoring source.
 """
 
 from __future__ import annotations

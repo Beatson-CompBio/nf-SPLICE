@@ -29,7 +29,7 @@ permits `scope: run`.
 | **Bundle file index** | The `files` map in `bundle.json` naming every final artefact. |
 | **Contract family** | One of the five public workflow-bundle JSON contracts, identified by a URI below `https://schemas.splice-data.io/workflow-bundle/`. The bundle index family is `https://schemas.splice-data.io/workflow-bundle/bundle`. |
 | **Contract registry** | The packaged mapping from each nf-splice release to the revision of every contract family it emits (`nf-splice schema list`). |
-| **Draft** | An editable, authoritative working file below `splice/drafts/`, named `*.draft.*` and carrying a draft marker. |
+| **Draft** | An editable, authoritative working file below `.splice-local/drafts/`, named `*.draft.*` and carrying a draft marker. |
 | **Final artefact** | A validated, draft-marker-free file at its published path below `splice/`. |
 
 ## Reserved word: `manifest`

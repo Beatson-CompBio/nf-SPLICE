@@ -5,7 +5,7 @@ such as `/pipeline/licence`) and a code. Errors block publication; warnings
 do not.
 
 ```text
-error: splice/drafts/bundle.draft.yaml#/pipeline/id [missing_required] pipeline.id is required for an ingestion-ready bundle
+error: .splice-local/drafts/bundle.draft.yaml#/pipeline/id [missing_required] pipeline.id is required for an ingestion-ready bundle
 ```
 
 Run `nf-splice plan` to see everything still open, or

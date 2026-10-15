@@ -87,6 +87,7 @@ _SEARCH_SUFFIXES = {
 _SKIP_DIRECTORIES = {
     ".git",
     ".nf-splice-local",
+    ".splice-local",
     ".nextflow",
     "work",
     "node_modules",

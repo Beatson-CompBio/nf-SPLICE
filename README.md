@@ -105,7 +105,7 @@ full walkthrough.
 nf-splice never publishes your Git e-mail address, never writes accounts,
 credentials or private paths into a bundle, and never contacts the network
 or an AI service unless you ask it to. Agent sessions stay in your
-repository's ignored `.nf-splice-local/` directory. See
+repository's private, Git-ignored `.splice-local/` folder. See
 [Attribution and privacy](docs/guide/provenance.md#attribution-and-privacy).
 
 ## Contributing

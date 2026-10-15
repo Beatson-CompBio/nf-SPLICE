@@ -7,7 +7,7 @@ classify and display the results of every job. See
 [Output routes and evidence](output-coverage.md) for how alternative and
 optional routes are found and checked.
 
-- **Draft:** `splice/drafts/outputs.draft.yaml`, the only output draft
+- **Draft:** `.splice-local/drafts/outputs.draft.yaml`, the only output draft
 - **Published:** `outputs.schema.json` (with the catalogue) and
   `outputs.yaml` (a readable copy)
 - **Required:** at least one reviewed output, a decision on every

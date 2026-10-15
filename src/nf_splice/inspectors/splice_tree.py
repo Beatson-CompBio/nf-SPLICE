@@ -295,47 +295,16 @@ def _walk_without_following_links(root: Path) -> list[Path]:
     return sorted(entries, key=lambda path: path.relative_to(root).as_posix())
 
 
-_DRAFT_FILES = frozenset(
-    {
-        "drafts/bundle.draft.yaml",
-        "drafts/inputs.schema.draft.yaml",
-        "drafts/outputs.draft.yaml",
-        "drafts/components.draft.yaml",
-        "drafts/execution-profiles.draft.yaml",
-        "drafts/ro-crate-metadata.draft.yaml",
-        "drafts/README.draft.md",
-    }
-)
 _TRANSIENT = (".nf-splice-staging", ".nf-splice-backup")
 
 
-def _classify_draft(path: Path, relative: str, entry_type: EntryType) -> InspectedPath:
-    recognized = (
-        (
-            relative in {"drafts", "drafts/configs", "drafts/.reviews"}
-            and entry_type is EntryType.DIRECTORY
-        )
-        or (relative in _DRAFT_FILES and entry_type is EntryType.FILE)
-        or (
-            entry_type is EntryType.FILE
-            and re.fullmatch(
-                r"drafts/configs/[a-z][a-z0-9_-]*\.draft\.config", relative
-            )
-            is not None
-        )
-        or (
-            entry_type is EntryType.FILE
-            and re.fullmatch(r"drafts/\.reviews/[a-z-]+\.review\.json", relative)
-            is not None
-        )
-    )
+def _classify_legacy_drafts(relative: str, entry_type: EntryType) -> InspectedPath:
     return InspectedPath(
         path=relative,
         entry_type=entry_type,
-        classification=(
-            PathClassification.RECOGNIZED if recognized else PathClassification.UNKNOWN
-        ),
-        detail=None if recognized else "unknown content in the drafts work area",
+        classification=PathClassification.MALFORMED,
+        detail="drafts of an earlier nf-splice layout; run `nf-splice migrate --check` "
+        "and `nf-splice migrate --apply` to move them to .splice-local/",
     )
 
 
@@ -343,7 +312,7 @@ def _classify(path: Path, relative: str) -> InspectedPath:
     entry_type = _entry_type(path)
 
     if relative == "drafts" or relative.startswith("drafts/"):
-        return _classify_draft(path, relative, entry_type)
+        return _classify_legacy_drafts(relative, entry_type)
 
     if relative.split("/", 1)[0] in _TRANSIENT:
         return InspectedPath(

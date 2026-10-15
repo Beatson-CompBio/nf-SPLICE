@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from nf_splice import __version__
 from nf_splice.layers.base import LAYERS
+from nf_splice.layout import PRIVATE_DIR, SESSIONS_DIR, prepare_private_workspace
 from nf_splice.services.lifecycle import plan_promotion, validate_bundle
 from nf_splice.services.workspace import WorkspaceStatus, workspace_status
 
@@ -105,13 +106,20 @@ def repository_key(repository: str | Path) -> str:
     ]
 
 
-def default_session_directory(environment: Mapping[str, str] | None = None) -> Path:
-    """``NF_SPLICE_SESSION_DIR`` or the user cache; never the published bundle."""
+def default_session_directory(
+    repository: str | Path | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> Path:
+    """``NF_SPLICE_SESSION_DIR``, else ``.splice-local/sessions/wizard/``.
+
+    Wizard progress belongs to the integration working copy, next to its
+    drafts and agent sessions, so it travels with the work.
+    """
     env = os.environ if environment is None else environment
     if env.get("NF_SPLICE_SESSION_DIR"):
         return Path(env["NF_SPLICE_SESSION_DIR"]).expanduser()
-    cache = env.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
-    return Path(cache).expanduser() / "nf-splice" / "sessions"
+    root = Path(repository or ".").resolve()
+    return root / SESSIONS_DIR / "wizard"
 
 
 class SessionStore:
@@ -146,6 +154,8 @@ class SessionStore:
         resolved = path.parent.resolve() if path.parent.exists() else path.parent
         if (repository_root / "splice") in [resolved, *resolved.parents]:
             raise ValueError("sessions must never be stored inside splice/")
+        if (repository_root / PRIVATE_DIR) in [resolved, *resolved.parents]:
+            prepare_private_workspace(repository_root)
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         temporary = path.with_suffix(".tmp")
         temporary.write_text(session.model_dump_json(indent=2), encoding="utf-8")

@@ -40,7 +40,7 @@ uses. Every change is validated by nf-splice, never by the model's word.
 | Permission | Lets the agent | Default |
 | --- | --- | --- |
 | `read` | Inspect the repository, drafts and example output you supplied | Granted |
-| `draft_edit` | Edit drafts in `splice/drafts/` | Granted |
+| `draft_edit` | Edit drafts in `.splice-local/drafts/` | Granted |
 | `build` | Publish validated drafts into `splice/` | Granted |
 | `overwrite` | Replace published files that were edited by hand | Ask with `--allow overwrite` |
 | `external_tools`, `run_nextflow`, `network` | Run nf-core lint, which runs `nextflow config` and may use the network | Ask with `--allow` |
@@ -57,7 +57,7 @@ scope you approved, never as your review.
 ## Where sessions are kept
 
 Sessions, conversation, tool logs and checkpoints are stored in your
-repository's `.nf-splice-local/agent/` directory, which nf-splice protects
+repository's private `.splice-local/sessions/` directory, which nf-splice protects
 with its own `.gitignore`. They are never part of the published bundle. Set
 `NF_SPLICE_AGENT_DIR` to keep them somewhere else.
 

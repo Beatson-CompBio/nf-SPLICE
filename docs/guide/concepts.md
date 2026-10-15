@@ -15,16 +15,18 @@ and produces one or more published files.
 | Layer | Draft | Published | Guide |
 | --- | --- | --- | --- |
 | `bundle` | `bundle.draft.yaml` | `bundle.json` | [Identity](identity.md) |
-| `inputs` | `inputs.schema.draft.yaml` | `inputs.schema.json` | [Inputs](inputs.md) |
+| `inputs` | `inputs.draft.yaml` | `inputs.schema.json` | [Inputs](inputs.md) |
 | `outputs` | `outputs.draft.yaml` | `outputs.schema.json`, `outputs.yaml` | [Outputs](outputs.md) |
 | `components` | `components.draft.yaml` | `components.json` | [Components](components.md) |
 | `execution-profiles` | `execution-profiles.draft.yaml` | `execution-profiles.json`, `configs/*.config` | [Execution profiles](execution-profiles.md) |
-| `provenance` | `ro-crate-metadata.draft.yaml` | `ro-crate-metadata.json` | [Provenance](provenance.md) |
+| `provenance` | `provenance.draft.yaml` | `ro-crate-metadata.json` | [Provenance](provenance.md) |
 
 ## Drafts
 
-Drafts are ordinary YAML files under `splice/drafts/` and are the source of
-truth while you work.
+Drafts are ordinary YAML files under `.splice-local/drafts/` and are the source of
+truth while you work. `.splice-local/` is your private workspace: nf-splice
+adds it to the repository's `.gitignore`, and it is never published,
+committed or archived. Only the finished files in `splice/` are shared.
 
 - Edit them with nf-splice commands, the wizard or any text editor.
   nf-splice changes only the fields it is asked to change, keeps your
@@ -35,7 +37,10 @@ truth while you work.
   your editor is picked up immediately.
 
 Review history (evidence, candidates and decisions) is kept next to the
-drafts in `splice/drafts/.reviews/`. Commit it along with the drafts.
+drafts in `.splice-local/reviews/`, and AI sessions in
+`.splice-local/sessions/`. Because the folder is not in Git, back it up, or
+keep working in the same copy, until the bundle is finished; session
+checkpoints let you undo changes while you work.
 
 ## Evidence and review
 

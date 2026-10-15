@@ -4,7 +4,7 @@ The identity layer says what the pipeline is: its identifier, name, version,
 description, authors and links. The platform uses it for listings, search and
 citation. It is published as `bundle.json`.
 
-- **Draft:** `splice/drafts/bundle.draft.yaml`
+- **Draft:** `.splice-local/drafts/bundle.draft.yaml`
 - **Required:** `id`, `name`, `version`, `repository_url`
 - **Recommended:** `description`, `authors`, `licence`
 
@@ -57,7 +57,7 @@ nf-splice draft inspect bundle
 ```
 
 ```text
-splice/drafts/bundle.draft.yaml: not ready
+.splice-local/drafts/bundle.draft.yaml: not ready
   error: /pipeline/id [missing_required] pipeline.id is required for an ingestion-ready bundle
   warning: /pipeline/description [recommended] a concise description is recommended for platform display
 ```

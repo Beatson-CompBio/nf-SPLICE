@@ -18,7 +18,7 @@ themselves (manual), with an agent that proposes and waits for approval
 | --- | --- | --- |
 | Decisions | `docs/ARCHITECTURE_DECISIONS.md` | Current ADRs govern the code. A changed decision needs a new ADR. |
 | Contracts | `src/nf_splice/contracts/` | Five versioned JSON Schema families; `docs/schemas/` is generated from them. |
-| Authoring state | `splice/drafts/*.draft.yaml` and `.review.json` sidecars | The only editable source. Published files are built from it. |
+| Authoring state | `.splice-local/drafts/*.draft.yaml` and `.review.json` sidecars | The only editable source. Published files are built from it. |
 | Deterministic services | `src/nf_splice/layers/`, `src/nf_splice/services/`, `src/nf_splice/inspectors/`, `src/nf_splice/runtime/` | The only writers and validators of SPLICE files, in every mode. |
 | Interfaces | `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/` | Call the services; hold no business logic of their own. |
 | Agents | `src/nf_splice/agents/` | Provider-neutral engine, permissions, typed operations, state and adapters. |

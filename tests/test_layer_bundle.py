@@ -17,7 +17,7 @@ from nf_splice.layers.bundle import (
     validate_bundle_draft,
 )
 
-DRAFT = "splice/drafts/bundle.draft.yaml"
+DRAFT = ".splice-local/drafts/bundle.draft.yaml"
 ADA = ChangeContext(actor=Actor(label="Ada"))
 
 
@@ -201,7 +201,7 @@ def test_specific_identity_review_issues(tmp_path: Path) -> None:
 
 def test_missing_and_malformed_drafts_are_reported(tmp_path: Path) -> None:
     assert _issues(tmp_path) == {"missing_draft": {""}}
-    (tmp_path / "splice" / "drafts").mkdir(parents=True)
+    (tmp_path / ".splice-local" / "drafts").mkdir(parents=True)
     (tmp_path / DRAFT).write_text("pipeline: [\n", encoding="utf-8")
     assert "syntax" in _issues(tmp_path)
     assert not seed_bundle_draft(tmp_path).created

@@ -77,6 +77,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0044 | Offer manual, AI-assisted and autonomous work as three policies over one deterministic session engine | Current | — |
 | ADR-0045 | Govern agents with operation-level permissions, bound approvals and truthful attribution | Current | — |
 | ADR-0046 | Keep provider-neutral skills canonical in the repository, packaged and loaded by the runtime | Current | — |
+| ADR-0047 | Keep private authoring state in an ignored `.splice-local/` and publish only `splice/` | Current | — |
 
 ---
 
@@ -1228,6 +1229,8 @@ unset.
 | Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/drafts/store.py` |
 | Tests | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py`, `tests/test_drafts_infra.py` |
 
+Amended by ADR-0047 (2026-10-15): drafts live in `.splice-local/drafts/` (as `<layer>.draft.yaml`, with `inputs.draft.yaml` and `provenance.draft.yaml`) and review sidecars in `.splice-local/reviews/`; `splice/` holds published files only.
+
 ### Context
 
 ADR-0021 made `splice/nf-splice.yaml` the single canonical authoring state.
@@ -1759,6 +1762,8 @@ Amended by ADR-0041 (2026-10-15): the Migration step was removed from the wizard
 
 Amended by ADR-0044 (2026-10-15): the welcome step offers manual, AI-assisted and autonomous work; Ctrl+A opens read-only Ask AI; sessions have their own views.
 
+Amended by ADR-0047 (2026-10-15): wizard progress is kept in `.splice-local/sessions/wizard/` unless `NF_SPLICE_SESSION_DIR` is set.
+
 ### Context
 
 The 0.1.0 dashboard showed every layer at once, wrote the monolithic
@@ -2108,6 +2113,8 @@ contact the network, so it is not a read-only check.
 | Implementation | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/sandbox.py`, `src/nf_splice/agents/help.py`, `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/session.py`, `src/nf_splice/interfaces/tui/screens/ask.py` |
 | Tests | `tests/test_agents.py`, `tests/test_agent_interfaces.py`, `tests/test_scenarios.py` |
 
+Amended by ADR-0047 (2026-10-15): sessions live in `.splice-local/sessions/<id>/` with `session.json`, `events.jsonl` and `checkpoints/`; previews are staged in `.splice-local/staging/`.
+
 ### Context
 
 Integrating a pipeline with SPLICE is mostly careful, repetitive review work:
@@ -2299,3 +2306,69 @@ runtime loads drifts and misleads.
 ### Consequences
 
 - Changing a skill means changing `skills/` and refreshing the packaged copy.
+
+---
+
+## ADR-0047: Keep private authoring state in an ignored `.splice-local/` and publish only `splice/`
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 1 |
+| Scope | Working-copy filesystem layout, private state and migration |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0026, ADR-0030, ADR-0036, ADR-0038, ADR-0044 |
+| Implementation | `src/nf_splice/layout.py`, `src/nf_splice/drafts/store.py`, `src/nf_splice/layers/base.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/sandbox.py`, `src/nf_splice/services/migration.py`, `src/nf_splice/interfaces/tui/state.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_layout.py`, `tests/test_reference_fixtures.py`, `tests/test_lifecycle.py` |
+
+### Context
+
+Drafts, review sidecars and session state are private working material: they
+can hold research details, rejected ideas and audit records. Keeping drafts in
+`splice/drafts/` mixed them with the distributable bundle, and agent sessions
+lived in a development folder name. The distributable must be clean, Git
+must never track private state, and work must survive mode switches and
+restarts.
+
+### Decision
+
+- Every integration working copy has two areas: `splice/` (lower case) holds
+  only published, Git-trackable bundle files; `.splice-local/` holds all
+  private state: `drafts/` (one `<layer>.draft.yaml` per layer, plus
+  `configs/`), `reviews/`, `sessions/<id>/` (`session.json`, redacted
+  `events.jsonl`, `checkpoints/`), `sessions/wizard/`, `cache/`, `staging/`
+  and `migrations/`.
+- Before nf-splice writes any private file it adds `/.splice-local/` to the
+  copy's `.gitignore` (once, keeping existing rules, creating the file when
+  absent) and refuses to continue if Git already tracks files there; a
+  person removes them from the index with `nf-splice workspace untrack
+  --yes`, which never rewrites history. A `.splice-local` symbolic link is
+  refused.
+- An entry whose name differs from `splice` or `.splice-local` only by case
+  (such as `SPLICE/`) is refused, because it collides on case-insensitive
+  filesystems.
+- Earlier layouts (`splice/drafts/`, `splice/drafts/.reviews/`,
+  `.nf-splice-local/agent/`) are moved by `nf-splice migrate`: `--check`
+  lists every move and conflict, `--apply` backs up each file, copies it,
+  verifies its SHA-256 and only then removes the originals (restoring
+  everything on failure), and `--rollback` restores the backup. Targets are
+  never overwritten. Until migration, drafts are not read over an earlier
+  layout.
+- Checkpoints and draft fingerprints cover `splice/`, `.splice-local/drafts/`
+  and `.splice-local/reviews/`. Previews copy only the private drafts and
+  reviews, never sessions or caches. Agents cannot read `.splice-local/`
+  through source tools.
+- Credentials are never kept in `.splice-local/` (see the provider ADRs).
+
+### Alternatives rejected
+
+- Committing drafts: publishes private review material and rejected ideas.
+- Relying on `.gitignore` alone: an already-tracked folder stays tracked.
+
+### Consequences
+
+- Drafts are not shared through Git. People keep the working copy (or back
+  up `.splice-local/`) until a bundle is finished; reproducible CI uses
+  decision files and validates the committed `splice/`.

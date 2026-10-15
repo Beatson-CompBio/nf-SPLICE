@@ -57,6 +57,27 @@
       "before_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
       "after_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
       "source_revision": null
+    },
+    {
+      "id": "event:2614b13ae7f2e8cf",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "provenance",
+      "action": "promote",
+      "pointers": [
+        "ro-crate-metadata.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
+      "after_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
+      "source_revision": null
     }
   ],
   "format": "0.3.0",

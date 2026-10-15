@@ -33,8 +33,8 @@ Evidence:
 Uncertainties:
 - HISAT2 output was not observed in the example run
 Diff:
---- a/splice/drafts/outputs.draft.yaml
-+++ b/splice/drafts/outputs.draft.yaml
+--- a/.splice-local/drafts/outputs.draft.yaml
++++ b/.splice-local/drafts/outputs.draft.yaml
 ...
 [a]pprove, [o]bject, ask a [q]uestion, [p]ause or [c]ancel (q):
 ```

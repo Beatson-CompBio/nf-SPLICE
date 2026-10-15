@@ -32,7 +32,7 @@ from nf_splice.services.input_policy import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nf-schema" / "nextflow_schema.json"
-DRAFT = "splice/drafts/inputs.schema.draft.yaml"
+DRAFT = ".splice-local/drafts/inputs.draft.yaml"
 AGENT = ChangeContext(
     actor=Actor(label="assistant"), origin=ChangeOrigin.AGENT_ASSISTED
 )

@@ -30,6 +30,7 @@ _IGNORED_DIRECTORIES = {
     ".mypy_cache",
     ".nextflow",
     ".nf-splice-local",
+    ".splice-local",
     ".nf-test",
     ".pytest_cache",
     ".ruff_cache",

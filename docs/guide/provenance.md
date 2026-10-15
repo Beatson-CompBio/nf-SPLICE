@@ -4,7 +4,7 @@ The provenance layer publishes an RO-Crate: standard, machine-readable
 metadata about the pipeline, its authors and how the bundle was made. It is
 published as `ro-crate-metadata.json`.
 
-- **Draft:** `splice/drafts/ro-crate-metadata.draft.yaml`
+- **Draft:** `.splice-local/drafts/provenance.draft.yaml`
 - **Required:** a strategy
 
 ## 1. Analyse your RO-Crate
@@ -47,7 +47,7 @@ Every review decision is recorded with:
   otherwise `unattributed`;
 - the layer, action, fields, origin (command line, wizard, assistant) and time.
 
-These records are stored in `splice/drafts/.reviews/` and contain no contact
+These records are stored in `.splice-local/reviews/` and contain no contact
 details. Your Git name and e-mail address are offered only as a suggestion
 and are never published. Contact details, if you choose to record them, go
 to a private audit store outside the repository (`NF_SPLICE_AUDIT_DIR`,

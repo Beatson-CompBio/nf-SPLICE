@@ -192,7 +192,7 @@ def draft_catalogue(repository_root: str | Path) -> Catalogue:
                 ],
             }
         )
-    return Catalogue("splice/drafts/outputs.draft.yaml", tuple(types))
+    return Catalogue(".splice-local/drafts/outputs.draft.yaml", tuple(types))
 
 
 def current_catalogue(repository_root: str | Path) -> Catalogue | None:

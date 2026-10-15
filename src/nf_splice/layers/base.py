@@ -1,7 +1,8 @@
 """Shared per-file draft lifecycle: layer registry, issues and review sidecars.
 
 Each layer has exactly one authoritative editable draft below
-``splice/drafts/``. A layer's review sidecar (``.reviews/<layer>.json``)
+``.splice-local/drafts/``. A layer's review sidecar
+(``.splice-local/reviews/<layer>.review.json``)
 records evidence-derived *seeded* values, explicit confirmations,
 discovery candidates, review events and the hashes of promoted final files.
 It never holds authoritative field values: readiness is always derived from
@@ -34,6 +35,7 @@ from nf_splice.drafts import (
     resolve,
     write_sidecar,
 )
+from nf_splice.layout import legacy_paths
 from nf_splice.services.audit import make_event, record_private
 
 SIDECAR_FORMAT = "0.3.0"
@@ -89,7 +91,7 @@ LAYERS: tuple[LayerSpec, ...] = (
     ),
     LayerSpec(
         "inputs",
-        f"{DRAFTS_DIR}/inputs.schema.draft.yaml",
+        f"{DRAFTS_DIR}/inputs.draft.yaml",
         ("inputs.schema.json",),
         "Inputs",
     ),
@@ -113,7 +115,7 @@ LAYERS: tuple[LayerSpec, ...] = (
     ),
     LayerSpec(
         "provenance",
-        f"{DRAFTS_DIR}/ro-crate-metadata.draft.yaml",
+        f"{DRAFTS_DIR}/provenance.draft.yaml",
         ("ro-crate-metadata.json",),
         "Provenance",
     ),
@@ -273,8 +275,20 @@ class EditResult:
     warnings: tuple[str, ...] = ()
 
 
+def refuse_legacy_layout(root: Path) -> None:
+    """Stop before working over drafts of an earlier layout (migrate first)."""
+    legacy = legacy_paths(root)
+    if legacy and not (root / DRAFTS_DIR).is_dir():
+        raise LayerError(
+            f"{', '.join(legacy)} holds drafts or sessions from an earlier nf-splice "
+            "layout; run `nf-splice migrate --check`, then "
+            "`nf-splice migrate --apply` to move them to .splice-local/"
+        )
+
+
 def read_layer(root: Path, layer: str) -> YamlFileState:
     """Read the current bytes and parse result of a layer's draft."""
+    refuse_legacy_layout(root)
     return read_yaml(root, layer_spec(layer).draft)
 
 
@@ -288,6 +302,7 @@ def seed_draft(
     review: Callable[[ReviewState], None] | None = None,
 ) -> bool:
     """Create a layer draft only if absent; never overwrite an existing draft."""
+    refuse_legacy_layout(root)
     spec = layer_spec(layer)
     document = {DRAFT_MARKER: draft_marker(layer), **data}
     created = create_file(

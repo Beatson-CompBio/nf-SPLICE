@@ -11,12 +11,12 @@
   ○ Build
   · Done
 == drafts
-bundle | splice/drafts/bundle.draft.yaml | ready | 0 | 0
-inputs | splice/drafts/inputs.schema.draft.yaml | ready | 0 | 0
-outputs | splice/drafts/outputs.draft.yaml | ready | 0 | 0
-components | splice/drafts/components.draft.yaml | ready | 0 | 0
-execution-profiles | splice/drafts/execution-profiles.draft.yaml | ready | 0 | 0
-provenance | splice/drafts/ro-crate-metadata.draft.yaml | ready | 0 | 2
+bundle | .splice-local/drafts/bundle.draft.yaml | ready | 0 | 0
+inputs | .splice-local/drafts/inputs.draft.yaml | ready | 0 | 0
+outputs | .splice-local/drafts/outputs.draft.yaml | ready | 0 | 0
+components | .splice-local/drafts/components.draft.yaml | ready | 0 | 0
+execution-profiles | .splice-local/drafts/execution-profiles.draft.yaml | ready | 0 | 0
+provenance | .splice-local/drafts/provenance.draft.yaml | ready | 0 | 2
 <button Reload from disk>
 <button Open selected in $EDITOR>
 

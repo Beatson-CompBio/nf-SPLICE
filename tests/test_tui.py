@@ -305,7 +305,7 @@ async def test_identity_edits_are_targeted_patches_preserving_comments(
     async with app.run_test(size=SIZE) as pilot:
         await settle(app, pilot)
         await press(app, pilot, "#welcome-create")
-        draft = root / "splice" / "drafts" / "bundle.draft.yaml"
+        draft = root / ".splice-local" / "drafts" / "bundle.draft.yaml"
         draft.write_text("# kept comment\n" + draft.read_text(encoding="utf-8"))
         await pilot.press("ctrl+r")
         app.show_step("identity")
@@ -362,7 +362,7 @@ async def test_sessions_resume_but_state_derives_from_files(tmp_path: Path) -> N
     assert "outputs" in saved.unsaved
     assert not list((root / "splice").rglob("*session*"))
 
-    draft = root / "splice" / "drafts" / "outputs.draft.yaml"
+    draft = root / ".splice-local" / "drafts" / "outputs.draft.yaml"
     draft.write_text(draft.read_text(encoding="utf-8") + "# external\n")
     resumed = NfSpliceApp(root, sessions=store)
     async with resumed.run_test(size=SIZE) as pilot:

@@ -12,7 +12,7 @@
   · Done
 == repository
 Revision: not detected
-splice/ tree: recognized
+splice/ tree: absent
 Evidence items: 13
   container: 1
   included_config: 1
@@ -32,3 +32,4 @@ Layers:
   components: incomplete
   execution-profiles: incomplete
   provenance: incomplete
+Warning: No repository-root splice/ integration exists yet.

@@ -26,6 +26,7 @@ Global options go before the command name, for example
 | [`nf-splice plan`](#nf-splice-plan) | Preview promotion/publication changes and blockers (read-only). |
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
 | [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
+| [`nf-splice migrate`](#nf-splice-migrate) | Move drafts and sessions of an earlier layout into .splice-local/. |
 | [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
 | [`nf-splice ask`](#nf-splice-ask) | Ask AI about your pipeline or drafts; read-only, it never changes anything. |
 | [`nf-splice tui`](#nf-splice-tui) | Open the terminal wizard: manual, AI-assisted or autonomous. |
@@ -66,6 +67,8 @@ Global options go before the command name, for example
 | [`nf-splice skills list`](#nf-splice-skills-list) | List the packaged skills. |
 | [`nf-splice skills show`](#nf-splice-skills-show) | Print one skill's SKILL.md. |
 | [`nf-splice skills export`](#nf-splice-skills-export) | Copy the skills where an external coding agent discovers them. |
+| [`nf-splice workspace check`](#nf-splice-workspace-check) | Report problems with the private workspace and published folder (read-only). |
+| [`nf-splice workspace untrack`](#nf-splice-workspace-untrack) | Stop Git tracking .splice-local/ (files kept; history not rewritten). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
 
 ### nf-splice inspect
@@ -196,6 +199,22 @@ nf-splice validate [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice migrate
+
+Move drafts and sessions of an earlier layout into .splice-local/.
+
+```text
+nf-splice migrate [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--check` |  |  | Show what would move. |
+| `--apply` |  |  | Back up, move and verify. |
+| `--rollback` |  |  | Restore the most recent migration's originals. |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice assess
@@ -819,6 +838,32 @@ nf-splice skills export [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--dest` | `<directory>` |  | Directory to write <skill>/SKILL.md into, for example .claude/skills for Claude Code. |
+
+### nf-splice workspace check
+
+Report problems with the private workspace and published folder (read-only).
+
+```text
+nf-splice workspace check [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice workspace untrack
+
+Stop Git tracking .splice-local/ (files kept; history not rewritten).
+
+```text
+nf-splice workspace untrack [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--yes` |  |  | Confirm: stop tracking .splice-local/. |
 
 ### nf-splice preview outputs
 

@@ -108,7 +108,7 @@ def build_report(
         "evidence": [item.model_dump(mode="json") for item in state.evidence[-50:]],
         "audit": {
             "session_directory": str(store.session_directory(state.id)),
-            "tool_log": str(store.session_directory(state.id) / "tools.jsonl"),
+            "event_log": str(store.session_directory(state.id) / "events.jsonl"),
             "checkpoints": [item.id for item in state.checkpoints],
             "tool_calls": state.usage.tool_calls,
             "provider_turns": state.usage.provider_turns,
@@ -171,6 +171,6 @@ def report_text(report: dict[str, Any]) -> str:
     lines += [
         "",
         f"Audit: {audit['tool_calls']} tool call(s), {audit['provider_turns']} "
-        f"provider turn(s); log {audit['tool_log']}",
+        f"provider turn(s); log {audit['event_log']}",
     ]
     return "\n".join(lines)

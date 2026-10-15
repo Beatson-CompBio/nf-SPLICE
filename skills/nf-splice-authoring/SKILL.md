@@ -19,7 +19,7 @@ create the drafts, review each layer, build the bundle in `splice/`.
 
 ## How the files fit together
 
-- `splice/drafts/*.draft.yaml` are the editable source, one per layer. Each
+- `.splice-local/drafts/*.draft.yaml` are the editable source, one per layer. Each
   has a `.review.json` sidecar recording candidates, confirmations and
   review events.
 - `splice/*.json`, `splice/outputs.yaml` and `splice/README.md` are

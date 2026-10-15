@@ -40,7 +40,7 @@ nf-splice init --accept-detected
 
 `init` reads your repository (Nextflow configuration, `nextflow_schema.json`,
 modules, Git, `CITATION.cff`, `README.md`) and writes one draft file per part
-of the bundle under `splice/drafts/`. Nothing outside `splice/` is changed,
+of the bundle under `.splice-local/drafts/`. Nothing outside `splice/` is changed,
 and running it again never replaces a draft you already have.
 
 `--accept-detected` accepts the identity values that all sources agree on.
@@ -97,8 +97,9 @@ nf-splice validate
 ```
 
 `--check` shows what would be written without writing it. The published
-bundle is in `splice/`. Commit `splice/`, including `splice/drafts/`, to
-your repository: the drafts record the reviewed decisions for next time.
+bundle is in `splice/`. Commit `splice/` and the updated `.gitignore`. Your
+drafts stay in the private `.splice-local/` folder, which is not committed;
+keep it to make later updates from the same reviewed decisions.
 
 ## Next steps
 

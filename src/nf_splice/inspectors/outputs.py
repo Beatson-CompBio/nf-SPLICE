@@ -24,6 +24,8 @@ from nf_splice.inspectors.routes import CoverageStatus, analyse_routes, glob_to_
 
 _IGNORED_DIRECTORIES = {
     ".git",
+    ".splice-local",
+    ".nf-splice-local",
     ".mypy_cache",
     ".nextflow",
     ".nf-test",
@@ -160,7 +162,9 @@ def _meta_descriptions(root: Path) -> dict[tuple[str, str], str]:
     found: dict[tuple[str, str], str] = {}
     for name in ("meta.yml", "meta.yaml"):
         for path in sorted(root.rglob(name)):
-            if any(part in _IGNORED_DIRECTORIES for part in path.parts):
+            if any(
+                part in _IGNORED_DIRECTORIES for part in path.relative_to(root).parts
+            ):
                 continue
             try:
                 loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
