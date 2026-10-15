@@ -22,13 +22,12 @@ from textual.widgets import (
 )
 
 from nf_splice.domain import (
+    SUGGESTED_OUTPUT_CATEGORIES,
     ExecutionProfileType,
     InputClassification,
-    OutputCategory,
     OutputEntityType,
     OutputFormat,
     OutputScope,
-    OutputStage,
     ReviewedOutput,
 )
 from nf_splice.services import (
@@ -143,12 +142,12 @@ class NfSpliceApp(App[None]):
                     yield Input(placeholder="Stable key", id="output-key")
                     yield Input(placeholder="Title", id="output-title")
                     yield Input(placeholder="Description", id="output-description")
-                    yield Select(
-                        [
-                            (item.value.replace("_", " ").title(), item.value)
-                            for item in OutputCategory
-                        ],
-                        prompt="Category",
+                    yield Input(
+                        placeholder=(
+                            "Category (free text, e.g. "
+                            + ", ".join(SUGGESTED_OUTPUT_CATEGORIES[:3])
+                            + ")"
+                        ),
                         id="output-category",
                     )
                     yield Select(
@@ -166,9 +165,8 @@ class NfSpliceApp(App[None]):
                         prompt="Entity type",
                         id="output-entity",
                     )
-                    yield Select(
-                        [(item.value, item.value) for item in OutputStage],
-                        prompt="Optional pipeline stage",
+                    yield Input(
+                        placeholder="Optional pipeline stage (free text)",
                         id="output-stage",
                     )
                     yield Input(
@@ -355,7 +353,7 @@ class NfSpliceApp(App[None]):
             if event.button.id == "preview-output":
                 preview = ReviewedOutput.model_validate(self._reviewed_output())
                 self.query_one("#review-summary", Static).update(
-                    f"Ready to save {preview.key}: {preview.category.value}; "
+                    f"Ready to save {preview.key}: {preview.category}; "
                     f"{', '.join(item.value for item in preview.formats)}; "
                     f"{', '.join(preview.path_patterns)}"
                 )
@@ -802,7 +800,7 @@ class NfSpliceApp(App[None]):
             if candidate.likely_entity_type
             else None,
         )
-        self._set_select("#output-stage", None)
+        self.query_one("#output-stage", Input).value = ""
         self.query_one("#output-labels", Input).value = ""
 
     def _set_select(self, selector: str, value: str | None) -> None:
@@ -839,14 +837,14 @@ class NfSpliceApp(App[None]):
             "key": self.query_one("#output-key", Input).value.strip(),
             "title": self.query_one("#output-title", Input).value.strip(),
             "description": self.query_one("#output-description", Input).value.strip(),
-            "category": selected("#output-category"),
+            "category": self.query_one("#output-category", Input).value.strip(),
             "formats": [selected("#output-format")],
             "scopes": [selected("#output-scope")],
             "entity_types": [selected("#output-entity")],
             "path_patterns": patterns,
             "labels": labels,
         }
-        stage = selected("#output-stage")
+        stage = self.query_one("#output-stage", Input).value.strip()
         if stage:
             output["stage"] = stage
         return output

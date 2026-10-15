@@ -45,7 +45,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0012 | Make rendering deterministic and idempotent | Current | — |
 | ADR-0013 | Require explicit, previewed, atomic, collision-safe writes | Current | — |
 | ADR-0014 | Put CLI and TUI over one application core | Current | — |
-| ADR-0015 | Separate static integration authoring from per-run analysis output | Current | — |
+| ADR-0015 | Separate static integration authoring from per-run analysis output | Superseded | ADR-0028 |
 | ADR-0016 | Version authoring, bundle, pipeline, and generator independently | Superseded | ADR-0024 |
 | ADR-0017 | Support the nf-core environment without depending on nf-core internals | Current | — |
 | ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
@@ -57,6 +57,8 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0024 | Publish five engine-neutral workflow-bundle contract families with a release registry | Current | — |
 | ADR-0025 | Reserve `manifest` and define SPLICE bundle and platform-unit vocabulary | Current | — |
 | ADR-0026 | Edit drafts as restricted YAML 1.2 with comment-preserving three-way patches | Current | — |
+| ADR-0027 | Classify outputs by SPLICE job, sample and run with free-text scientific labels | Current | — |
+| ADR-0028 | Generate one analysis output per job from the embedded output catalogue | Current | — |
 
 ---
 
@@ -424,12 +426,12 @@ reconciliation, rendering, or validation rules.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | Runtime boundary |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0028 |
 | Related | ADR-0003, ADR-0004, ADR-0006 |
 
 ### Decision
@@ -978,3 +980,137 @@ draft from a model would discard developer edits and comments.
 - YAML-to-JSON compilation can promise parsed-JSON semantic equality and
   byte-stable repeated output, not byte equality between YAML and JSON.
 - A new dependency must remain compatible with Python 3.10-3.14 in CI.
+
+---
+
+## ADR-0027: Classify outputs by SPLICE job, sample and run with free-text scientific labels
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 5.2 and 5.2.1 (requirement 8) |
+| Scope | Output contract semantics and nomenclature |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0024, ADR-0025, ADR-0028 |
+| Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui.py` |
+| Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_authoring.py` |
+
+### Context
+
+0.1.0 used `run` for workflow-wide outputs, `library` for per-library
+outputs and `run_metadata` for the whole workflow execution, contradicting the
+SPLICE platform where a **run** is a file-level unit belonging to a sample and
+the workflow execution is a **job**. Its `OutputCategory` and `OutputStage`
+enums also imposed a central scientific vocabulary.
+
+### Decision
+
+- `OutputScope` is exactly `job`, `sample`, `run` (that order). `job` attaches
+  to the workflow job; `sample` records carry `sample_id`; `run` records carry
+  the platform `run_id` **and** their parent `sample_id`. `library` is never a
+  published scope; `library_id` may remain descriptive metadata.
+- New path placeholder `{run}` captures `run_id`; `{sample}` captures
+  `sample_id`. A reviewed output may list `run` only if a pattern captures
+  `{run}`, `sample` only if a pattern captures `{sample}`, and every pattern
+  must resolve an owner for at least one listed scope.
+- The runtime chooses each record's scope from what its matched pattern
+  captures (`run` > `sample` > `job` within the reviewed scopes). A run's
+  parent sample comes from the path or from sample metadata with a `run_id`
+  column; an unresolved or contradictory parent is a blocking error. The
+  generated schema enforces the same rules per record.
+- Discovery suggests `job` for single workflow-wide files and `sample` for
+  `{sample}` patterns. It never infers `run` from a filename, a library name
+  or the engine execution identifier; only an explicit `{run}` binding
+  suggests it.
+- Legacy scopes are migrated by **source contract version**, never by string
+  replacement: a 0.1.0 catalogue's `run` means `job`, `sample` stays
+  `sample`, and `library` remains unresolved for explicit review (`run` only
+  after a reviewed file-level identifier mapping).
+- Category and stage are safe, non-empty free text (no control characters,
+  at most 128 characters). Suggested labels are offered by interfaces;
+  `job_report` replaces `run_report` as the suggested workflow-wide default.
+  Optional per-category titles/descriptions are pipeline metadata, not a
+  central mapping.
+- Job metadata uses SPLICE names: top-level `job_id_short`/`job_id_long`
+  (job identity is now required), `config_profile`, `execution_timestamp`
+  and an engine-qualified `job_metadata` object (`engine`,
+  `engine_execution_id`, `nextflow.session_id`, `nextflow.run_name`,
+  `annotations`). `--job-metadata` replaces `--run-metadata`; the deprecated
+  alias converts legacy fields explicitly and rejects `platform_run_id`, which
+  cannot be reinterpreted without human clarification.
+
+### Alternatives rejected
+
+- Renaming `run` to `job` by global replacement: silently reinterprets legacy
+  per-library data and new platform runs.
+- Inferring a platform run from FASTQ mates or library names: not evidence of
+  a platform file-level unit.
+- Keeping scientific enums with an "other" escape hatch: still a gated
+  vocabulary and forces harmonisation.
+
+### Consequences
+
+- 0.3.0 output contracts and runtime documents are not readable by consumers
+  that expect the legacy scope meanings; the contract migration guide gives
+  before/after payloads and a staged platform rollout.
+- Generating `analysis_output.json` requires job identity.
+
+---
+
+## ADR-0028: Generate one analysis output per job from the embedded output catalogue
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 5 and 5.1 (requirement 2) |
+| Scope | Runtime boundary and output contract authority |
+| Supersedes | ADR-0015 |
+| Superseded by | — |
+| Related | ADR-0024, ADR-0027 |
+| Implementation | `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/contracts/data/schemas/outputs/0.3.0.schema.json` |
+| Tests | `tests/test_output_scopes.py`, `tests/test_runtime.py`, `tests/test_output_contracts.py`, `tests/test_legacy_fixtures.py` |
+
+### Context
+
+ADR-0015 separated the per-execution `analysis_output.json` from static
+authoring, which remains correct. However 0.1.0 runtime classification read
+`outputs.yaml` while validating with `outputs.schema.json`, splitting
+authority between two files, and the document was described as per run.
+
+### Decision
+
+- Generating `analysis_output.json` remains a separate operation that never
+  mutates static drafts, final files or the lock. It produces **one document
+  per completed job**, containing records at job, sample or run granularity.
+- The output layer publishes exactly two files from one reviewed model:
+  `outputs.yaml` (developer-readable, `catalogue_format_version: 0.3.0`) and
+  the **existing** `outputs.schema.json`. No `outputs.json`, no second output
+  JSON document and no editable JSON output draft exist.
+- `outputs.schema.json` both validates the job document and carries the
+  complete `x-output-catalog` (`catalog_version`,
+  `analysis_output_schema_version`, pipeline identity, scope descriptions,
+  categories and every output type with scope, entity type, format, path
+  patterns, stage and labels). The runtime reads its catalogue only from
+  there; for a 0.3.0 contract it never reads `outputs.yaml`.
+- A contract declaring `x-splice-contract` must pass the outputs family
+  validation; a corrupt or incomplete catalogue is an actionable error, never
+  replaced by YAML. A contract without the declaration is read only as a
+  recognised 0.1.0 contract (bundle schema `1.0` or no bundle): its embedded
+  legacy catalogue is used when complete, otherwise the version-gated legacy
+  `outputs.yaml` (vocabulary `1.0.0`). Legacy contracts keep their original
+  semantics and produce byte-identical legacy documents.
+
+### Alternatives rejected
+
+- An additional `outputs.json` catalogue: a sixth output document that can
+  drift from the schema.
+- Silent YAML fallback for malformed 0.3.0 schemas: conceals contract
+  corruption from ingestion.
+
+### Consequences
+
+- Platform and runtime consumers need only `outputs.schema.json`.
+- `outputs.yaml` and the embedded catalogue are tested for semantic equality.

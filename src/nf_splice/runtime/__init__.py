@@ -1,17 +1,25 @@
-"""Per-run analysis output generation, separate from static authoring."""
+"""Per-job analysis output generation, separate from static authoring."""
 
 from nf_splice.runtime.analysis_output import (
     ANALYSIS_OUTPUT_FILENAME,
     AnalysisOutputError,
     AnalysisOutputResult,
+    OutputCatalogue,
+    SampleIndex,
     generate_analysis_output,
+    legacy_run_metadata_to_job_metadata,
     load_and_validate_analysis_output,
+    load_output_catalogue,
 )
 
 __all__ = [
     "ANALYSIS_OUTPUT_FILENAME",
     "AnalysisOutputError",
     "AnalysisOutputResult",
+    "OutputCatalogue",
+    "SampleIndex",
     "generate_analysis_output",
+    "legacy_run_metadata_to_job_metadata",
     "load_and_validate_analysis_output",
+    "load_output_catalogue",
 ]

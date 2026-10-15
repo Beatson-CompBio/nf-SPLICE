@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from nf_splice import __version__
 from nf_splice.domain import AuthoringDocument, DecisionStatus
+from nf_splice.domain.identity import PipelineIdError, derive_pipeline_id
 
 
 class BundleRenderError(ValueError):
@@ -30,10 +30,10 @@ def _sha256(payload: bytes) -> str:
 
 
 def _pipeline_id(name: str) -> str:
-    identifier = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    if not identifier:
-        raise BundleRenderError("pipeline name cannot form a stable bundle id")
-    return identifier
+    try:
+        return derive_pipeline_id(name)
+    except PipelineIdError as error:
+        raise BundleRenderError(str(error)) from error
 
 
 def _identity(document: AuthoringDocument) -> tuple[str, str, str]:

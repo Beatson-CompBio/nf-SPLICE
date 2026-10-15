@@ -59,7 +59,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 analysis_output_app = typer.Typer(
-    help="Generate or validate the per-run analysis_output.json file.",
+    help="Generate or validate the per-job analysis_output.json file.",
     no_args_is_help=True,
 )
 app.add_typer(analysis_output_app, name="analysis-output")
@@ -1109,14 +1109,51 @@ def validate_command(
         raise typer.Exit(code=2)
 
 
+def _metadata_file(path: Path | None, label: str) -> dict[str, object] | None:
+    if path is None:
+        return None
+    loaded: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise AnalysisOutputError(f"{label} must contain a JSON object")
+    return loaded
+
+
 @analysis_output_app.command("generate")
 def generate_analysis_output_command(
     repository: RepositoryOption = Path("."),
     publish_directory: OptionalExistingPath = None,
     native_output_index: OptionalExistingPath = None,
     output_tree: OptionalExistingPath = None,
-    run_metadata: OptionalExistingPath = None,
-    sample_metadata: OptionalExistingPath = None,
+    job_metadata: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            resolve_path=True,
+            help=(
+                "JSON job identity and job-wide metadata (job_id_short/job_id_long, "
+                "config_profile, execution_timestamp, job_metadata.*)."
+            ),
+        ),
+    ] = None,
+    run_metadata: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            resolve_path=True,
+            help=(
+                "Deprecated 0.1.0 alias: legacy workflow-execution metadata, "
+                "converted to job metadata. Use --job-metadata."
+            ),
+        ),
+    ] = None,
+    sample_metadata: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            resolve_path=True,
+            help="CSV of known samples; optional run_id column maps runs to samples.",
+        ),
+    ] = None,
     output_directory: OutputDirectoryOption = Path("."),
     checksum: str | None = typer.Option(
         None, help="Optional hashlib algorithm for completed published files."
@@ -1126,20 +1163,21 @@ def generate_analysis_output_command(
         help="Omit produced paths outside the reviewed contract instead of failing.",
     ),
 ) -> None:
-    """Generate and schema-validate analysis_output.json for one completed run."""
+    """Generate and schema-validate analysis_output.json for one completed job."""
     try:
-        metadata = None
         if run_metadata is not None:
-            loaded: object = json.loads(run_metadata.read_text(encoding="utf-8"))
-            if not isinstance(loaded, dict):
-                raise AnalysisOutputError("run metadata must contain a JSON object")
-            metadata = loaded
+            typer.echo(
+                "warning: --run-metadata is deprecated; its workflow-execution fields "
+                "are converted to job metadata (use --job-metadata).",
+                err=True,
+            )
         result = generate_analysis_output(
             repository,
             publish_directory=publish_directory,
             native_output_index=native_output_index,
             output_tree=output_tree,
-            run_metadata=metadata,
+            job_metadata=_metadata_file(job_metadata, "job metadata"),
+            run_metadata=_metadata_file(run_metadata, "run metadata"),
             sample_metadata=sample_metadata,
             checksum_algorithm=checksum,
             allow_unclassified=allow_unclassified,

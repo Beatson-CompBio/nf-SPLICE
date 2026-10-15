@@ -14,11 +14,11 @@ from typer.testing import CliRunner
 
 from nf_splice.cli import app
 from nf_splice.domain import (
+    DEFAULT_JOB_CATEGORY,
     AuthoringDocument,
     Decision,
     DecisionStatus,
     LayerState,
-    OutputCategory,
     OutputContractSettings,
     OutputEntityType,
     OutputFormat,
@@ -98,9 +98,9 @@ def complete_repository(root: Path) -> bytes:
                 key="report",
                 title="Report",
                 description="Run report.",
-                category=OutputCategory.RUN_REPORT,
+                category=DEFAULT_JOB_CATEGORY,
                 formats=(OutputFormat.HTML,),
-                scopes=(OutputScope.RUN,),
+                scopes=(OutputScope.JOB,),
                 entity_types=(OutputEntityType.FILE,),
                 path_patterns=(r"^reports/report\.html$",),
             ),

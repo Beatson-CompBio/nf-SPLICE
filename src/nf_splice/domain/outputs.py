@@ -4,13 +4,56 @@ from __future__ import annotations
 
 import re
 from enum import Enum
+from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from nf_splice.domain.authoring import DomainModel, NonEmptyString
 
+#: Developer-chosen descriptive label: safe, non-empty free text. Scientific
+#: categories and stages are never restricted to a central vocabulary.
+OutputLabelText = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[^\x00-\x1f\x7f]+$",
+    ),
+]
+
+#: Default category suggested for workflow-wide (job-scoped) outputs.
+DEFAULT_JOB_CATEGORY = "job_report"
+#: Non-binding suggestions offered by interfaces; any safe label is valid.
+SUGGESTED_OUTPUT_CATEGORIES = (
+    DEFAULT_JOB_CATEGORY,
+    "sample_metadata",
+    "aggregate_qc",
+    "quality_control",
+    "preprocessing",
+    "alignment",
+    "postprocessing",
+    "coverage",
+    "quantification",
+    "umi",
+    "reference",
+)
+SUGGESTED_OUTPUT_STAGES = (
+    "raw",
+    "trimmed",
+    "filtered",
+    "aligned",
+    "markduplicates",
+    "genomic_dedup",
+    "transcriptomic_dedup",
+    "sorted",
+    "merged",
+    "final",
+)
+
 _PATH_PLACEHOLDERS = {
     "{sample}": r"(?P<sample_id>[^/]+)",
+    "{run}": r"(?P<run_id>[^/]+)",
     "{library}": r"(?P<library_id>[^/]+)",
     "{aligner}": r"(?P<aligner>[^/]+)",
     "{stage}": r"(?P<stage>[^/]+)",
@@ -32,7 +75,24 @@ def expand_output_path_pattern(pattern: str) -> str:
 
 
 class OutputScope(str, Enum):
-    """Supported scientific scope for one output."""
+    """SPLICE platform granularity that owns one output record.
+
+    ``job`` is workflow-execution-wide, ``sample`` is one biological sample
+    (or its aggregate result) and ``run`` is one platform file-level or
+    acquisition-level unit belonging to a sample.
+    """
+
+    JOB = "job"
+    SAMPLE = "sample"
+    RUN = "run"
+
+
+class LegacyOutputScope(str, Enum):
+    """Scope values of nf-splice 0.1.0 contracts, read only for migration.
+
+    Legacy ``run`` meant workflow-wide (now ``job``); legacy ``library`` meant
+    per-library and becomes ``run`` only with a reviewed platform-run mapping.
+    """
 
     RUN = "run"
     SAMPLE = "sample"
@@ -44,22 +104,6 @@ class OutputEntityType(str, Enum):
 
     FILE = "file"
     DIRECTORY = "directory"
-
-
-class OutputCategory(str, Enum):
-    """Controlled presentation categories supported by the platform contract."""
-
-    RUN_REPORT = "run_report"
-    SAMPLE_METADATA = "sample_metadata"
-    AGGREGATE_QC = "aggregate_qc"
-    QUALITY_CONTROL = "quality_control"
-    PREPROCESSING = "preprocessing"
-    ALIGNMENT = "alignment"
-    POSTPROCESSING = "postprocessing"
-    COVERAGE = "coverage"
-    QUANTIFICATION = "quantification"
-    UMI = "umi"
-    REFERENCE = "reference"
 
 
 class OutputFormat(str, Enum):
@@ -94,21 +138,6 @@ class OutputFormat(str, Enum):
     ZIP = "zip"
     GZ = "gz"
     DIRECTORY = "directory"
-
-
-class OutputStage(str, Enum):
-    """Optional controlled pipeline stage."""
-
-    RAW = "raw"
-    TRIMMED = "trimmed"
-    FILTERED = "filtered"
-    ALIGNED = "aligned"
-    MARKDUPLICATES = "markduplicates"
-    GENOMIC_DEDUP = "genomic_dedup"
-    TRANSCRIPTOMIC_DEDUP = "transcriptomic_dedup"
-    SORTED = "sorted"
-    MERGED = "merged"
-    FINAL = "final"
 
 
 class OutputLabel(DomainModel):
@@ -154,12 +183,12 @@ class ReviewedOutput(DomainModel):
     key: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     title: NonEmptyString
     description: NonEmptyString
-    category: OutputCategory
+    category: OutputLabelText
     formats: tuple[OutputFormat, ...]
     scopes: tuple[OutputScope, ...]
     entity_types: tuple[OutputEntityType, ...]
     path_patterns: tuple[NonEmptyString, ...]
-    stage: OutputStage | None = None
+    stage: OutputLabelText | None = None
     labels: tuple[OutputLabel, ...] = ()
 
     @model_validator(mode="after")
@@ -177,13 +206,42 @@ class ReviewedOutput(DomainModel):
                 raise ValueError(f"{label} must be unique")
         if len(self.labels) != len({item.name for item in self.labels}):
             raise ValueError("label names must be unique")
+        captures: list[set[str]] = []
         for pattern in self.path_patterns:
             if not pattern.startswith("^") or not pattern.endswith("$"):
                 raise ValueError("path patterns must be anchored with ^ and $")
             try:
-                re.compile(expand_output_path_pattern(pattern))
+                compiled = re.compile(expand_output_path_pattern(pattern))
             except re.error as error:
                 raise ValueError(
                     f"invalid path pattern {pattern!r}: {error}"
                 ) from error
+            captures.append(set(compiled.groupindex))
+        self._validate_scope_bindings(captures)
         return self
+
+    def _validate_scope_bindings(self, captures: list[set[str]]) -> None:
+        """Require identifiers that let every pattern resolve its owner."""
+        scopes = set(self.scopes)
+        if OutputScope.RUN in scopes and not any("run_id" in item for item in captures):
+            raise ValueError(
+                "run-scoped outputs require a path pattern capturing the platform "
+                "run identifier with {run}"
+            )
+        if OutputScope.SAMPLE in scopes and not any(
+            "sample_id" in item for item in captures
+        ):
+            raise ValueError(
+                "sample-scoped outputs require a path pattern capturing {sample}"
+            )
+        for pattern, groups in zip(self.path_patterns, captures, strict=True):
+            owners = {
+                OutputScope.RUN if "run_id" in groups else None,
+                OutputScope.SAMPLE if "sample_id" in groups else None,
+                OutputScope.JOB,
+            } - {None}
+            if not owners & scopes:
+                raise ValueError(
+                    f"path pattern {pattern!r} captures no identifier for "
+                    f"scopes {sorted(item.value for item in scopes)}"
+                )

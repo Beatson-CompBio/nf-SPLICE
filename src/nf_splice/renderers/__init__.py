@@ -18,9 +18,13 @@ from nf_splice.renderers.inputs import (
     render_input_projection,
 )
 from nf_splice.renderers.outputs import (
+    CategoryDetails,
     OutputContractError,
+    OutputContractInput,
+    OutputPipeline,
     RenderedOutputContracts,
     render_output_contracts,
+    render_outputs,
 )
 from nf_splice.renderers.provenance import (
     ProvenanceRenderError,
@@ -31,10 +35,13 @@ from nf_splice.renderers.provenance import (
 
 __all__ = [
     "BundleRenderError",
+    "CategoryDetails",
     "ComponentInventoryError",
     "ExecutionProfileRenderError",
     "InputProjectionError",
     "OutputContractError",
+    "OutputContractInput",
+    "OutputPipeline",
     "ProvenanceRenderError",
     "RenderedBundle",
     "RenderedComponentInventory",
@@ -47,6 +54,7 @@ __all__ = [
     "render_execution",
     "render_input_projection",
     "render_output_contracts",
+    "render_outputs",
     "render_provenance",
     "reviewed_execution_profiles",
     "validate_ro_crate",

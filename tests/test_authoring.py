@@ -14,8 +14,8 @@ from typer.testing import CliRunner
 
 from nf_splice.cli import app
 from nf_splice.domain import (
+    DEFAULT_JOB_CATEGORY,
     DecisionStatus,
-    OutputCategory,
     OutputEntityType,
     OutputFormat,
     OutputScope,
@@ -76,9 +76,9 @@ def _review(key: str = "report") -> ReviewedOutput:
         key=key,
         title="Analysis report",
         description="Reviewed HTML report produced by the pipeline.",
-        category=OutputCategory.RUN_REPORT,
+        category=DEFAULT_JOB_CATEGORY,
         formats=(OutputFormat.HTML,),
-        scopes=(OutputScope.RUN,),
+        scopes=(OutputScope.JOB,),
         entity_types=(OutputEntityType.FILE,),
         path_patterns=(r"^reports/[^/]+\.html$",),
     )
@@ -288,8 +288,16 @@ def test_reviewed_and_rejected_outputs_survive_rediscovery(tmp_path: Path) -> No
 
 
 def test_review_vocabulary_merge_and_split_transitions(tmp_path: Path) -> None:
-    with pytest.raises(ValidationError, match="category"):
-        ReviewedOutput.model_validate({**_review().model_dump(), "category": "other"})
+    # 0.3.0: scientific categories are developer-chosen free text (ADR-0027).
+    free = ReviewedOutput.model_validate(
+        {**_review().model_dump(), "category": "Spatial transcriptomics QC"}
+    )
+    assert free.category == "Spatial transcriptomics QC"
+    for unsafe in ("", "   ", "bad\nlabel"):
+        with pytest.raises(ValidationError, match="category"):
+            ReviewedOutput.model_validate(
+                {**_review().model_dump(), "category": unsafe}
+            )
 
     _initialise(tmp_path)
     (tmp_path / "main.nf").write_text(
@@ -361,9 +369,9 @@ def test_cli_exports_unresolved_and_applies_explicit_decision_file(
         "      key: report\n"
         "      title: Analysis report\n"
         "      description: Reviewed HTML report produced by the pipeline.\n"
-        "      category: run_report\n"
+        "      category: job_report\n"
         "      formats: [html]\n"
-        "      scopes: [run]\n"
+        "      scopes: [job]\n"
         "      entity_types: [file]\n"
         "      path_patterns: ['^reports/[^/]+\\.html$']\n"
         + "".join(
@@ -410,9 +418,9 @@ def test_cli_repeatable_field_options_complete_non_interactive_review(
             "--set",
             f"{report.id}.description=Reviewed HTML report.",
             "--set",
-            f"{report.id}.category=run_report",
+            f"{report.id}.category=job_report",
             "--set",
-            f"{report.id}.scopes=run",
+            f"{report.id}.scopes=job",
             "--set",
             f"{other.id}.action=reject",
             "--set",
@@ -446,9 +454,9 @@ def test_cli_and_tui_save_byte_identical_authoring_state(tmp_path: Path) -> None
             tui.query_one(
                 "#output-description", Input
             ).value = "Reviewed HTML report produced by the pipeline."
-            tui.query_one("#output-category", Select).value = "run_report"
+            tui.query_one("#output-category", Input).value = "job_report"
             tui.query_one("#output-format", Select).value = "html"
-            tui.query_one("#output-scope", Select).value = "run"
+            tui.query_one("#output-scope", Select).value = "job"
             tui.query_one("#output-entity", Select).value = "file"
             tui.query_one("#output-pattern", Input).value = r"^reports/[^/]+\.html$"
             tui.query_one("#preview-output", Button).press()

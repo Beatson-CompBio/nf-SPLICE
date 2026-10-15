@@ -159,9 +159,9 @@ def test_cli_completes_clean_pipeline_to_validated_idempotent_bundle(
             ("key", "report"),
             ("title", "Report"),
             ("description", "Completed run report."),
-            ("category", "run_report"),
+            ("category", "job_report"),
             ("formats", "html"),
-            ("scopes", "run"),
+            ("scopes", "job"),
             ("entity_types", "file"),
             ("path_patterns", r"^reports/report\.html$"),
         ):

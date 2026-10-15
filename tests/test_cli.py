@@ -9,11 +9,11 @@ from typer.testing import CliRunner
 from nf_splice import __version__
 from nf_splice.cli import app
 from nf_splice.domain import (
+    DEFAULT_JOB_CATEGORY,
     AuthoringDocument,
     Decision,
     DecisionStatus,
     LayerState,
-    OutputCategory,
     OutputContractSettings,
     OutputEntityType,
     OutputFormat,
@@ -333,9 +333,9 @@ def test_cli_builds_contract_then_generates_and_validates_analysis_output(
         key="report",
         title="Report",
         description="Completed run report.",
-        category=OutputCategory.RUN_REPORT,
+        category=DEFAULT_JOB_CATEGORY,
         formats=(OutputFormat.HTML,),
-        scopes=(OutputScope.RUN,),
+        scopes=(OutputScope.JOB,),
         entity_types=(OutputEntityType.FILE,),
         path_patterns=(r"^reports/report\.html$",),
     )
@@ -367,6 +367,8 @@ def test_cli_builds_contract_then_generates_and_validates_analysis_output(
     publish = tmp_path / "published"
     (publish / "reports").mkdir(parents=True)
     (publish / "reports" / "report.html").write_text("ok\n", encoding="utf-8")
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({"job_id_short": "A123"}), encoding="utf-8")
 
     check = runner.invoke(
         app,
@@ -382,6 +384,8 @@ def test_cli_builds_contract_then_generates_and_validates_analysis_output(
             str(tmp_path),
             "--publish-directory",
             str(publish),
+            "--job-metadata",
+            str(job),
             "--output-directory",
             str(publish),
         ],

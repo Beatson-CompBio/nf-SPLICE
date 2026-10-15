@@ -101,6 +101,8 @@ class _RawCandidate:
     entity_type: OutputEntityType | None = None
     confidence: float = 0.7
     conditional: bool = False
+    #: A legacy scope with no safe automatic 0.3.0 meaning (``library``).
+    unmapped_legacy_scope: str | None = None
 
 
 def _stable_id(prefix: str, *values: object) -> str:
@@ -376,7 +378,9 @@ def _tree_candidates(path: Path, source: str) -> list[_RawCandidate]:
             relative = filename if parent == "." else f"{parent}/{filename}"
             pattern = f"^{re.escape(relative)}$"
             key_source = relative
-            scope = OutputScope.RUN
+            # One file for the whole tree is a workflow-wide (job) output. A
+            # platform run is never inferred from a filename.
+            scope = OutputScope.JOB
         location = f"{path}:{filename}"
         found.append(
             _RawCandidate(
@@ -393,6 +397,22 @@ def _tree_candidates(path: Path, source: str) -> list[_RawCandidate]:
     return found
 
 
+def _catalogue_scope(value: str | None, *, legacy: bool) -> OutputScope | None:
+    """Interpret a published scope by the catalogue's source version.
+
+    Legacy ``run`` meant workflow-wide and becomes ``job``; legacy ``library``
+    has no safe automatic mapping and stays unresolved for review.
+    """
+    if value is None:
+        return None
+    if legacy:
+        return {"run": OutputScope.JOB, "sample": OutputScope.SAMPLE}.get(value)
+    try:
+        return OutputScope(value)
+    except ValueError:
+        return None
+
+
 def _existing_outputs(root: Path) -> list[_RawCandidate]:
     path = root / "splice" / "outputs.yaml"
     if not path.is_file() or path.is_symlink():
@@ -403,6 +423,8 @@ def _existing_outputs(root: Path) -> list[_RawCandidate]:
         return []
     if not isinstance(loaded, dict) or not isinstance(loaded.get("outputs"), list):
         return []
+    # 0.1.0 catalogues carry vocabulary_version and legacy scope meanings.
+    legacy = "catalogue_format_version" not in loaded
     found: list[_RawCandidate] = []
     for index, output in enumerate(loaded["outputs"]):
         if not isinstance(output, dict) or not output.get("key"):
@@ -417,12 +439,10 @@ def _existing_outputs(root: Path) -> list[_RawCandidate]:
             except ValueError:
                 pass
         scopes = output.get("scope")
-        scope = None
-        if isinstance(scopes, list) and scopes:
-            try:
-                scope = OutputScope(str(scopes[0]))
-            except ValueError:
-                pass
+        scope = _catalogue_scope(
+            str(scopes[0]) if isinstance(scopes, list) and scopes else None,
+            legacy=legacy,
+        )
         entities = output.get("entity_type")
         entity = None
         if isinstance(entities, list) and entities:
@@ -444,6 +464,11 @@ def _existing_outputs(root: Path) -> list[_RawCandidate]:
                 scope=scope,
                 entity_type=entity,
                 confidence=0.9,
+                unmapped_legacy_scope=(
+                    str(scopes[0])
+                    if legacy and isinstance(scopes, list) and scopes and scope is None
+                    else None
+                ),
             )
         )
     return found
@@ -499,9 +524,18 @@ def discover_output_candidates(
             (item.output_format for item in group if item.output_format is not None),
             _format_for(pattern),
         )
-        scope = next(
-            (item.scope for item in group if item.scope is not None),
-            OutputScope.SAMPLE if pattern and "sample_id" in pattern else None,
+        legacy_unmapped = any(item.unmapped_legacy_scope for item in group)
+        scope = (
+            None
+            if legacy_unmapped
+            else next(
+                (item.scope for item in group if item.scope is not None),
+                OutputScope.RUN
+                if pattern and ("{run}" in pattern or "run_id" in pattern)
+                else OutputScope.SAMPLE
+                if pattern and ("{sample}" in pattern or "sample_id" in pattern)
+                else None,
+            )
         )
         entity = next(
             (item.entity_type for item in group if item.entity_type is not None), None

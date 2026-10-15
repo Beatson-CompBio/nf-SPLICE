@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 
 from nf_splice.domain import (
+    DEFAULT_JOB_CATEGORY,
     AuthoringDocument,
     Decision,
     DecisionStatus,
     LayerState,
-    OutputCategory,
     OutputContractSettings,
     OutputEntityType,
     OutputFormat,
@@ -29,6 +29,8 @@ from nf_splice.runtime import (
 )
 from nf_splice.services import build_output_contracts
 
+JOB = {"job_id_short": "A123"}
+
 
 def _reviewed_document() -> AuthoringDocument:
     outputs = (
@@ -36,9 +38,9 @@ def _reviewed_document() -> AuthoringDocument:
             key="run_report_html",
             title="Run report",
             description="Run-level HTML report.",
-            category=OutputCategory.RUN_REPORT,
+            category=DEFAULT_JOB_CATEGORY,
             formats=(OutputFormat.HTML,),
-            scopes=(OutputScope.RUN,),
+            scopes=(OutputScope.JOB,),
             entity_types=(OutputEntityType.FILE,),
             path_patterns=(r"^reports/report\.html$",),
         ),
@@ -46,7 +48,7 @@ def _reviewed_document() -> AuthoringDocument:
             key="sample_metrics_json",
             title="Sample metrics",
             description="Per-sample JSON metrics.",
-            category=OutputCategory.QUALITY_CONTROL,
+            category="quality_control",
             formats=(OutputFormat.JSON,),
             scopes=(OutputScope.SAMPLE,),
             entity_types=(OutputEntityType.FILE,),
@@ -56,7 +58,7 @@ def _reviewed_document() -> AuthoringDocument:
             key="sample_quantification",
             title="Sample quantification directory",
             description="Complete per-sample quantification results.",
-            category=OutputCategory.QUANTIFICATION,
+            category="quantification",
             formats=(OutputFormat.DIRECTORY,),
             scopes=(OutputScope.SAMPLE,),
             entity_types=(OutputEntityType.DIRECTORY,),
@@ -122,17 +124,17 @@ def test_publish_directory_generates_valid_inventory_without_static_mutation(
     publish = _publish_directory(tmp_path)
     samples = tmp_path / "samples.csv"
     samples.write_text("sample\nS1\n", encoding="utf-8")
-    run_metadata = {
+    job_metadata = {
         "job_id_short": "A123",
         "execution_timestamp": "2026-08-07T12:00:00Z",
-        "instrument": "NovaSeq",
+        "job_metadata": {"annotations": {"instrument": "NovaSeq"}},
     }
 
     result = generate_analysis_output(
         tmp_path,
         publish_directory=publish,
         sample_metadata=samples,
-        run_metadata=run_metadata,
+        job_metadata=job_metadata,
         checksum_algorithm="sha256",
         output_directory=publish,
     )
@@ -149,7 +151,8 @@ def test_publish_directory_generates_valid_inventory_without_static_mutation(
     assert by_path["metrics/S1.json"]["sample_id"] == "S1"
     assert by_path["quant/S1"]["entity_type"] == "directory"
     assert "checksum" in by_path["reports/report.html"]
-    assert result.document["run_metadata"] == {"instrument": "NovaSeq"}
+    assert result.document["job_metadata"] == {"annotations": {"instrument": "NovaSeq"}}
+    assert "run_metadata" not in result.document
     assert (tmp_path / "splice" / "nf-splice.yaml").read_bytes() == original_authoring
     assert {
         path.name: path.read_bytes() for path in (tmp_path / "splice").iterdir()
@@ -159,7 +162,7 @@ def test_publish_directory_generates_valid_inventory_without_static_mutation(
         tmp_path,
         publish_directory=publish,
         sample_metadata=samples,
-        run_metadata=run_metadata,
+        job_metadata=job_metadata,
         checksum_algorithm="sha256",
     )
     assert repeated.content == result.content
@@ -173,7 +176,9 @@ def test_optional_outputs_may_be_absent_and_unclassified_outputs_are_explicit(
     (publish / "reports").mkdir(parents=True)
     (publish / "reports" / "report.html").write_text("ok\n", encoding="utf-8")
 
-    optional = generate_analysis_output(tmp_path, publish_directory=publish)
+    optional = generate_analysis_output(
+        tmp_path, publish_directory=publish, job_metadata=JOB
+    )
     assert [item["output_type"] for item in optional.document["files"]] == [
         "run_report_html"
     ]
@@ -182,10 +187,10 @@ def test_optional_outputs_may_be_absent_and_unclassified_outputs_are_explicit(
     with pytest.raises(
         AnalysisOutputError, match="not in the reviewed output contract"
     ):
-        generate_analysis_output(tmp_path, publish_directory=publish)
+        generate_analysis_output(tmp_path, publish_directory=publish, job_metadata=JOB)
 
     allowed = generate_analysis_output(
-        tmp_path, publish_directory=publish, allow_unclassified=True
+        tmp_path, publish_directory=publish, allow_unclassified=True, job_metadata=JOB
     )
     assert allowed.unclassified == ("unexpected.txt",)
     assert [item["output_type"] for item in allowed.document["files"]] == [
@@ -211,14 +216,18 @@ def test_runtime_can_use_completed_output_indexes(
             ),
             encoding="utf-8",
         )
-        result = generate_analysis_output(tmp_path, native_output_index=source)
+        result = generate_analysis_output(
+            tmp_path, native_output_index=source, job_metadata=JOB
+        )
     else:
         source = tmp_path / "outputs.tree.txt"
         source.write_text(
             ".:\nreports\nmetrics\n\n./reports:\nreport.html\n\n./metrics:\nS2.json\n",
             encoding="utf-8",
         )
-        result = generate_analysis_output(tmp_path, output_tree=source)
+        result = generate_analysis_output(
+            tmp_path, output_tree=source, job_metadata=JOB
+        )
 
     assert result.validation.valid
     assert [item["path"] for item in result.document["files"]] == [
@@ -231,7 +240,7 @@ def test_invalid_existing_analysis_output_is_rejected(tmp_path: Path) -> None:
     _contracts(tmp_path)
     publish = _publish_directory(tmp_path)
     valid = generate_analysis_output(
-        tmp_path, publish_directory=publish, allow_unclassified=True
+        tmp_path, publish_directory=publish, allow_unclassified=True, job_metadata=JOB
     ).document
     invalid = json.loads(json.dumps(valid))
     invalid["files"][0]["category"] = "run_report"
@@ -255,4 +264,5 @@ def test_sample_metadata_rejects_unknown_captured_sample(tmp_path: Path) -> None
             tmp_path,
             publish_directory=publish,
             sample_metadata=samples,
+            job_metadata=JOB,
         )

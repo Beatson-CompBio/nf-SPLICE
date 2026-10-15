@@ -9,11 +9,11 @@ import pytest
 import yaml  # type: ignore[import-untyped]
 
 from nf_splice.domain import (
+    DEFAULT_JOB_CATEGORY,
     AuthoringDocument,
     Decision,
     DecisionStatus,
     LayerState,
-    OutputCategory,
     OutputContractSettings,
     OutputEntityType,
     OutputFormat,
@@ -41,9 +41,9 @@ def reviewed_document(
             key="run_report_html",
             title=title,
             description="Run-level HTML report.",
-            category=OutputCategory.RUN_REPORT,
+            category=DEFAULT_JOB_CATEGORY,
             formats=(OutputFormat.HTML,),
-            scopes=(OutputScope.RUN,),
+            scopes=(OutputScope.JOB,),
             entity_types=(OutputEntityType.FILE,),
             path_patterns=(r"^reports/report\.html$",),
         ),
@@ -51,7 +51,7 @@ def reviewed_document(
             key="sample_metrics_json",
             title="Sample metrics",
             description="Per-sample JSON metrics.",
-            category=OutputCategory.QUALITY_CONTROL,
+            category="quality_control",
             formats=(OutputFormat.JSON,),
             scopes=(OutputScope.SAMPLE,),
             entity_types=(OutputEntityType.FILE,),
@@ -61,7 +61,7 @@ def reviewed_document(
             key="sample_quantification",
             title="Sample quantification directory",
             description="Complete per-sample quantification results.",
-            category=OutputCategory.QUANTIFICATION,
+            category="quantification",
             formats=(OutputFormat.DIRECTORY,),
             scopes=(OutputScope.SAMPLE,),
             entity_types=(OutputEntityType.DIRECTORY,),
@@ -129,17 +129,30 @@ def test_renderer_is_deterministic_and_catalogue_matches_schema() -> None:
     assert first == second
     assert catalogue["schema_version"] == "1.2.0"
     assert catalogue["pipeline"]["version"] == "2.3.4"
+    assert catalogue["catalogue_format_version"] == "0.3.0"
     assert [item["key"] for item in catalogue["outputs"]] == [
+        "run_report_html",
         "sample_metrics_json",
         "sample_quantification",
-        "run_report_html",
     ]
+    assert schema["x-splice-contract"]["id"] == (
+        "https://schemas.splice-data.io/workflow-bundle/outputs"
+    )
+    catalog = schema["x-output-catalog"]
+    assert catalog["analysis_output_schema_version"] == "1.2.0"
+    assert set(catalog["scopes"]) == {"job", "sample", "run"}
+    # YAML companion and embedded JSON catalogue describe identical outputs.
+    assert catalogue["outputs"] == catalog["output_types"]
+    assert {item["key"] for item in catalogue["categories"]} == set(
+        catalog["categories"]
+    )
     catalogued = {
         item["key"]: item for item in schema["x-output-catalog"]["output_types"]
     }
     constrained = {
         item["if"]["properties"]["output_type"]["const"]: item["then"]["properties"]
         for item in schema["definitions"]["file_record"]["allOf"]
+        if "output_type" in item["if"]["properties"]
     }
     assert catalogued.keys() == constrained.keys()
     for key, output in catalogued.items():
