@@ -1,0 +1,24 @@
+catalogue_format_version: 0.3.0
+schema_version: 1.0.0
+pipeline:
+  id: rnaquant
+  name: rnaquant
+  version: 1.2.0
+  engine: nextflow
+  repository_url: https://github.com/org/rnaquant
+schema_id: https://github.com/org/rnaquant/schema/analysis-output/v1.0.0
+categories:
+- key: job_report
+outputs:
+- key: report
+  title: Report
+  description: Job report.
+  category: job_report
+  scope:
+  - job
+  entity_type:
+  - file
+  format:
+  - html
+  path_patterns:
+  - ^reports/report\.html$

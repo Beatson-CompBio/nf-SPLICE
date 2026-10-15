@@ -1,0 +1,36 @@
+{
+  "conflicts": {},
+  "events": [
+    {
+      "id": "event:29f66b322cc1c4bf",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "bundle",
+      "action": "promote",
+      "pointers": [
+        "README.md",
+        "bundle.json",
+        "nf-splice.lock.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
+      "after_sha256": "7748557349db346c9180d4fb99f2efebe786a1c3660775d0b158b3fa7d85ec9c",
+      "source_revision": null
+    }
+  ],
+  "evidence": [],
+  "format": "0.3.0",
+  "layer": "bundle",
+  "promoted": {
+    "bundle.json": "0427ca165233709e587613aad69cbd4a900fe08d77438554497c0272dc7340b1",
+    "README.md": "44b16668e0f76b8b9b616ffb01025df00fda110f26a58d4ab1c5ae05b9d9c038",
+    "nf-splice.lock.json": "668bff11bc311b1ea026ef2a93139d55292bf17b14e3ebf4085dc3107e0672be"
+  }
+}

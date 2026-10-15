@@ -1,0 +1,115 @@
+{
+  "confirmed": {
+    "/$defs/analysis/properties/threshold/x-splice-access": {
+      "sha256": "e9705b27d86a91f5fd59d58561c2717c7079d9588b5626fb3527c358f9d83bbf",
+      "event": "event:32881858b985c7bf"
+    },
+    "/$defs/analysis/properties/outdir/x-splice-access": {
+      "sha256": "9d970f0e1a95344cdd913589cdd54f7c091b9e1ad6f9fa0780dd30f1352f4c1a",
+      "event": "event:e8c4422cda7e8a89"
+    }
+  },
+  "events": [
+    {
+      "id": "event:32881858b985c7bf",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "inputs",
+      "action": "set_access",
+      "pointers": [
+        "/$defs/analysis/properties/threshold/x-splice-access"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "066097bec4e8dc11435bc3c42a7ecc86eeec2daf6c373f52328f18ac3f415b2c",
+      "after_sha256": "23ed26edcd38e2fb12669e13338bc99c84c05d200723e646dbef5a8417d20173",
+      "source_revision": null
+    },
+    {
+      "id": "event:e8c4422cda7e8a89",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "inputs",
+      "action": "set_access",
+      "pointers": [
+        "/$defs/analysis/properties/outdir/x-splice-access"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "23ed26edcd38e2fb12669e13338bc99c84c05d200723e646dbef5a8417d20173",
+      "after_sha256": "6621e587a6d2ba1b7926f9ca1f4a86442d7780538ea55addcd908af2fafdacf2",
+      "source_revision": null
+    },
+    {
+      "id": "event:fc8e75fe4956a56d",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "inputs",
+      "action": "promote",
+      "pointers": [
+        "inputs.schema.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "6621e587a6d2ba1b7926f9ca1f4a86442d7780538ea55addcd908af2fafdacf2",
+      "after_sha256": "6621e587a6d2ba1b7926f9ca1f4a86442d7780538ea55addcd908af2fafdacf2",
+      "source_revision": null
+    }
+  ],
+  "format": "0.3.0",
+  "imported": {
+    "source": "nextflow_schema.json",
+    "sha256": "7827286805c73c5e4c60ed72a027c9702b16994b26f06b34a92eda82fbffa8d2",
+    "upstream": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$defs": {
+        "analysis": {
+          "title": "Analysis",
+          "type": "object",
+          "required": [
+            "threshold"
+          ],
+          "properties": {
+            "threshold": {
+              "type": "number",
+              "description": "Analysis threshold.",
+              "default": 0.8
+            },
+            "outdir": {
+              "type": "string",
+              "description": "Output directory."
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/analysis"
+        }
+      ]
+    },
+    "notes": []
+  },
+  "layer": "inputs",
+  "promoted": {
+    "inputs.schema.json": "9c9ee41225e1dc204bc55429e06f65ae6574491b0a33372dee512995d5826c40"
+  }
+}

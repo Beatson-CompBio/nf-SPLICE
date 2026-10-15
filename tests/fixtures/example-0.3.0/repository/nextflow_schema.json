@@ -1,0 +1,1 @@
+{"$schema": "https://json-schema.org/draft/2020-12/schema", "$defs": {"analysis": {"title": "Analysis", "type": "object", "required": ["threshold"], "properties": {"threshold": {"type": "number", "description": "Analysis threshold.", "default": 0.8}, "outdir": {"type": "string", "description": "Output directory."}}}}, "allOf": [{"$ref": "#/$defs/analysis"}]}

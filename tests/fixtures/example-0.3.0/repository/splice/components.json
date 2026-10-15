@@ -1,0 +1,47 @@
+{
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/components",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "rnaquant",
+    "name": "rnaquant",
+    "version": "1.2.0",
+    "engine": "nextflow"
+  },
+  "require_downloadable_images": false,
+  "containers": [
+    {
+      "id": "container-33df26ba572f",
+      "type": "docker",
+      "uri": "quay.io/example/tool:1.0",
+      "source_images": {
+        "docker": "quay.io/example/tool:1.0"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "modules__local__tool",
+      "type": "workflow_module",
+      "name": "tool",
+      "path": "modules/local/tool",
+      "namespace": "local",
+      "tool": {
+        "name": "tool",
+        "version": "1.0"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/tool/main.nf:2",
+        "modules/local/tool/meta.yml"
+      ],
+      "container_id": "container-33df26ba572f"
+    }
+  ]
+}

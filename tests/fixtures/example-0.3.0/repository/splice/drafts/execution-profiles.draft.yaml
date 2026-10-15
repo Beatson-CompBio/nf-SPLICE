@@ -1,0 +1,24 @@
+# nf-SPLICE execution profiles draft (authoritative, editable).
+# Fields left null are unresolved; detected values need confirmation.
+x-splice-draft:
+  layer: execution-profiles
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+default_profile: profile-local-6c6f63616c
+profiles:
+  - id: profile-local-6c6f63616c
+    name: Local
+    description: Local development.
+    type: development
+    engine: nextflow
+    executor: local
+    container_engine: singularity
+    source_profile: local
+    config:
+      strategy: adopted
+      source: conf/local.config
+    site_parameters: []
+    evidence:
+      - conf/local.config
+      - nextflow.config

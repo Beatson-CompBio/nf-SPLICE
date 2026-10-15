@@ -1,0 +1,40 @@
+# nf-SPLICE input contract draft (JSON Schema 2020-12, authoritative).
+# Every parameter needs x-splice-access.editable_by (user/platform/agent).
+x-splice-draft:
+  layer: inputs
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+$schema: https://json-schema.org/draft/2020-12/schema
+type: object
+x-splice-contract:
+  id: https://schemas.splice-data.io/workflow-bundle/inputs
+  version: 0.3.0
+  generated_by:
+    name: nf-splice
+    version: 0.3.0
+x-splice-pipeline: null
+$defs:
+  analysis:
+    title: Analysis
+    type: object
+    required:
+      - threshold
+    properties:
+      threshold:
+        type: number
+        description: Analysis threshold.
+        default: 0.8
+        x-splice-source:
+          engine: nextflow
+          binding: params.threshold
+          origin: nextflow_schema.json#/$defs/analysis/properties/threshold
+      outdir:
+        type: string
+        description: Output directory.
+        x-splice-source:
+          engine: nextflow
+          binding: params.outdir
+          origin: nextflow_schema.json#/$defs/analysis/properties/outdir
+allOf:
+  - $ref: "#/$defs/analysis"

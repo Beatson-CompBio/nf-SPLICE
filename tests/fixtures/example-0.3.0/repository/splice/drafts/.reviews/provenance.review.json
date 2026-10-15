@@ -1,0 +1,67 @@
+{
+  "confirmed": {
+    "/crate": {
+      "sha256": "f039e649a4b906c2c5c965f14433fd748a6c6edb4ad4cbde3f95ee6aa7dae763",
+      "event": "event:54657a7dd55e3892"
+    },
+    "/source": {
+      "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "event": "event:54657a7dd55e3892"
+    },
+    "/strategy": {
+      "sha256": "dc9eb7787a90eeea09680a991ed664de9ff336599600fc5b36d1b0cf28221398",
+      "event": "event:54657a7dd55e3892"
+    }
+  },
+  "events": [
+    {
+      "id": "event:54657a7dd55e3892",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "provenance",
+      "action": "generate_minimal",
+      "pointers": [
+        "/crate",
+        "/source",
+        "/strategy"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "bf0fde7795c12954230171c9ac09802030f61b76c2c37919f6af9ea94dbb4921",
+      "after_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
+      "source_revision": null
+    },
+    {
+      "id": "event:3b603f37901e381c",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "provenance",
+      "action": "promote",
+      "pointers": [
+        "ro-crate-metadata.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
+      "after_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
+      "source_revision": null
+    }
+  ],
+  "format": "0.3.0",
+  "layer": "provenance",
+  "promoted": {
+    "ro-crate-metadata.json": "66ff156fd2e4411a7d0fc4ed7853b3243c97318384b8072810ee95a8c64df68c"
+  }
+}

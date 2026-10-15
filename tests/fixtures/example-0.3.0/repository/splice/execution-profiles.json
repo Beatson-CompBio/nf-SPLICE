@@ -1,0 +1,29 @@
+{
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/execution-profiles",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "rnaquant",
+    "name": "rnaquant",
+    "version": "1.2.0",
+    "engine": "nextflow"
+  },
+  "default_profile": "profile-local-6c6f63616c",
+  "profiles": [
+    {
+      "id": "profile-local-6c6f63616c",
+      "name": "Local",
+      "description": "Local development.",
+      "type": "development",
+      "engine": "nextflow",
+      "executor": "local",
+      "container_engine": "singularity",
+      "config": "configs/profile-local-6c6f63616c.config",
+      "default": true,
+      "config_strategy": "adopted"
+    }
+  ]
+}

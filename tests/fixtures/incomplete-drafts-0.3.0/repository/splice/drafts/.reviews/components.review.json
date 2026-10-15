@@ -1,0 +1,34 @@
+{
+  "candidates": {
+    "component:modules__local__tool": {
+      "status": "pending",
+      "candidate": {
+        "id": "component:modules__local__tool",
+        "name": "tool",
+        "path": "modules/local/tool",
+        "namespace": "local",
+        "tool_name": "tool",
+        "versions": [
+          "1.0"
+        ],
+        "conda_packages": [],
+        "sources": [
+          {
+            "raw": "quay.io/example/tool:1.0",
+            "runtime": "any",
+            "kind": "oci_registry",
+            "location": "modules/local/tool/main.nf:2",
+            "confidence": 0.9
+          }
+        ],
+        "evidence": [
+          "modules.json",
+          "modules/local/tool/main.nf:2",
+          "modules/local/tool/meta.yml"
+        ]
+      }
+    }
+  },
+  "format": "0.3.0",
+  "layer": "components"
+}
