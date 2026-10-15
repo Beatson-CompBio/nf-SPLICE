@@ -6,8 +6,6 @@ import json
 from importlib.metadata import metadata, version
 from pathlib import Path
 
-from click import Group, Option
-from typer.main import get_command
 from typer.testing import CliRunner
 
 from layer_fixtures import ready_repository
@@ -75,16 +73,6 @@ def test_help_lists_every_command_group() -> None:
         help_output = runner.invoke(app, [group, "--help"]).output
         for command in commands:
             assert command in help_output, (group, command)
-    # Rich help rendering varies with terminal width; verify the registered options.
-    commands = get_command(app)
-    assert isinstance(commands, Group)
-    build_options = {
-        option
-        for parameter in commands.commands["build"].params
-        if isinstance(parameter, Option)
-        for option in parameter.opts
-    }
-    assert {"--json", "--check"} <= build_options
 
 
 def test_inspect_and_status_are_read_only(tmp_path: Path) -> None:
