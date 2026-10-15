@@ -59,6 +59,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0026 | Edit drafts as restricted YAML 1.2 with comment-preserving three-way patches | Current | — |
 | ADR-0027 | Classify outputs by SPLICE job, sample and run with free-text scientific labels | Current | — |
 | ADR-0028 | Generate one analysis output per job from the embedded output catalogue | Current | — |
+| ADR-0029 | Attribute review events publicly by label and keep contact details in a private local audit | Current | — |
 
 ---
 
@@ -1114,3 +1115,69 @@ authority between two files, and the document was described as per run.
 
 - Platform and runtime consumers need only `outputs.schema.json`.
 - `outputs.yaml` and the embedded catalogue are tested for semantic equality.
+
+---
+
+## ADR-0029: Attribute review events publicly by label and keep contact details in a private local audit
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 8 |
+| Scope | Actor identity, accountability and privacy |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0005, ADR-0012, ADR-0023 |
+| Implementation | `src/nf_splice/domain/audit.py`, `src/nf_splice/services/audit.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_audit.py` |
+
+### Context
+
+The platform needs to know who reviewed a bundle change and whether a human
+or an agent proposed it, but shared repository files must not leak personal
+contact data, and automation must not fail merely because Git identity is
+unset.
+
+### Decision
+
+- Every explicit review or change produces a public-safe `ReviewEvent`:
+  layer, action, affected JSON pointers, origin (`manual_cli`, `manual_tui`,
+  `external_edit`, `agent_suggestion`, `agent_proposed_batch`, `automation`,
+  `migration`, `discovery`), approval status, actor and approving actor
+  **labels**, tool name/version, before/after content hashes, source
+  revision and a UTC RFC 3339 timestamp captured once at the event. Actor
+  labels are validated to contain no e-mail address. Rendering never adds
+  timestamps, so builds stay deterministic.
+- The public actor label comes from `--actor`, `NF_SPLICE_ACTOR`, a CI
+  identity (recorded as automation), or `unattributed`. Git `user.name`/
+  `user.email` are only an unconfirmed suggestion (`nf-splice audit identity`)
+  and are never used implicitly.
+- Optional private contact details are appended only to a user-local audit
+  store (`NF_SPLICE_AUDIT_DIR`, default `$XDG_STATE_HOME/nf-splice/audit`)
+  with owner-only directory/file permissions, keyed by a hash of the
+  repository path and never inside the repository (except the ignored
+  development workspace). Failure to write it is a warning, never an
+  authoring failure. `nf-splice audit show` exports records redacted by
+  default (paths, e-mails and secret-like values removed).
+- An agent's proposal is distinguishable from human approval through origin,
+  approval status and the separate `approved_by` label; unattended policy
+  application is recorded as `automation_policy`, not as a human approval.
+- Public maintainer contacts are a separate, opt-in bundle field (introduced
+  with the identity layer); a local audit actor is never automatically a
+  pipeline author or maintainer.
+
+### Alternatives rejected
+
+- Hashing e-mail addresses for publication: e-mail hashes are guessable and
+  are not anonymisation.
+- Requiring Git identity: breaks CI and first-time users.
+
+### Consequences
+
+- Reviewed changes remain attributable without publishing personal data.
+
+### Security and privacy
+
+- No secrets or e-mail addresses enter public events; redaction is applied
+  to exports.

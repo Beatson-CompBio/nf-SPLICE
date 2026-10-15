@@ -1,5 +1,13 @@
 """Public domain API for canonical nf-splice authoring state."""
 
+from nf_splice.domain.audit import (
+    UNATTRIBUTED,
+    Actor,
+    ActorKind,
+    ApprovalStatus,
+    ChangeOrigin,
+    ReviewEvent,
+)
 from nf_splice.domain.authoring import (
     AUTHORING_SCHEMA_VERSION,
     AuthoringDocument,
@@ -71,8 +79,13 @@ __all__ = [
     "DEFAULT_JOB_CATEGORY",
     "SUGGESTED_OUTPUT_CATEGORIES",
     "SUGGESTED_OUTPUT_STAGES",
+    "UNATTRIBUTED",
+    "Actor",
+    "ActorKind",
+    "ApprovalStatus",
     "AuthoringDocument",
     "AuthoringDocumentError",
+    "ChangeOrigin",
     "ComponentCandidate",
     "ContainerEngine",
     "Decision",
@@ -106,6 +119,7 @@ __all__ = [
     "ProvenanceCandidate",
     "RepositoryEvidence",
     "RepositoryInspection",
+    "ReviewEvent",
     "ReviewedComponent",
     "ReviewedExecutionProfile",
     "ReviewedInput",

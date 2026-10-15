@@ -51,6 +51,12 @@ from nf_splice.services import (
     unresolved_output_candidates,
     unresolved_provenance_candidates,
 )
+from nf_splice.services.audit import (
+    audit_directory,
+    read_private,
+    resolve_actor,
+    suggest_git_identity,
+)
 
 app = typer.Typer(
     name="nf-splice",
@@ -68,6 +74,11 @@ schema_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(schema_app, name="schema")
+audit_app = typer.Typer(
+    help="Inspect actor attribution and the private local audit store.",
+    no_args_is_help=True,
+)
+app.add_typer(audit_app, name="audit")
 
 _service = ApplicationService()
 RepositoryOption = Annotated[
@@ -1410,6 +1421,49 @@ def schema_check_command(
         for item in families()
     ]
     _echo_contract_reports(reports, json_output)
+
+
+@audit_app.command("identity")
+def audit_identity_command(
+    repository: RepositoryOption = Path("."),
+    actor: str | None = typer.Option(None, help="Explicit public actor label."),
+    json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
+) -> None:
+    """Show the actor label that would be recorded and the Git suggestion."""
+    resolved = resolve_actor(actor)
+    suggestion = suggest_git_identity(repository)
+    payload = {
+        "actor": resolved.model_dump(mode="json"),
+        "git_suggestion": None
+        if suggestion is None
+        else {
+            "name": suggestion.name,
+            "email_configured": suggestion.email is not None,
+        },
+        "private_audit_directory": str(audit_directory()),
+    }
+    if json_output:
+        typer.echo(json.dumps(payload, indent=2))
+        return
+    typer.echo(f"Public actor label: {resolved.label} ({resolved.kind.value})")
+    if suggestion is not None and suggestion.name:
+        typer.echo(
+            f"Git suggests {suggestion.name!r} (unconfirmed); pass --actor or set "
+            "NF_SPLICE_ACTOR to use a public label."
+        )
+    typer.echo(f"Private audit store: {audit_directory()}")
+
+
+@audit_app.command("show")
+def audit_show_command(
+    repository: RepositoryOption = Path("."),
+    no_redact: bool = typer.Option(
+        False, "--no-redact", help="Include private contact details (local only)."
+    ),
+) -> None:
+    """Export this repository's private audit records, redacted by default."""
+    records = read_private(repository, redacted=not no_redact)
+    typer.echo(json.dumps({"records": records}, indent=2))
 
 
 @app.command("tui")
