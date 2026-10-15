@@ -60,7 +60,7 @@ def test_events_capture_time_once_and_carry_no_contact_details() -> None:
     event = make_event(
         layer="bundle",
         action="confirm",
-        origin=ChangeOrigin.AGENT_SUGGESTION,
+        origin=ChangeOrigin.AGENT_ASSISTED,
         approval=ApprovalStatus.APPROVED,
         actor=Actor(label="claude", kind=ActorKind.AGENT),
         approved_by=Actor(label="Ada"),
@@ -71,7 +71,7 @@ def test_events_capture_time_once_and_carry_no_contact_details() -> None:
     assert event == make_event(
         layer="bundle",
         action="confirm",
-        origin=ChangeOrigin.AGENT_SUGGESTION,
+        origin=ChangeOrigin.AGENT_ASSISTED,
         approval=ApprovalStatus.APPROVED,
         actor=Actor(label="claude", kind=ActorKind.AGENT),
         approved_by=Actor(label="Ada"),
@@ -79,7 +79,7 @@ def test_events_capture_time_once_and_carry_no_contact_details() -> None:
         clock=_clock,
     )
     assert "@" not in event.model_dump_json()
-    assert event.origin is ChangeOrigin.AGENT_SUGGESTION
+    assert event.origin is ChangeOrigin.AGENT_ASSISTED
     assert event.approved_by is not None and event.approved_by.label == "Ada"
 
 

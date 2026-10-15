@@ -59,7 +59,6 @@ LAYER = "inputs"
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 SOURCE = "nextflow_schema.json"
 _SECRET_NAME = re.compile(r"(?i)(password|passwd|secret|token|credential|api_?key)")
-_AGENT_ORIGINS = {ChangeOrigin.AGENT_SUGGESTION, ChangeOrigin.AGENT_PROPOSED_BATCH}
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,9 +340,14 @@ def set_access(
         selected_visibility = Visibility(visibility).value if visibility else None
     except ValueError as error:
         raise LayerError(str(error)) from error
-    if context.origin in _AGENT_ORIGINS and write and context.approved_by is None:
+    if (
+        context.origin is ChangeOrigin.AGENT_ASSISTED
+        and write
+        and context.approved_by is None
+    ):
         raise LayerError(
-            "an agent cannot change parameter access without explicit human approval"
+            "an assisting agent cannot change parameter access without the "
+            "user's approval of the stage"
         )
     data = _draft(root)
     by_name = {item.name: item for item in iter_parameters(data)}

@@ -14,7 +14,9 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,6 +39,17 @@ _SECRET_PATTERNS = (
     re.compile(r"(?i)\b(password|passwd|secret|token|api[_-]?key)\s*[=:]\s*\S+"),
 )
 _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_SUPPRESSED: ContextVar[bool] = ContextVar("nf_splice_private_audit_suppressed")
+
+
+@contextmanager
+def suppress_private_audit() -> Iterator[None]:
+    """Do not record private audit events (sandbox previews change nothing real)."""
+    token = _SUPPRESSED.set(True)
+    try:
+        yield
+    finally:
+        _SUPPRESSED.reset(token)
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +207,8 @@ def record_private(
     authoring operation intact and is reported as a warning.
     """
     root = Path(repository_root).resolve()
+    if _SUPPRESSED.get(False):
+        return AuditWriteResult(event, False, "preview: private audit not recorded")
     directory = audit_directory(environment)
     try:
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)

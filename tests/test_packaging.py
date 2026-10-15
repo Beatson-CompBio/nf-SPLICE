@@ -45,6 +45,13 @@ def test_wheel_and_sdist_contain_contract_data_and_wizard_styles(
     for family in ("bundle", "inputs", "outputs", "components", "execution-profiles"):
         assert f"nf_splice/contracts/data/schemas/{family}/0.3.0.schema.json" in names
     assert "nf_splice/interfaces/tui/tui.tcss" in names
+    for skill in (
+        "nf-splice-agent-operations",
+        "nf-splice-authoring",
+        "nf-splice-output-discovery",
+        "nf-splice-validation",
+    ):
+        assert f"nf_splice/agents/skills/{skill}/SKILL.md" in names
     assert not any(".nf-splice-local" in name for name in names)
     metadata = next(name for name in names if name.endswith("METADATA"))
     text = zipfile.ZipFile(wheel).read(metadata).decode()

@@ -1,0 +1,1265 @@
+"""Typed agent operations over the deterministic nf-splice services.
+
+This registry is the only way an agent can act. Every operation calls the
+same service as the equivalent CLI command and returns a structured result.
+Operations never write contract files themselves: draft operations go
+through the layer services (three-way patches, validation, attribution) and
+publication goes through the transactional build.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import json
+import os
+import re
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from nf_splice.agents.permissions import (
+    ExecutionPolicy,
+    Permission,
+    PolicyViolation,
+    relative_path,
+)
+from nf_splice.domain import OutputCandidate
+from nf_splice.inspectors.containers import classify_reference
+from nf_splice.inspectors.routes import analyse_routes
+from nf_splice.layers import ChangeContext, LayerError, confirm_values
+from nf_splice.layers import components as component_layer
+from nf_splice.layers import execution as execution_layer
+from nf_splice.layers import inputs as input_layer
+from nf_splice.layers import outputs as output_layer
+from nf_splice.layers import provenance as provenance_layer
+from nf_splice.layers.base import EditResult, layer_spec, read_layer
+from nf_splice.layers.bundle import set_identity_fields
+from nf_splice.services.audit import redact
+from nf_splice.services.checks import run_optional_checks
+from nf_splice.services.coverage import (
+    assess,
+    current_catalogue,
+    enumerate_example,
+    reconcile_example,
+)
+from nf_splice.services.lifecycle import (
+    plan_promotion,
+    promote,
+    validate_bundle,
+    validate_layer,
+)
+from nf_splice.services.workspace import (
+    apply_patch,
+    initialise,
+    inspect_layer,
+    workspace_status,
+)
+from nf_splice.vocabulary import GLOSSARY
+
+LAYER_NAMES = [
+    "bundle",
+    "inputs",
+    "outputs",
+    "components",
+    "execution-profiles",
+    "provenance",
+]
+_MAX_READ_BYTES = 64_000
+_MAX_LINES = 400
+_MAX_MATCHES = 200
+_SEARCH_SUFFIXES = {
+    ".nf",
+    ".config",
+    ".yml",
+    ".yaml",
+    ".json",
+    ".md",
+    ".txt",
+    ".cff",
+    ".csv",
+    ".tsv",
+    ".groovy",
+    ".py",
+    ".r",
+    ".sh",
+}
+_SKIP_DIRECTORIES = {
+    ".git",
+    ".nf-splice-local",
+    ".nextflow",
+    "work",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+}
+#: Files that commonly hold secrets; agents may never read them.
+SECRET_FILE_PATTERNS = (
+    ".env",
+    ".env.*",
+    "*.pem",
+    "*.key",
+    "*.p12",
+    "*.pfx",
+    "id_rsa*",
+    "id_ed25519*",
+    "id_ecdsa*",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    "credentials*",
+    "*secret*",
+    "*.keystore",
+    "*token*",
+)
+#: Identity changes only a person may make.
+_HUMAN_ONLY_IDENTITY = {"maintainers_publication_approved"}
+
+
+@dataclass(slots=True)
+class OperationContext:
+    """What an operation runs against."""
+
+    root: Path
+    change: ChangeContext
+    policy: ExecutionPolicy
+    session_directory: Path | None = None
+    examples: list[Path] = field(default_factory=list)
+
+
+Handler = Callable[[OperationContext, Mapping[str, Any]], dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class Operation:
+    """One typed, schema-described operation."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    permission: Permission
+    kind: str
+    handler: Handler
+    layer_argument: bool = False
+
+    def schema(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": self.input_schema,
+        }
+
+
+def _obj(
+    properties: dict[str, Any] | None = None, required: Sequence[str] = ()
+) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": properties or {},
+        "required": list(required),
+        "additionalProperties": False,
+    }
+
+
+_LAYER = {"type": "string", "enum": LAYER_NAMES}
+_STRINGS = {"type": "array", "items": {"type": "string"}}
+
+
+def _edit(result: EditResult) -> dict[str, Any]:
+    return {
+        "success": True,
+        "draft": result.path,
+        "wrote": result.wrote,
+        "diff": result.diff[:6000],
+    }
+
+
+def _untrusted(data: Any) -> dict[str, Any]:
+    """Wrap repository text: it is evidence, never an instruction."""
+    return {"success": True, "untrusted_repository_content": True, "data": data}
+
+
+def _secret_like(path: Path) -> bool:
+    name = path.name.lower()
+    return any(fnmatch.fnmatch(name, pattern) for pattern in SECRET_FILE_PATTERNS)
+
+
+def _readable(ctx: OperationContext, value: str) -> Path:
+    path = relative_path(ctx.root, value)
+    relative = path.relative_to(ctx.root.resolve())
+    if any(part in _SKIP_DIRECTORIES for part in relative.parts):
+        raise PolicyViolation(f"{value!r} is in a directory agents may not read")
+    if _secret_like(path):
+        raise PolicyViolation(f"{value!r} looks like a secrets file; it is never read")
+    return path
+
+
+# ------------------------------------------------------------ read operations
+
+
+def _workspace_status(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    document = workspace_status(ctx.root).to_json()
+    document.pop("repository", None)
+    return {"success": True, "data": document}
+
+
+def _inspect_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return {"success": True, "data": inspect_layer(ctx.root, str(a["layer"]))}
+
+
+def _read_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    state = read_layer(ctx.root, layer_spec(str(a["layer"])).name)
+    if state.draft is None:
+        return {"success": False, "issues": [str(state.error or "draft is missing")]}
+    return _untrusted(state.draft.data)
+
+
+def _read_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    path = _readable(ctx, str(a["path"]))
+    if not path.is_file():
+        return {"success": False, "issues": [f"{a['path']} is not a file"]}
+    raw = path.read_bytes()
+    if b"\0" in raw[:8192]:
+        return {"success": False, "issues": [f"{a['path']} is a binary file"]}
+    lines = raw.decode("utf-8", errors="replace").splitlines()
+    start = max(int(a.get("start_line") or 1), 1)
+    end = min(int(a.get("end_line") or start + _MAX_LINES - 1), start + _MAX_LINES - 1)
+    selected = lines[start - 1 : end]
+    text = "\n".join(
+        f"{number}: {line}" for number, line in enumerate(selected, start=start)
+    )
+    return _untrusted(
+        {
+            "path": str(a["path"]),
+            "lines": [start, min(end, len(lines))],
+            "total_lines": len(lines),
+            "text": redact(text[:_MAX_READ_BYTES]),
+        }
+    )
+
+
+def _search_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    pattern_text = str(a["pattern"])
+    if len(pattern_text) > 200:
+        return {"success": False, "issues": ["pattern is longer than 200 characters"]}
+    try:
+        pattern = re.compile(pattern_text)
+    except re.error as error:
+        return {"success": False, "issues": [f"invalid regular expression: {error}"]}
+    glob = str(a.get("glob") or "*")
+    matches: list[str] = []
+    root = ctx.root.resolve()
+    for current, directories, names in os.walk(root, followlinks=False):
+        directories[:] = sorted(
+            item for item in directories if item not in _SKIP_DIRECTORIES
+        )
+        for name in sorted(names):
+            path = Path(current) / name
+            if (
+                path.is_symlink()
+                or path.suffix.lower() not in _SEARCH_SUFFIXES
+                or _secret_like(path)
+                or not fnmatch.fnmatch(name, glob)
+            ):
+                continue
+            try:
+                if path.stat().st_size > 2_000_000:
+                    continue
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            relative = path.relative_to(root).as_posix()
+            for number, line in enumerate(text.splitlines(), start=1):
+                if pattern.search(line):
+                    matches.append(f"{relative}:{number}: {redact(line.strip())[:300]}")
+                    if len(matches) >= _MAX_MATCHES:
+                        return _untrusted({"matches": matches, "truncated": True})
+    return _untrusted({"matches": matches, "truncated": False})
+
+
+def _candidate_document(root: Path, item: OutputCandidate) -> dict[str, Any]:
+    return item.model_dump(mode="json") | {
+        "evidence": [
+            entry["provenance"]["source"] + " " + entry["provenance"]["location"]
+            for entry in output_layer.candidate_evidence(root, item.id)
+        ]
+    }
+
+
+def _list_pending(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    layer = layer_spec(str(a["layer"])).name
+    data: list[Any]
+    if layer == "outputs":
+        data = [
+            _candidate_document(ctx.root, item)
+            for item in output_layer.pending_candidates(ctx.root)
+        ]
+    elif layer == "components":
+        data = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "versions": list(item.versions),
+                "proposed_sources": dict(item.proposed_sources),
+                "problems": list(item.problems),
+            }
+            for item in component_layer.pending_components(ctx.root)
+        ]
+    elif layer == "execution-profiles":
+        data = [
+            item.model_dump(mode="json")
+            for item in execution_layer.pending_profiles(ctx.root)
+        ]
+    else:
+        return {"success": False, "issues": [f"{layer} has no candidate list"]}
+    return {"success": True, "count": len(data), "data": data}
+
+
+def _analyse_routes(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    return {"success": True, "data": analyse_routes(ctx.root).to_json()}
+
+
+def _example(ctx: OperationContext, a: Mapping[str, Any]) -> Path:
+    index = int(a.get("example", 0))
+    if not ctx.examples:
+        raise PolicyViolation("no example output was authorised for this session")
+    if not 0 <= index < len(ctx.examples):
+        raise PolicyViolation(f"example {index} was not authorised")
+    return ctx.examples[index]
+
+
+def _list_examples(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    enumeration = enumerate_example(_example(ctx, a))
+    limit = int(a.get("limit") or 500)
+    return {
+        "success": True,
+        "kind": enumeration.kind.value,
+        "entries": len(enumeration.entries),
+        "paths": [
+            item.path + ("/" if item.is_directory else "")
+            for item in enumeration.entries[:limit]
+        ],
+        "limitations": list(enumeration.limitations),
+    }
+
+
+def _reconcile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    catalogue = current_catalogue(ctx.root)
+    if catalogue is None:
+        return {"success": False, "issues": ["no outputs catalogue exists yet"]}
+    result = reconcile_example(catalogue, enumerate_example(_example(ctx, a)))
+    return {"success": True, "data": result.to_json()}
+
+
+def _preview_build(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    plan = plan_promotion(ctx.root, a.get("layer"))
+    document = plan.to_json()
+    for change in document["changes"]:
+        change["diff"] = change["diff"][:1500]
+    return {"success": True, "data": document}
+
+
+def _validate_layer(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    validation = validate_layer(ctx.root, layer_spec(str(a["layer"])).name)
+    return {
+        "success": validation.ready,
+        "ready": validation.ready,
+        "issues": [item.to_json() for item in validation.issues],
+    }
+
+
+def _validate_bundle(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    report = validate_bundle(ctx.root)
+    return {
+        "success": report.valid,
+        "valid": report.valid,
+        "issues": [item.to_json() for item in report.issues],
+    }
+
+
+def _assess(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    directory = (
+        ctx.session_directory / "analysis-output"
+        if ctx.session_directory is not None
+        else None
+    )
+    if directory is not None:
+        directory.mkdir(parents=True, exist_ok=True)
+    result = assess(
+        ctx.root,
+        examples=ctx.examples,
+        permitted=[item.value for item in ctx.policy.grants],
+        analysis_output_directory=directory,
+        run_checks=False,
+    )
+    return {"success": True, "data": result.to_json()}
+
+
+def _explain(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    term = str(a["term"]).lower()
+    if term not in GLOSSARY:
+        return {
+            "success": False,
+            "issues": [f"unknown term; known: {sorted(GLOSSARY)}"],
+        }
+    return {"success": True, "data": GLOSSARY[term]}
+
+
+def _classify(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return {"success": True, "data": classify_reference(str(a["reference"])).value}
+
+
+def _crate(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    analysis = provenance_layer.analyse_ro_crate(ctx.root)
+    return {"success": True, "data": [item.to_json() for item in analysis.findings]}
+
+
+def _read_skill(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.agents.skills import skill_text
+
+    return {"success": True, "data": skill_text(str(a["name"]))}
+
+
+def _run_checks(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    results = run_optional_checks(
+        ctx.root, permitted=[item.value for item in ctx.policy.grants]
+    )
+    return {"success": True, "data": [item.to_json() for item in results]}
+
+
+# ------------------------------------------------------------ draft operations
+
+
+def _initialise(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    example = ctx.examples[0] if ctx.examples else None
+    report = initialise(
+        ctx.root,
+        ctx.change,
+        identity=dict(a.get("identity") or {}),
+        accept_detected=bool(a.get("accept_detected", False)),
+        example_output_tree=example,
+        contract_version=a.get("contract_version"),
+    )
+    return {
+        "success": True,
+        "created": list(report.created),
+        "preserved": list(report.preserved),
+        "identity_conflicts": list(report.identity.conflicts),
+        "notes": list(report.notes),
+    }
+
+
+def _set_identity(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    changes = dict(a["changes"])
+    forbidden = sorted(set(changes) & _HUMAN_ONLY_IDENTITY)
+    if forbidden:
+        raise PolicyViolation(
+            f"{', '.join(forbidden)} is a person's consent decision "
+            "(human_consent); an agent can never make it"
+        )
+    return _edit(set_identity_fields(ctx.root, changes, ctx.change))
+
+
+def _confirm(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    layer = layer_spec(str(a["layer"])).name
+    pointers = [str(item) for item in a["pointers"]]
+    event = confirm_values(ctx.root, layer, pointers, ctx.change)
+    return {"success": True, "confirmed": pointers, "event": event.id}
+
+
+def _sync_identity(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(input_layer.sync_identity(ctx.root, ctx.change))
+
+
+def _reimport(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    if not (ctx.root / layer_spec("inputs").draft).exists():
+        created = input_layer.import_inputs(ctx.root)
+        return {"success": created, "imported": created}
+    return _edit(input_layer.apply_reimport(ctx.root, ctx.change))
+
+
+def _set_access(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        input_layer.set_access(
+            ctx.root,
+            [str(item) for item in a["parameters"]],
+            [str(item) for item in a["editable_by"]],
+            ctx.change,
+            visibility=a.get("visibility"),
+        )
+    )
+
+
+def _discover_outputs(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    example = _example(ctx, a) if "example" in a else None
+    discovery = output_layer.discover_outputs(
+        ctx.root, example_output_tree=example, schema_version=a.get("schema_version")
+    )
+    return {
+        "success": True,
+        "new_candidates": list(discovery.new_candidates),
+        "pending": len(discovery.pending),
+    }
+
+
+def _contract_version(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        output_layer.set_contract_version(ctx.root, str(a["version"]), ctx.change)
+    )
+
+
+def _accept_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        output_layer.accept_output(
+            ctx.root, str(a["candidate_id"]), dict(a["output"]), ctx.change
+        )
+    )
+
+
+def _reject_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    reason = str(a["reason"]).strip()
+    if not reason:
+        raise LayerError("a rejection needs a reason")
+    output_layer.reject_output(ctx.root, str(a["candidate_id"]), reason, ctx.change)
+    return {"success": True, "rejected": a["candidate_id"]}
+
+
+def _merge_outputs(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        output_layer.merge_outputs(
+            ctx.root,
+            [str(item) for item in a["candidate_ids"]],
+            dict(a["output"]),
+            ctx.change,
+        )
+    )
+
+
+def _split_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        output_layer.split_output(
+            ctx.root,
+            str(a["candidate_id"]),
+            [dict(item) for item in a["outputs"]],
+            ctx.change,
+        )
+    )
+
+
+def _update_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        output_layer.update_output(
+            ctx.root, str(a["key"]), dict(a["changes"]), ctx.change
+        )
+    )
+
+
+def _discover_components(
+    ctx: OperationContext, _a: Mapping[str, Any]
+) -> dict[str, Any]:
+    found = component_layer.discover_components(ctx.root)
+    return {"success": True, "pending": [item.id for item in found]}
+
+
+def _accept_component(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    sources = a.get("sources")
+    return _edit(
+        component_layer.accept_component(
+            ctx.root,
+            str(a["candidate_id"]),
+            ctx.change,
+            version=a.get("version"),
+            sources=dict(sources) if sources else None,
+        )
+    )
+
+
+def _accept_unambiguous(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    accepted = component_layer.accept_unambiguous_components(ctx.root, ctx.change)
+    return {"success": True, "accepted": list(accepted)}
+
+
+def _reject_component(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    component_layer.reject_component(
+        ctx.root, str(a["candidate_id"]), str(a["reason"]), ctx.change
+    )
+    return {"success": True, "rejected": a["candidate_id"]}
+
+
+def _image_policy(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        component_layer.set_image_policy(
+            ctx.root, bool(a["require_downloadable"]), ctx.change
+        )
+    )
+
+
+def _discover_profiles(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    found = execution_layer.discover_execution(ctx.root)
+    return {"success": True, "pending": [item.id for item in found]}
+
+
+def _review_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    generate: dict[str, dict[str, Any]] | None = (
+        {"process": {}, "user_params": {}, "platform_params": {}}
+        if a.get("generate")
+        else None
+    )
+    return _edit(
+        execution_layer.review_profile(
+            ctx.root,
+            str(a["candidate_id"]),
+            ctx.change,
+            profile_type=str(a["profile_type"]),
+            description=str(a["description"]),
+            executor=str(a["executor"]),
+            container_engine=str(a["container_engine"]),
+            config_source=a.get("config_source"),
+            generate=generate,
+        )
+    )
+
+
+def _reject_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    execution_layer.reject_profile(
+        ctx.root, str(a["candidate_id"]), str(a["reason"]), ctx.change
+    )
+    return {"success": True, "rejected": a["candidate_id"]}
+
+
+def _default_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        execution_layer.set_default_profile(ctx.root, str(a["profile_id"]), ctx.change)
+    )
+
+
+def _slurm(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(execution_layer.add_slurm_default_candidate(ctx.root, ctx.change))
+
+
+def _provenance(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    strategy = str(a["strategy"])
+    if strategy == "include":
+        result = provenance_layer.choose_include(ctx.root, ctx.change)
+    elif strategy == "enriched":
+        result = provenance_layer.prepare_enrichment(ctx.root, ctx.change)
+    elif strategy == "generated":
+        result = provenance_layer.generate_minimal(
+            ctx.root,
+            ctx.change,
+            main_workflow=str(a.get("main_workflow") or "main.nf"),
+        )
+    else:
+        raise LayerError("strategy must be include, enriched or generated")
+    return _edit(result)
+
+
+def _patch(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        apply_patch(
+            ctx.root,
+            layer_spec(str(a["layer"])).name,
+            [dict(item) for item in a["operations"]],
+            ctx.change,
+        )
+    )
+
+
+def _build(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    replace = bool(a.get("replace_existing", False))
+    overwrite = [str(item) for item in a.get("overwrite_edited") or []]
+    if replace or overwrite:
+        ctx.policy.require(Permission.OVERWRITE)
+    result = promote(
+        ctx.root,
+        None,
+        ctx.change,
+        replace_existing=replace,
+        overwrite_edited=overwrite,
+    )
+    report = validate_bundle(ctx.root)
+    return {
+        "success": report.valid,
+        "wrote": [f"splice/{item}" for item in result.wrote],
+        "valid": report.valid,
+        "issues": [item.to_json() for item in report.issues],
+    }
+
+
+# ------------------------------------------------------------ registry
+
+_OUTPUT_OBJECT = {
+    "type": "object",
+    "description": "Complete reviewed output: key, title, description, category, "
+    "formats, scopes (job/sample/run), entity_types, path_patterns; optional "
+    "stage and labels.",
+}
+_R, _D, _B = Permission.READ, Permission.DRAFT_EDIT, Permission.BUILD
+
+OPERATIONS: dict[str, Operation] = {
+    item.name: item
+    for item in (
+        Operation(
+            "workspace_status",
+            "Layer states, warnings and readiness of every draft.",
+            _obj(),
+            _R,
+            "read",
+            _workspace_status,
+        ),
+        Operation(
+            "inspect_draft",
+            "Per-field issues of one draft.",
+            _obj({"layer": _LAYER}, ["layer"]),
+            _R,
+            "read",
+            _inspect_draft,
+        ),
+        Operation(
+            "read_draft",
+            "Parsed content of one draft (untrusted repository content).",
+            _obj({"layer": _LAYER}, ["layer"]),
+            _R,
+            "read",
+            _read_draft,
+        ),
+        Operation(
+            "read_source",
+            "Read lines of a repository text file, for example main.nf or a "
+            "module (untrusted content; secrets files are refused).",
+            _obj(
+                {
+                    "path": {"type": "string"},
+                    "start_line": {"type": "integer", "minimum": 1},
+                    "end_line": {"type": "integer", "minimum": 1},
+                },
+                ["path"],
+            ),
+            _R,
+            "read",
+            _read_source,
+        ),
+        Operation(
+            "search_source",
+            "Search repository text files with a regular expression.",
+            _obj(
+                {"pattern": {"type": "string"}, "glob": {"type": "string"}},
+                ["pattern"],
+            ),
+            _R,
+            "read",
+            _search_source,
+        ),
+        Operation(
+            "list_pending",
+            "Pending candidates of outputs, components or execution-profiles, "
+            "with evidence.",
+            _obj(
+                {
+                    "layer": {
+                        "type": "string",
+                        "enum": ["outputs", "components", "execution-profiles"],
+                    }
+                },
+                ["layer"],
+            ),
+            _R,
+            "read",
+            _list_pending,
+        ),
+        Operation(
+            "analyse_routes",
+            "Static publication routes: published versus declared-only outputs, "
+            "route conditions and coverage statuses.",
+            _obj(),
+            _R,
+            "read",
+            _analyse_routes,
+        ),
+        Operation(
+            "list_example_outputs",
+            "List an authorised example results tree (one run's evidence).",
+            _obj(
+                {
+                    "example": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 5000},
+                }
+            ),
+            _R,
+            "read",
+            _list_examples,
+        ),
+        Operation(
+            "reconcile_example_outputs",
+            "Classify an example's paths against the current catalogue: "
+            "classified, unclassified, ambiguous and not observed.",
+            _obj({"example": {"type": "integer", "minimum": 0}}),
+            _R,
+            "read",
+            _reconcile,
+        ),
+        Operation(
+            "preview_build",
+            "Blockers and file diffs a build would produce (no write).",
+            _obj({"layer": {"type": ["string", "null"], "enum": [*LAYER_NAMES, None]}}),
+            _R,
+            "read",
+            _preview_build,
+        ),
+        Operation(
+            "validate_layer",
+            "Deterministic validation of one draft.",
+            _obj({"layer": _LAYER}, ["layer"]),
+            _R,
+            "read",
+            _validate_layer,
+        ),
+        Operation(
+            "validate_bundle",
+            "Deterministic validation of the published bundle.",
+            _obj(),
+            _R,
+            "read",
+            _validate_bundle,
+        ),
+        Operation(
+            "assess",
+            "Contract validity, observed-output compatibility and route coverage, "
+            "as three separate results.",
+            _obj(),
+            _R,
+            "read",
+            _assess,
+        ),
+        Operation(
+            "explain_term",
+            "Precise SPLICE meaning of a vocabulary term.",
+            _obj({"term": {"type": "string"}}, ["term"]),
+            _R,
+            "read",
+            _explain,
+        ),
+        Operation(
+            "classify_container",
+            "Classify a container reference offline.",
+            _obj({"reference": {"type": "string"}}, ["reference"]),
+            _R,
+            "read",
+            _classify,
+        ),
+        Operation(
+            "analyse_ro_crate",
+            "RO-Crate structural and identity findings.",
+            _obj(),
+            _R,
+            "read",
+            _crate,
+        ),
+        Operation(
+            "read_skill",
+            "Read one nf-splice skill (procedure) by name.",
+            _obj({"name": {"type": "string"}}, ["name"]),
+            _R,
+            "read",
+            _read_skill,
+        ),
+        Operation(
+            "run_optional_checks",
+            "Run optional external checks (nf-core lint) that the policy permits; "
+            "unavailable or unpermitted checks are reported as not run.",
+            _obj(),
+            _R,
+            "read",
+            _run_checks,
+        ),
+        Operation(
+            "initialise_drafts",
+            "Create absent drafts from repository evidence (never overwrites).",
+            _obj(
+                {
+                    "identity": {"type": "object"},
+                    "accept_detected": {"type": "boolean"},
+                    "contract_version": {"type": "string"},
+                }
+            ),
+            _D,
+            "draft",
+            _initialise,
+        ),
+        Operation(
+            "set_identity",
+            "Set identity fields in bundle.draft.yaml (e.g. title, licence, "
+            "description, authors). Publication consent is a person's decision.",
+            _obj({"changes": {"type": "object"}}, ["changes"]),
+            _D,
+            "draft",
+            _set_identity,
+        ),
+        Operation(
+            "confirm_values",
+            "Confirm detected draft values at JSON pointers after checking them.",
+            _obj({"layer": _LAYER, "pointers": _STRINGS}, ["layer", "pointers"]),
+            _D,
+            "draft",
+            _confirm,
+            layer_argument=True,
+        ),
+        Operation(
+            "sync_identity",
+            "Copy the reviewed identity into the inputs draft.",
+            _obj(),
+            _D,
+            "draft",
+            _sync_identity,
+        ),
+        Operation(
+            "reimport_inputs",
+            "Import or re-import nextflow_schema.json into the inputs draft.",
+            _obj(),
+            _D,
+            "draft",
+            _reimport,
+        ),
+        Operation(
+            "set_parameter_access",
+            "Set who may edit parameters (user, platform, agent; empty for "
+            "nobody) and optionally visibility (standard, advanced, hidden).",
+            _obj(
+                {
+                    "parameters": _STRINGS,
+                    "editable_by": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["user", "platform", "agent"],
+                        },
+                    },
+                    "visibility": {
+                        "type": "string",
+                        "enum": ["standard", "advanced", "hidden"],
+                    },
+                },
+                ["parameters", "editable_by"],
+            ),
+            _D,
+            "draft",
+            _set_access,
+        ),
+        Operation(
+            "discover_outputs",
+            "Rediscover output candidates, optionally using an authorised example.",
+            _obj(
+                {
+                    "example": {"type": "integer", "minimum": 0},
+                    "schema_version": {"type": "string"},
+                }
+            ),
+            _D,
+            "draft",
+            _discover_outputs,
+        ),
+        Operation(
+            "set_output_contract_version",
+            "Set the analysis-output schema version (X.Y.Z).",
+            _obj({"version": {"type": "string"}}, ["version"]),
+            _D,
+            "draft",
+            _contract_version,
+        ),
+        Operation(
+            "accept_output",
+            "Accept one candidate as a complete reviewed output.",
+            _obj(
+                {"candidate_id": {"type": "string"}, "output": _OUTPUT_OBJECT},
+                ["candidate_id", "output"],
+            ),
+            _D,
+            "draft",
+            _accept_output,
+        ),
+        Operation(
+            "reject_output",
+            "Reject one candidate with a reason.",
+            _obj(
+                {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
+                ["candidate_id", "reason"],
+            ),
+            _D,
+            "draft",
+            _reject_output,
+        ),
+        Operation(
+            "merge_outputs",
+            "Merge several candidates into one reviewed output.",
+            _obj(
+                {"candidate_ids": _STRINGS, "output": _OUTPUT_OBJECT},
+                ["candidate_ids", "output"],
+            ),
+            _D,
+            "draft",
+            _merge_outputs,
+        ),
+        Operation(
+            "split_output",
+            "Split one candidate into several reviewed outputs.",
+            _obj(
+                {
+                    "candidate_id": {"type": "string"},
+                    "outputs": {"type": "array", "items": _OUTPUT_OBJECT},
+                },
+                ["candidate_id", "outputs"],
+            ),
+            _D,
+            "draft",
+            _split_output,
+        ),
+        Operation(
+            "update_output",
+            "Change fields of a reviewed output by key.",
+            _obj(
+                {"key": {"type": "string"}, "changes": {"type": "object"}},
+                ["key", "changes"],
+            ),
+            _D,
+            "draft",
+            _update_output,
+        ),
+        Operation(
+            "discover_components",
+            "Rediscover module components and container sources.",
+            _obj(),
+            _D,
+            "draft",
+            _discover_components,
+        ),
+        Operation(
+            "accept_component",
+            "Accept a component candidate, optionally with version and sources.",
+            _obj(
+                {
+                    "candidate_id": {"type": "string"},
+                    "version": {"type": "string"},
+                    "sources": {"type": "object"},
+                },
+                ["candidate_id"],
+            ),
+            _D,
+            "draft",
+            _accept_component,
+        ),
+        Operation(
+            "accept_unambiguous_components",
+            "Accept every component whose evidence is unambiguous.",
+            _obj(),
+            _D,
+            "draft",
+            _accept_unambiguous,
+        ),
+        Operation(
+            "reject_component",
+            "Reject a component candidate with a reason.",
+            _obj(
+                {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
+                ["candidate_id", "reason"],
+            ),
+            _D,
+            "draft",
+            _reject_component,
+        ),
+        Operation(
+            "set_image_policy",
+            "Whether every image must have a verified downloadable distribution.",
+            _obj(
+                {"require_downloadable": {"type": "boolean"}}, ["require_downloadable"]
+            ),
+            _D,
+            "draft",
+            _image_policy,
+        ),
+        Operation(
+            "discover_profiles",
+            "Rediscover execution profiles from nextflow.config.",
+            _obj(),
+            _D,
+            "draft",
+            _discover_profiles,
+        ),
+        Operation(
+            "review_profile",
+            "Review one profile candidate: type, description, executor, container "
+            "engine and an adopted config source, or a generated config.",
+            _obj(
+                {
+                    "candidate_id": {"type": "string"},
+                    "profile_type": {"type": "string"},
+                    "description": {"type": "string"},
+                    "executor": {"type": "string"},
+                    "container_engine": {"type": "string"},
+                    "config_source": {"type": "string"},
+                    "generate": {"type": "boolean"},
+                },
+                [
+                    "candidate_id",
+                    "profile_type",
+                    "description",
+                    "executor",
+                    "container_engine",
+                ],
+            ),
+            _D,
+            "draft",
+            _review_profile,
+        ),
+        Operation(
+            "reject_profile",
+            "Reject a profile candidate with a reason.",
+            _obj(
+                {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
+                ["candidate_id", "reason"],
+            ),
+            _D,
+            "draft",
+            _reject_profile,
+        ),
+        Operation(
+            "set_default_profile",
+            "Choose the single default execution profile by ID.",
+            _obj({"profile_id": {"type": "string"}}, ["profile_id"]),
+            _D,
+            "draft",
+            _default_profile,
+        ),
+        Operation(
+            "add_slurm_default_profile",
+            "Add the generated SPLICE Slurm profile candidate.",
+            _obj(),
+            _D,
+            "draft",
+            _slurm,
+        ),
+        Operation(
+            "provenance_strategy",
+            "Choose the RO-Crate strategy: include, enriched or generated.",
+            _obj(
+                {
+                    "strategy": {
+                        "type": "string",
+                        "enum": ["include", "enriched", "generated"],
+                    },
+                    "main_workflow": {"type": "string"},
+                },
+                ["strategy"],
+            ),
+            _D,
+            "draft",
+            _provenance,
+        ),
+        Operation(
+            "patch_draft",
+            "JSON-pointer patch (with expected base values) to the current stage's "
+            "draft, merged three-way and validated.",
+            _obj(
+                {
+                    "layer": _LAYER,
+                    "operations": {"type": "array", "items": {"type": "object"}},
+                },
+                ["layer", "operations"],
+            ),
+            _D,
+            "draft",
+            _patch,
+            layer_argument=True,
+        ),
+        Operation(
+            "build_bundle",
+            "Publish the validated drafts into splice/ (transactional, recoverable).",
+            _obj(
+                {
+                    "replace_existing": {"type": "boolean"},
+                    "overwrite_edited": _STRINGS,
+                }
+            ),
+            _B,
+            "build",
+            _build,
+        ),
+    )
+}
+
+#: Session-control tools: recorded by the engine, never touching files.
+CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
+    "submit_stage_proposal": {
+        "name": "submit_stage_proposal",
+        "description": "Finish planning: summarise the staged changes, the evidence, "
+        "the uncertainties and the validation that will decide the stage.",
+        "input_schema": _obj(
+            {
+                "summary": {"type": "string"},
+                "evidence": _STRINGS,
+                "uncertainties": _STRINGS,
+                "validation_gate": {"type": "string"},
+            },
+            ["summary"],
+        ),
+    },
+    "assess_objection": {
+        "name": "assess_objection",
+        "description": "Record whether the user's concern is supported by the "
+        "evidence you checked, and why.",
+        "input_schema": _obj(
+            {
+                "assessment": {
+                    "type": "string",
+                    "enum": [
+                        "supported",
+                        "partly_supported",
+                        "not_supported",
+                        "unclear",
+                    ],
+                },
+                "explanation": {"type": "string"},
+                "evidence": _STRINGS,
+            },
+            ["assessment", "explanation"],
+        ),
+    },
+    "record_blocker": {
+        "name": "record_blocker",
+        "description": "Record a decision you cannot make with sufficient evidence.",
+        "input_schema": _obj(
+            {
+                "decision": {"type": "string"},
+                "artefact": {"type": "string"},
+                "attempted_checks": _STRINGS,
+                "suggested_resolution": {"type": "string"},
+            },
+            ["decision", "artefact"],
+        ),
+    },
+    "record_evidence": {
+        "name": "record_evidence",
+        "description": "Record a claim with its support: observed, "
+        "statically_inferred or unresolved, and its sources (file:line).",
+        "input_schema": _obj(
+            {
+                "claim": {"type": "string"},
+                "status": {
+                    "type": "string",
+                    "enum": ["observed", "statically_inferred", "unresolved"],
+                },
+                "sources": _STRINGS,
+            },
+            ["claim", "status"],
+        ),
+    },
+}
+
+READ_OPERATIONS = frozenset(
+    name for name, item in OPERATIONS.items() if item.kind == "read"
+)
+
+
+def describe(name: str, arguments: Mapping[str, Any]) -> str:
+    """Short human-readable summary of a planned operation."""
+    text = json.dumps(dict(arguments), sort_keys=True, default=str)
+    return f"{name} {redact(text)[:300]}"

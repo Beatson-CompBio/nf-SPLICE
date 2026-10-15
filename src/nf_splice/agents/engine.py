@@ -1,0 +1,1460 @@
+"""One session engine for AI-assisted and autonomous integration.
+
+The engine is a typed state machine over the workflow stages. For each stage
+it runs a bounded ``observe -> plan -> propose or execute -> validate ->
+reflect`` loop:
+
+- **Assisted**: the agent stages changes for one stage; they are previewed
+  on a private copy and shown with their diff and validation outcome; only
+  the user's approval applies them, after which the stage's deterministic
+  gate decides whether the stage is complete. Objections start an
+  investigation, never an automatic advance.
+- **Autonomous**: within a scope and policy the user approved in advance,
+  the agent applies routine decisions directly, the gate validates each
+  stage, failed stages are retried only while they make progress, and
+  anything that cannot be resolved with evidence becomes a recorded blocker.
+
+Manual mode is the existing CLI and wizard; a session switched to manual is
+simply paused while the person works. Every mode reads and writes the same
+draft files, so a session can switch between modes at any time.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import threading
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+
+from nf_splice.agents.operations import READ_OPERATIONS
+from nf_splice.agents.permissions import ExecutionPolicy, Permission
+from nf_splice.agents.prompts import (
+    objection_instruction,
+    proposal_text,
+    stage_instruction,
+    system_prompt,
+)
+from nf_splice.agents.protocol import (
+    AgentProvider,
+    EventKind,
+    ProviderSession,
+    ProviderUnavailable,
+    TurnRequest,
+    require_consent,
+    require_tool_calling,
+)
+from nf_splice.agents.report import build_report, report_text
+from nf_splice.agents.sandbox import Sandbox
+from nf_splice.agents.stages import (
+    LAYER_FOR_STAGE,
+    ORDER,
+    GateResult,
+    Stage,
+    StageStatus,
+    gate,
+    spec,
+)
+from nf_splice.agents.state import (
+    ApprovalRecord,
+    Blocker,
+    EvidenceStatus,
+    InteractionMode,
+    PlannedOperation,
+    Proposal,
+    ProviderRecord,
+    SessionError,
+    SessionState,
+    SessionStatus,
+    SessionStore,
+    Transaction,
+    drafts_fingerprint,
+    now,
+    repository_key,
+    sources_fingerprint,
+)
+from nf_splice.agents.toolbox import SessionToolbox, ToolMode, TurnOutcome
+from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
+from nf_splice.layers import ChangeContext
+from nf_splice.services.coverage import assess
+from nf_splice.services.lifecycle import validate_layer
+
+_PLAN_CONTROLS = {"submit_stage_proposal", "record_blocker", "record_evidence"}
+_EXECUTE_CONTROLS = {"record_blocker", "record_evidence"}
+_PREVIEW_APPROVER = Actor(label="preview", kind=ActorKind.HUMAN)
+
+
+class StaleProposal(SessionError):
+    """Files changed after a proposal was made; it must be planned again."""
+
+
+def _digest(operations: list[PlannedOperation]) -> str:
+    return hashlib.sha256(
+        json.dumps([item.model_dump() for item in operations], sort_keys=True).encode()
+    ).hexdigest()
+
+
+class SessionEngine:
+    """Drive one session; every public method saves state before returning."""
+
+    def __init__(
+        self,
+        root: Path,
+        store: SessionStore,
+        state: SessionState,
+        provider: AgentProvider | None = None,
+    ) -> None:
+        self.root = root.resolve()
+        self.store = store
+        self.state = state
+        self.provider = provider
+        self._session: ProviderSession | None = None
+        self._locked = False
+        self._cancel = threading.Event()
+
+    # -------------------------------------------------------- lifecycle
+
+    @classmethod
+    def create(
+        cls,
+        repository: str | Path,
+        *,
+        mode: InteractionMode,
+        provider: AgentProvider,
+        objective: str,
+        policy: ExecutionPolicy,
+        actor: Actor,
+        script: str | None = None,
+    ) -> SessionEngine:
+        """Start a session after checking capability, consent and approval."""
+        if mode is InteractionMode.MANUAL:
+            raise SessionError("manual work needs no session; use the CLI or wizard")
+        require_tool_calling(provider)
+        require_consent(provider, policy.allow_remote_model)
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError(
+                "a person must start a session and approve its scope; pass --actor"
+            )
+        root = Path(repository).resolve()
+        store = SessionStore(root)
+        for example in policy.examples:
+            if not Path(example).exists():
+                raise SessionError(f"example output does not exist: {example}")
+        policy.approved_by = actor.label
+        policy.approved_at = now()
+        stamp = now()
+        capabilities = provider.capabilities
+        state = SessionState(
+            id=store.new_id(),
+            created_at=stamp,
+            updated_at=stamp,
+            repository_key=repository_key(root),
+            mode=mode,
+            objective=objective,
+            provider=ProviderRecord(
+                name=capabilities.name, remote=capabilities.remote, script=script
+            ),
+            policy=policy,
+        )
+        state.mode_history.append(
+            {"from": "", "to": mode.value, "at": stamp, "actor": actor.label}
+        )
+        state.say(
+            "user",
+            "start",
+            f"{actor.label} started an {mode.value} session: {objective}",
+            data={"grants": [item.value for item in policy.grants]},
+        )
+        engine = cls(root, store, state, provider)
+        engine._save()
+        return engine
+
+    @classmethod
+    def open(
+        cls,
+        repository: str | Path,
+        session_id: str | None = None,
+        provider: AgentProvider | None = None,
+    ) -> SessionEngine:
+        root = Path(repository).resolve()
+        store = SessionStore(root)
+        return cls(root, store, store.load(session_id), provider)
+
+    def request_cancel(self) -> None:
+        """Ask a running autonomous loop to stop at the next safe point."""
+        self._cancel.set()
+
+    # -------------------------------------------------------- helpers
+
+    @property
+    def session_directory(self) -> Path:
+        return self.store.session_directory(self.state.id)
+
+    def _examples(self) -> list[Path]:
+        return [Path(item).resolve() for item in self.state.policy.examples]
+
+    def _agent(self) -> Actor:
+        return Actor(label=self.state.provider.name, kind=ActorKind.AGENT)
+
+    def _change(self, approved_by: Actor | None) -> ChangeContext:
+        if self.state.mode is InteractionMode.AUTONOMOUS:
+            return ChangeContext(
+                actor=self._agent(), origin=ChangeOrigin.AGENT_AUTONOMOUS
+            )
+        return ChangeContext(
+            actor=self._agent(),
+            origin=ChangeOrigin.AGENT_ASSISTED,
+            approved_by=approved_by,
+        )
+
+    def _log(self, record: dict[str, Any]) -> None:
+        record = record | {
+            "session_mode": self.state.mode.value,
+            "stage": self.state.current_stage.value
+            if self.state.current_stage
+            else None,
+        }
+        self.store.log_tool(self.state.id, record)
+
+    def _save(self) -> None:
+        self.state.drafts_fingerprint = drafts_fingerprint(self.root)
+        self.state.sources_fingerprint = sources_fingerprint(self.root)
+        self.store.save(self.state)
+
+    def _require_provider(self) -> AgentProvider:
+        if self.provider is None:
+            raise SessionError("this step needs the session's AI provider")
+        require_tool_calling(self.provider)
+        require_consent(self.provider, self.state.policy.allow_remote_model)
+        return self.provider
+
+    def _fingerprints(self) -> tuple[str, str]:
+        return drafts_fingerprint(self.root), sources_fingerprint(self.root)
+
+    # -------------------------------------------------------- consistency
+
+    def _prepare(self) -> None:
+        self._recover_interrupted()
+        drafts, sources = self._fingerprints()
+        state = self.state
+        if state.drafts_fingerprint and (
+            drafts != state.drafts_fingerprint or sources != state.sources_fingerprint
+        ):
+            state.say(
+                "system",
+                "external_change",
+                "Files changed outside this session since it last ran; completed "
+                "stages were checked again.",
+            )
+            self._recheck_completed()
+            if state.pending is not None and (
+                state.pending.drafts_fingerprint != drafts
+                or state.pending.sources_fingerprint != sources
+            ):
+                self._withdraw_pending("stale: files changed after it was made")
+
+    def _recover_interrupted(self) -> None:
+        transaction = self.state.transaction
+        if transaction is None or self._locked:
+            return
+        with self.store.mutation_lock(self.state.id):
+            self.store.restore(self.state, transaction.checkpoint)
+        record = self.state.stages[transaction.stage]
+        record.status = StageStatus.VALIDATION_FAILED
+        record.notes.append(
+            f"interrupted while applying changes; restored {transaction.checkpoint}"
+        )
+        self.state.transaction = None
+        self.state.say(
+            "system",
+            "recovery",
+            f"An interrupted action in {transaction.stage.value} was rolled back to "
+            f"{transaction.checkpoint}.",
+            stage=transaction.stage,
+        )
+        self._save()
+
+    def _recheck_completed(self) -> None:
+        for stage in ORDER:
+            record = self.state.stages[stage]
+            if record.status is not StageStatus.COMPLETED or stage in {
+                Stage.VERIFY,
+                Stage.REPORT,
+            }:
+                continue
+            result = gate(stage, self.root)
+            if not result.passed:
+                record.status = StageStatus.PENDING
+                record.issues = list(result.issues)
+                record.notes.append("reopened: its validation no longer passes")
+                for later in (Stage.VERIFY, Stage.REPORT):
+                    self.state.stages[later].status = StageStatus.PENDING
+
+    def _withdraw_pending(self, reason: str) -> None:
+        pending = self.state.pending
+        if pending is None:
+            return
+        pending.status = "withdrawn"
+        self._store_proposal(pending)
+        self.state.pending = None
+        self.state.say(
+            "system", "proposal_withdrawn", f"{pending.id} withdrawn: {reason}"
+        )
+        if self.state.status is SessionStatus.AWAITING_APPROVAL:
+            self.state.status = SessionStatus.ACTIVE
+
+    def _store_proposal(self, proposal: Proposal) -> None:
+        self.state.proposals = [
+            item for item in self.state.proposals if item.id != proposal.id
+        ] + [proposal.model_copy()]
+
+    # -------------------------------------------------------- stage bookkeeping
+
+    def _next_stage(self) -> Stage | None:
+        assisted = self.state.mode is InteractionMode.ASSISTED
+        for stage in ORDER:
+            record = self.state.stages[stage]
+            if record.status in {StageStatus.COMPLETED, StageStatus.CANCELLED}:
+                continue
+            if record.status is StageStatus.BLOCKED and not assisted:
+                continue
+            blocked = [
+                item
+                for item in spec(stage).depends_on
+                if self.state.stages[item].status is StageStatus.BLOCKED
+            ]
+            if blocked:
+                if not assisted:
+                    record.status = StageStatus.BLOCKED
+                    note = "depends on " + ", ".join(item.value for item in blocked)
+                    if note not in record.notes:
+                        record.notes.append(note)
+                continue
+            if any(
+                self.state.stages[item].status is not StageStatus.COMPLETED
+                for item in spec(stage).depends_on
+            ):
+                continue
+            return stage
+        return None
+
+    def _complete(self, stage: Stage, result: GateResult, note: str = "") -> None:
+        record = self.state.stages[stage]
+        record.status = StageStatus.COMPLETED
+        record.completed_at = now()
+        record.issues = []
+        record.summary = note or result.summary
+        for blocker in self.state.blockers:
+            if blocker.stage is stage:
+                blocker.resolved = True
+        if stage not in {Stage.VERIFY, Stage.REPORT}:
+            self.state.add_evidence(
+                f"{spec(stage).title}: {result.summary or 'validation passed'}",
+                EvidenceStatus.TOOL_VERIFIED,
+                [f"gate:{stage.value}"],
+                stage,
+            )
+        self.state.say(
+            "system",
+            "stage_complete",
+            f"{spec(stage).title} complete. {note}".strip(),
+            stage=stage,
+        )
+
+    def _block(
+        self,
+        stage: Stage,
+        issues: tuple[str, ...] | list[str],
+        reported: list[dict[str, Any]],
+        attempted: list[str],
+    ) -> None:
+        record = self.state.stages[stage]
+        record.status = StageStatus.BLOCKED
+        record.issues = list(issues)
+        layer = LAYER_FOR_STAGE.get(stage)
+        artefact = f"splice/drafts ({layer})" if layer else spec(stage).title
+        if reported:
+            for item in reported:
+                self.state.blockers.append(
+                    Blocker(
+                        stage=stage,
+                        decision=str(item.get("decision", "")),
+                        artefact=str(item.get("artefact") or artefact),
+                        attempted_checks=[
+                            str(value) for value in item.get("attempted_checks") or []
+                        ]
+                        + attempted,
+                        suggested_resolution=str(
+                            item.get("suggested_resolution") or ""
+                        ),
+                        issues=list(issues),
+                        at=now(),
+                    )
+                )
+        else:
+            self.state.blockers.append(
+                Blocker(
+                    stage=stage,
+                    decision=f"{spec(stage).title} still fails its validation",
+                    artefact=artefact,
+                    attempted_checks=attempted,
+                    suggested_resolution="Resume this session in assisted mode to "
+                    "discuss it, or fix the listed issues and continue.",
+                    issues=list(issues),
+                    at=now(),
+                )
+            )
+        self.state.add_evidence(
+            f"{spec(stage).title} blocked",
+            EvidenceStatus.UNRESOLVED,
+            list(issues)[:5],
+            stage,
+        )
+        self.state.say(
+            "agent" if reported else "system",
+            "blocker",
+            f"{spec(stage).title} is blocked: "
+            + "; ".join(
+                [str(item.get("decision")) for item in reported] or list(issues)[:3]
+            ),
+            stage=stage,
+        )
+
+    def _record_outcome(self, stage: Stage | None, outcome: TurnOutcome) -> None:
+        for item in outcome.evidence:
+            self.state.add_evidence(
+                str(item.get("claim", "")),
+                EvidenceStatus(str(item.get("status", "unresolved"))),
+                [str(value) for value in item.get("sources") or []],
+                stage,
+            )
+        for denial in outcome.denied:
+            self.state.say("system", "denied", denial, stage=stage)
+
+    # -------------------------------------------------------- provider turns
+
+    async def _turn(
+        self,
+        purpose: str,
+        stage: Stage | None,
+        instruction: str,
+        toolbox: SessionToolbox,
+    ) -> TurnOutcome:
+        provider = self._require_provider()
+        if self._session is None:
+            self._session = provider.open(self.root)
+        session = self._session
+        budgets = self.state.policy.budgets
+        spent = self.state.usage.cost_usd
+        remaining = (
+            None
+            if budgets.max_budget_usd is None
+            else max(budgets.max_budget_usd - spent, 0.0)
+        )
+        if remaining == 0.0:
+            toolbox.outcome.budget_exhausted = True
+            toolbox.outcome.failures.append("the session's spending budget is used up")
+            return toolbox.outcome
+        request = TurnRequest(
+            purpose=purpose,
+            instruction=instruction,
+            system_prompt=system_prompt(purpose, stage),
+            tools=toolbox,
+            stage=stage.value if stage else None,
+            max_turns=budgets.max_turns_per_step,
+            timeout_seconds=budgets.turn_timeout_seconds,
+            max_budget_usd=remaining,
+            model=budgets.model,
+            conversation_ref=self.state.provider.conversation_ref,
+        )
+        self.state.usage.provider_turns += 1
+        messages: list[str] = []
+
+        async def consume(events: AsyncIterator[Any]) -> None:
+            async for event in events:
+                if event.kind is EventKind.MESSAGE and event.text:
+                    messages.append(event.text)
+                elif event.kind is EventKind.ERROR:
+                    toolbox.outcome.failures.append(event.text)
+                elif event.kind is EventKind.USAGE:
+                    self.state.usage.cost_usd += float(event.data.get("cost_usd") or 0)
+                if self._cancel.is_set():
+                    await session.cancel()
+                    break
+
+        try:
+            await asyncio.wait_for(
+                consume(session.turn(request)), timeout=budgets.turn_timeout_seconds
+            )
+        except asyncio.TimeoutError:
+            await session.cancel()
+            toolbox.outcome.failures.append(
+                f"the provider turn exceeded {budgets.turn_timeout_seconds:.0f} s"
+            )
+        except ProviderUnavailable:
+            raise
+        except Exception as error:
+            # A provider failure ends the turn; the gate still decides the stage.
+            toolbox.outcome.failures.append(
+                f"provider error: {type(error).__name__}: {error}"
+            )
+        self.state.provider.conversation_ref = session.conversation_ref
+        toolbox.outcome.messages = messages
+        if messages:
+            self.state.say("agent", "message", "\n\n".join(messages), stage=stage)
+        for failure in toolbox.outcome.failures:
+            self.state.say("system", "failure", failure, stage=stage)
+        return toolbox.outcome
+
+    def _toolbox(
+        self,
+        mode: ToolMode,
+        stage: Stage | None,
+        operations: set[str],
+        controls: set[str],
+        *,
+        approved_by: Actor | None = None,
+        sandbox: Sandbox | None = None,
+    ) -> SessionToolbox:
+        change = self._change(approved_by)
+        if mode is ToolMode.STAGE and self.state.mode is InteractionMode.ASSISTED:
+            change = self._change(_PREVIEW_APPROVER)
+        return SessionToolbox(
+            root=self.root,
+            policy=self.state.policy,
+            mode=mode,
+            operations=operations,
+            controls=controls,
+            change=change,
+            usage=self.state.usage,
+            stage_layer=LAYER_FOR_STAGE.get(stage) if stage else None,
+            examples=self._examples(),
+            session_directory=self.session_directory,
+            sandbox=sandbox,
+            log=self._log,
+        )
+
+    # -------------------------------------------------------- assisted planning
+
+    def _proposal(
+        self,
+        stage: Stage,
+        operations: list[PlannedOperation],
+        sandbox: Sandbox,
+        details: dict[str, Any],
+        revision: int,
+    ) -> Proposal:
+        drafts, sources = self._fingerprints()
+        layer = LAYER_FOR_STAGE.get(stage)
+        proposal = Proposal(
+            id=f"proposal-{len(self.state.proposals) + 1}",
+            stage=stage,
+            revision=revision,
+            summary=str(details.get("summary") or f"Changes for {spec(stage).title}"),
+            operations=operations,
+            evidence=[str(item) for item in details.get("evidence") or []],
+            uncertainties=[str(item) for item in details.get("uncertainties") or []],
+            validation_gate=str(
+                details.get("validation_gate")
+                or f"{spec(stage).title} validation (nf-splice draft validate)"
+            ),
+            diff=sandbox.diff()[:60000],
+            preview_issues=sandbox.issues([layer]) if layer else [],
+            drafts_fingerprint=drafts,
+            sources_fingerprint=sources,
+            created_at=now(),
+        )
+        self.state.pending = proposal
+        self._store_proposal(proposal)
+        self.state.status = SessionStatus.AWAITING_APPROVAL
+        self.state.stages[stage].status = StageStatus.NEEDS_APPROVAL
+        self.state.say(
+            "agent",
+            "proposal",
+            proposal_text(proposal),
+            stage=stage,
+            data={"proposal": proposal.id},
+        )
+        return proposal
+
+    def _deterministic_proposal(
+        self, stage: Stage, operations: list[PlannedOperation], summary: str
+    ) -> Proposal:
+        sandbox = Sandbox(
+            self.root, self.session_directory / "sandbox", self._examples()
+        )
+        try:
+            toolbox = self._toolbox(
+                ToolMode.STAGE,
+                stage,
+                {item.tool for item in operations},
+                set(),
+                sandbox=sandbox,
+            )
+            for item in operations:
+                result = toolbox.call(item.tool, item.arguments)
+                if not result.get("success"):
+                    raise SessionError(
+                        f"{item.tool} cannot run: {'; '.join(result.get('issues', []))}"
+                    )
+            return self._proposal(
+                stage, toolbox.outcome.staged, sandbox, {"summary": summary}, 1
+            )
+        finally:
+            sandbox.close()
+
+    async def _plan(
+        self,
+        stage: Stage,
+        purpose: str,
+        instruction: str,
+        *,
+        revision: int = 1,
+    ) -> tuple[Proposal | None, TurnOutcome]:
+        sandbox = Sandbox(
+            self.root, self.session_directory / "sandbox", self._examples()
+        )
+        try:
+            controls = set(_PLAN_CONTROLS)
+            if purpose == "objection":
+                controls.add("assess_objection")
+            toolbox = self._toolbox(
+                ToolMode.STAGE,
+                stage,
+                set(READ_OPERATIONS) | set(spec(stage).operations),
+                controls,
+                sandbox=sandbox,
+            )
+            outcome = await self._turn(purpose, stage, instruction, toolbox)
+            self._record_outcome(stage, outcome)
+            if not outcome.staged:
+                return None, outcome
+            details = dict(outcome.proposal or {})
+            if not details.get("summary") and outcome.messages:
+                details["summary"] = outcome.messages[-1][:2000]
+            return (
+                self._proposal(stage, outcome.staged, sandbox, details, revision),
+                outcome,
+            )
+        finally:
+            sandbox.close()
+
+    def _await_input(self, stage: Stage, message: str) -> None:
+        self.state.status = SessionStatus.AWAITING_INPUT
+        self.state.say("agent", "question", message, stage=stage)
+
+    async def _plan_stage(self, stage: Stage, issues: list[str] | None = None) -> None:
+        record = self.state.stages[stage]
+        record.attempts += 1
+        instruction = stage_instruction(
+            self.root, self.state, stage, issues=issues, attempt=record.attempts
+        )
+        proposal, outcome = await self._plan(stage, "plan", instruction)
+        if proposal is not None:
+            return
+        if outcome.blockers:
+            self._block(stage, record.issues, outcome.blockers, [])
+        self._await_input(
+            stage,
+            "I could not propose a sound change for "
+            f"{spec(stage).title}. "
+            + (
+                "; ".join(str(item.get("decision")) for item in outcome.blockers)
+                or "Tell me how you would like to proceed, or edit the draft and "
+                "continue."
+            ),
+        )
+
+    # -------------------------------------------------------- execution
+
+    async def _execute(
+        self,
+        stage: Stage,
+        operations: list[PlannedOperation],
+        approved_by: Actor | None,
+    ) -> str | None:
+        """Apply planned operations under a checkpoint; roll back on failure."""
+
+        def run() -> str | None:
+            checkpoint = self.store.checkpoint(
+                self.state, stage, f"before applying {len(operations)} change(s)"
+            )
+            self.state.transaction = Transaction(
+                id=f"transaction-{len(self.state.checkpoints)}",
+                stage=stage,
+                checkpoint=checkpoint.id,
+                started_at=now(),
+                operations=[item.tool for item in operations],
+            )
+            self.store.save(self.state)
+            toolbox = self._toolbox(
+                ToolMode.EXECUTE,
+                stage,
+                {item.tool for item in operations},
+                set(),
+                approved_by=approved_by,
+            )
+            failure = None
+            try:
+                for item in operations:
+                    result = toolbox.call(item.tool, item.arguments)
+                    if not result.get("success"):
+                        failure = f"{item.tool}: " + "; ".join(
+                            str(value) for value in result.get("issues", [])
+                        )
+                        break
+                if failure is not None:
+                    self.store.restore(self.state, checkpoint.id)
+            except BaseException:
+                self.store.restore(self.state, checkpoint.id)
+                self.state.transaction = None
+                self.store.save(self.state)
+                raise
+            self.state.transaction = None
+            return failure
+
+        if self._locked:
+            return run()
+        with self.store.mutation_lock(self.state.id):
+            self._locked = True
+            try:
+                return run()
+            finally:
+                self._locked = False
+
+    # -------------------------------------------------------- deterministic stages
+
+    def _validate_stage(self) -> None:
+        result = gate(Stage.VALIDATE, self.root)
+        record = self.state.stages[Stage.VALIDATE]
+        if result.passed:
+            self._complete(Stage.VALIDATE, result)
+            return
+        record.attempts += 1
+        failing = []
+        for stage, layer in LAYER_FOR_STAGE.items():
+            try:
+                ready = validate_layer(self.root, layer).ready
+            except ValueError:
+                ready = False
+            if not ready:
+                failing.append(stage)
+        reopenable = [
+            item
+            for item in failing
+            if self.state.stages[item].status is StageStatus.COMPLETED
+        ]
+        if (
+            reopenable
+            and record.attempts <= self.state.policy.budgets.max_stage_attempts
+        ):
+            for item in reopenable:
+                self.state.stages[item].status = StageStatus.PENDING
+                self.state.stages[item].notes.append(
+                    "reopened by cross-layer validation"
+                )
+            record.status = StageStatus.PENDING
+            record.issues = list(result.issues)
+            return
+        self._block(Stage.VALIDATE, result.issues, [], ["cross-layer plan_promotion"])
+
+    def _verify_stage(self) -> dict[str, Any]:
+        directory = self.session_directory / "analysis-output"
+        directory.mkdir(parents=True, exist_ok=True)
+        result = assess(
+            self.root,
+            examples=self._examples(),
+            permitted=[item.value for item in self.state.policy.grants],
+            analysis_output_directory=directory,
+        ).to_json()
+        contract = result["contract_validity"]["status"]
+        self.state.add_evidence(
+            f"Contract validity: {contract}",
+            EvidenceStatus.TOOL_VERIFIED
+            if contract == "valid"
+            else EvidenceStatus.UNRESOLVED,
+            ["nf-splice validate"],
+            Stage.VERIFY,
+        )
+        observed = result["observed_output_compatibility"]
+        for example in observed["examples"]:
+            reconciliation = example["reconciliation"]
+            self.state.add_evidence(
+                f"Example {reconciliation['example']}: "
+                f"{sum(reconciliation['classified'].values())} classified, "
+                f"{len(reconciliation['unclassified'])} unclassified, "
+                f"{len(reconciliation['ambiguous'])} ambiguous; analysis_output.json "
+                f"{example['analysis_output']['status']}",
+                EvidenceStatus.OBSERVED,
+                [reconciliation["example"]],
+                Stage.VERIFY,
+            )
+        self.state.add_evidence(
+            result["coverage_assessment"]["statement"],
+            EvidenceStatus.STATICALLY_INFERRED,
+            ["analyse_routes"],
+            Stage.VERIFY,
+        )
+        for check in result["optional_checks"]:
+            self.state.add_evidence(
+                f"{check['name']}: {check['status']} ({check['reason']})",
+                EvidenceStatus.TOOL_VERIFIED
+                if check["status"] in {"passed", "passed_with_warnings", "failed"}
+                else EvidenceStatus.UNRESOLVED,
+                [check["tool"]],
+                Stage.VERIFY,
+            )
+        self._complete(
+            Stage.VERIFY,
+            GateResult(True, (), f"contract {contract}; observed {observed['status']}"),
+        )
+        return result
+
+    def _finish(self) -> None:
+        assessment = None
+        if self.state.stages[Stage.VERIFY].status is not StageStatus.COMPLETED:
+            assessment = self._verify_stage()
+        else:
+            previous = self.state.report or {}
+            assessment = previous.get("results") or self._verify_stage()
+        report = build_report(self.root, self.store, self.state, assessment)
+        self.state.stages[Stage.REPORT].status = StageStatus.COMPLETED
+        self.state.stages[Stage.REPORT].completed_at = now()
+        report = build_report(self.root, self.store, self.state, assessment)
+        self.state.report = report
+        self.state.current_stage = None
+        complete = report["completion"] == "complete"
+        self.state.status = (
+            SessionStatus.COMPLETED
+            if complete
+            else SessionStatus.BLOCKED
+            if self.state.mode is InteractionMode.AUTONOMOUS
+            else SessionStatus.AWAITING_INPUT
+        )
+        self.state.say(
+            "agent",
+            "report",
+            report_text(report),
+            data={"completion": report["completion"]},
+        )
+
+    # -------------------------------------------------------- assisted mode
+
+    async def advance(self) -> SessionState:
+        """Move the session forward until it needs the user or finishes."""
+        self._prepare()
+        state = self.state
+        if state.status in {SessionStatus.COMPLETED, SessionStatus.CANCELLED}:
+            self._save()
+            return state
+        if state.mode is InteractionMode.MANUAL or state.status is SessionStatus.PAUSED:
+            raise SessionError("the session is paused; resume it to continue")
+        if state.mode is InteractionMode.AUTONOMOUS:
+            return await self._run_autonomous()
+        if state.pending is not None:
+            state.status = SessionStatus.AWAITING_APPROVAL
+            self._save()
+            return state
+        state.status = SessionStatus.ACTIVE
+        while True:
+            stage = self._next_stage()
+            state.current_stage = stage
+            if stage is None:
+                self._finish()
+                break
+            record = state.stages[stage]
+            record.started_at = record.started_at or now()
+            if stage is Stage.VALIDATE:
+                self._validate_stage()
+                if state.stages[Stage.VALIDATE].status is StageStatus.BLOCKED:
+                    self._await_input(
+                        stage,
+                        "Cross-layer validation still fails: "
+                        + "; ".join(state.stages[stage].issues[:5]),
+                    )
+                    break
+                continue
+            if stage in {Stage.VERIFY, Stage.REPORT}:
+                if stage is Stage.VERIFY:
+                    state.report = {"results": self._verify_stage()}
+                else:
+                    self._finish()
+                    break
+                continue
+            result = gate(stage, self.root)
+            if result.passed:
+                self._complete(stage, result, "already satisfied by the current files")
+                continue
+            if stage is Stage.DISCOVER:
+                self._deterministic_proposal(
+                    stage,
+                    [
+                        PlannedOperation(
+                            tool="initialise_drafts",
+                            arguments={"accept_detected": False},
+                            description="create the missing drafts from repository "
+                            "evidence (existing drafts are kept)",
+                        )
+                    ],
+                    "Create the missing drafts from the repository's evidence.",
+                )
+                break
+            if stage is Stage.BUILD:
+                if not state.policy.granted(Permission.BUILD):
+                    self._await_input(
+                        stage,
+                        "Every layer is ready. Building needs the build permission; "
+                        "grant it or run `nf-splice build all` yourself.",
+                    )
+                    break
+                self._deterministic_proposal(
+                    stage,
+                    [
+                        PlannedOperation(
+                            tool="build_bundle",
+                            arguments={},
+                            description="publish the validated drafts into splice/",
+                        )
+                    ],
+                    "Every layer validates. Publish the bundle into splice/.",
+                )
+                break
+            record.issues = list(result.issues)
+            if record.attempts >= state.policy.budgets.max_stage_attempts:
+                self._await_input(
+                    stage,
+                    f"{spec(stage).title} still fails after {record.attempts} "
+                    "attempt(s): "
+                    + "; ".join(record.issues[:5])
+                    + ". Tell me how to proceed, or fix the draft and continue.",
+                )
+                break
+            await self._plan_stage(stage)
+            break
+        self._save()
+        return state
+
+    async def approve(self, actor: Actor) -> SessionState:
+        """Apply the pending proposal exactly as shown, then validate it."""
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError("approval needs a person's actor label (--actor)")
+        previous = self.state.pending
+        self._prepare()
+        proposal = self.state.pending
+        if proposal is None:
+            self._save()
+            if previous is not None:
+                raise StaleProposal(
+                    f"{previous.id} is stale: files changed after it was proposed; "
+                    "continue the session to plan again"
+                )
+            raise SessionError("nothing is waiting for approval")
+        drafts, sources = self._fingerprints()
+        if (
+            drafts != proposal.drafts_fingerprint
+            or sources != proposal.sources_fingerprint
+        ):
+            self._withdraw_pending("stale: files changed after it was made")
+            self._save()
+            raise StaleProposal(
+                f"{proposal.id} is stale: files changed after it was proposed; "
+                "continue the session to plan again"
+            )
+        self.state.approvals.append(
+            ApprovalRecord(
+                proposal_id=proposal.id,
+                stage=proposal.stage,
+                decision="approved",
+                actor=actor.label,
+                actor_kind=actor.kind.value,
+                at=now(),
+                operations_sha256=_digest(proposal.operations),
+                drafts_fingerprint=proposal.drafts_fingerprint,
+            )
+        )
+        self.state.say("user", "approval", f"{actor.label} approved {proposal.id}.")
+        stage = proposal.stage
+        self.state.current_stage = stage
+        self.state.stages[stage].status = StageStatus.EXECUTING
+        failure = await self._execute(stage, proposal.operations, actor)
+        proposal.status = "applied" if failure is None else "failed"
+        self._store_proposal(proposal)
+        self.state.pending = None
+        if failure is not None:
+            self.state.stages[stage].status = StageStatus.VALIDATION_FAILED
+            self.state.say(
+                "system",
+                "failure",
+                f"Applying {proposal.id} failed and was rolled back: {failure}",
+                stage=stage,
+            )
+            await self._plan_stage(stage, issues=[failure])
+            self._save()
+            return self.state
+        self.state.add_evidence(
+            f"{actor.label} approved: {proposal.summary}",
+            EvidenceStatus.HUMAN_CONFIRMED,
+            [proposal.id],
+            stage,
+        )
+        result = gate(stage, self.root)
+        if result.passed:
+            self._complete(stage, result)
+            self._save()
+            return await self.advance()
+        record = self.state.stages[stage]
+        record.status = StageStatus.VALIDATION_FAILED
+        record.issues = list(result.issues)
+        self.state.say(
+            "system",
+            "validation",
+            f"{spec(stage).title} validation after the change: "
+            + "; ".join(result.issues[:10]),
+            stage=stage,
+        )
+        if record.attempts < self.state.policy.budgets.max_stage_attempts:
+            record.status = StageStatus.REPAIRING
+            await self._plan_stage(stage, issues=list(result.issues))
+        else:
+            self._await_input(
+                stage,
+                f"{spec(stage).title} still fails validation; tell me how to proceed.",
+            )
+        self._save()
+        return self.state
+
+    async def object(self, text: str, actor: Actor) -> SessionState:
+        """Investigate the user's objection; never treat it as approval."""
+        self._prepare()
+        proposal = self.state.pending
+        if proposal is None:
+            self._save()
+            raise SessionError(
+                "there is no proposal to object to; ask a question instead"
+            )
+        self.state.approvals.append(
+            ApprovalRecord(
+                proposal_id=proposal.id,
+                stage=proposal.stage,
+                decision="objected",
+                actor=actor.label,
+                actor_kind=actor.kind.value,
+                at=now(),
+                operations_sha256=_digest(proposal.operations),
+                drafts_fingerprint=proposal.drafts_fingerprint,
+                note=text[:4000],
+            )
+        )
+        self.state.say("user", "objection", text, stage=proposal.stage)
+        instruction = objection_instruction(self.root, self.state, proposal, text)
+        revised, outcome = await self._plan(
+            proposal.stage, "objection", instruction, revision=proposal.revision + 1
+        )
+        assessment = outcome.assessment
+        if assessment:
+            self.state.say(
+                "agent",
+                "assessment",
+                f"Assessment: {assessment.get('assessment')}. "
+                f"{assessment.get('explanation', '')}",
+                stage=proposal.stage,
+                data=assessment,
+            )
+            self.state.add_evidence(
+                f"Objection assessed as {assessment.get('assessment')}: "
+                f"{assessment.get('explanation', '')}",
+                EvidenceStatus.STATICALLY_INFERRED,
+                [str(item) for item in assessment.get("evidence") or []],
+                proposal.stage,
+            )
+        else:
+            self.state.say(
+                "system",
+                "assessment_missing",
+                "The agent did not record an assessment of the objection.",
+                stage=proposal.stage,
+            )
+        if revised is not None:
+            proposal.status = "superseded"
+            self._store_proposal(proposal)
+        else:
+            self.state.pending = proposal
+            self.state.status = SessionStatus.AWAITING_APPROVAL
+            self.state.stages[proposal.stage].status = StageStatus.NEEDS_APPROVAL
+        self._save()
+        return self.state
+
+    async def reply(self, text: str, actor: Actor) -> SessionState:
+        """Answer the agent's question and let it plan the stage again."""
+        self._prepare()
+        if self.state.pending is not None:
+            self._save()
+            raise SessionError(
+                "a proposal is waiting: approve it, object to it or ask about it"
+            )
+        if self.state.mode is not InteractionMode.ASSISTED:
+            self._save()
+            raise SessionError("replies are part of AI-assisted sessions")
+        self.state.say("user", "reply", f"{actor.label}: {text}")
+        stage = self._next_stage()
+        if (
+            stage is None
+            or spec(stage).deterministic
+            or stage
+            in {
+                Stage.DISCOVER,
+                Stage.BUILD,
+            }
+        ):
+            self.state.status = SessionStatus.ACTIVE
+            self._save()
+            return await self.advance()
+        record = self.state.stages[stage]
+        record.status = StageStatus.PENDING
+        record.attempts = 0
+        self.state.status = SessionStatus.ACTIVE
+        self.state.current_stage = stage
+        record.attempts += 1
+        instruction = (
+            stage_instruction(self.root, self.state, stage, attempt=record.attempts)
+            + "\n\nThe user's guidance:\n"
+            + text
+        )
+        proposal, outcome = await self._plan(stage, "plan", instruction)
+        if proposal is None:
+            if outcome.blockers:
+                self._block(stage, record.issues, outcome.blockers, [])
+            self._await_input(
+                stage,
+                "I still could not propose a sound change. "
+                + "; ".join(str(item.get("decision")) for item in outcome.blockers),
+            )
+        self._save()
+        return self.state
+
+    async def ask(self, text: str, actor: Actor) -> str:
+        """Answer a question within the session without changing anything."""
+        self._prepare()
+        self.state.say("user", "question", text, stage=self.state.current_stage)
+        toolbox = self._toolbox(
+            ToolMode.OBSERVE,
+            self.state.current_stage,
+            set(READ_OPERATIONS),
+            {"record_evidence"},
+        )
+        context = ""
+        if self.state.pending is not None:
+            context = "\n\nThe current proposal is:\n" + proposal_text(
+                self.state.pending
+            )
+        outcome = await self._turn(
+            "question",
+            self.state.current_stage,
+            f"Objective: {self.state.objective}{context}\n\nThe user asks: {text}",
+            toolbox,
+        )
+        self._record_outcome(self.state.current_stage, outcome)
+        self._save()
+        return "\n\n".join(outcome.messages) or "The agent gave no answer."
+
+    # -------------------------------------------------------- autonomous mode
+
+    async def _autonomous_layer(self, stage: Stage) -> None:
+        record = self.state.stages[stage]
+        checkpoint = self.store.checkpoint(self.state, stage, "before autonomous work")
+        previous: tuple[str, tuple[str, ...]] | None = None
+        result = gate(stage, self.root)
+        outcome = TurnOutcome()
+        attempted: list[str] = []
+        while record.attempts < self.state.policy.budgets.max_stage_attempts:
+            if self._cancel.is_set():
+                return
+            record.attempts += 1
+            record.status = (
+                StageStatus.EXECUTING if record.attempts == 1 else StageStatus.REPAIRING
+            )
+            self.state.transaction = Transaction(
+                id=f"transaction-{stage.value}-{record.attempts}",
+                stage=stage,
+                checkpoint=checkpoint.id,
+                started_at=now(),
+                operations=["agent turn"],
+            )
+            self.store.save(self.state)
+            toolbox = self._toolbox(
+                ToolMode.EXECUTE,
+                stage,
+                set(READ_OPERATIONS) | set(spec(stage).operations),
+                set(_EXECUTE_CONTROLS),
+            )
+            instruction = stage_instruction(
+                self.root,
+                self.state,
+                stage,
+                issues=list(result.issues),
+                attempt=record.attempts,
+            )
+            outcome = await self._turn("execute", stage, instruction, toolbox)
+            self.state.transaction = None
+            self._record_outcome(stage, outcome)
+            attempted.extend(outcome.executed)
+            result = gate(stage, self.root)
+            if result.passed:
+                self._complete(stage, result)
+                self.store.save(self.state)
+                return
+            record.issues = list(result.issues)
+            signature = (
+                drafts_fingerprint(self.root, include_reviews=False),
+                tuple(sorted(result.issues)),
+            )
+            if outcome.blockers or outcome.budget_exhausted or signature == previous:
+                if signature == previous:
+                    record.notes.append(
+                        "stopped retrying: no progress since the last attempt"
+                    )
+                break
+            previous = signature
+            self.store.save(self.state)
+        self._block(
+            stage,
+            result.issues,
+            outcome.blockers,
+            [*attempted, f"validate_layer({LAYER_FOR_STAGE[stage]})"],
+        )
+
+    async def _run_autonomous(self) -> SessionState:
+        state = self.state
+        if not state.policy.approved_by:
+            raise SessionError("autonomous mode needs a person to approve its scope")
+        state.status = SessionStatus.RUNNING
+        self._save()
+        with self.store.mutation_lock(state.id):
+            self._locked = True
+            try:
+                await self._autonomous_loop()
+            finally:
+                self._locked = False
+        if self._cancel.is_set() and state.status is not SessionStatus.COMPLETED:
+            state.status = SessionStatus.PAUSED
+            state.say(
+                "system", "paused", "Stopped at your request; resume to continue."
+            )
+        self._save()
+        return state
+
+    async def _autonomous_loop(self) -> None:
+        state = self.state
+        while not self._cancel.is_set():
+            if state.usage.tool_calls >= state.policy.budgets.max_tool_calls:
+                state.say(
+                    "system",
+                    "budget",
+                    "The tool-call budget is used up; stopping safely.",
+                )
+                for remaining in ORDER:
+                    record = state.stages[remaining]
+                    if record.status not in {
+                        StageStatus.COMPLETED,
+                        StageStatus.BLOCKED,
+                    } and remaining not in {Stage.VERIFY, Stage.REPORT}:
+                        self._block(
+                            remaining,
+                            record.issues,
+                            [
+                                {
+                                    "decision": "not attempted: the session's "
+                                    "budget ran out",
+                                    "suggested_resolution": "resume with a larger "
+                                    "budget",
+                                }
+                            ],
+                            [],
+                        )
+                break
+            stage = self._next_stage()
+            state.current_stage = stage
+            if stage is None:
+                break
+            record = state.stages[stage]
+            record.started_at = record.started_at or now()
+            if stage is Stage.VALIDATE:
+                self._validate_stage()
+            elif stage is Stage.VERIFY:
+                state.report = {"results": self._verify_stage()}
+            elif stage is Stage.REPORT:
+                break
+            elif (result := gate(stage, self.root)).passed:
+                self._complete(stage, result, "already satisfied by the current files")
+            elif stage is Stage.DISCOVER:
+                failure = await self._execute(
+                    stage,
+                    [PlannedOperation(tool="initialise_drafts", arguments={})],
+                    None,
+                )
+                after = gate(stage, self.root)
+                if failure is None and after.passed:
+                    self._complete(stage, after)
+                else:
+                    self._block(stage, after.issues, [], ["initialise_drafts"])
+            elif stage is Stage.BUILD:
+                if not state.policy.granted(Permission.BUILD):
+                    self._block(
+                        stage,
+                        (),
+                        [
+                            {
+                                "decision": "Publishing into splice/ needs the build "
+                                "permission, which this policy does not grant",
+                                "artefact": "splice/",
+                                "suggested_resolution": "run `nf-splice build all` "
+                                "or resume with the build permission",
+                            }
+                        ],
+                        [],
+                    )
+                else:
+                    record.attempts += 1
+                    failure = await self._execute(
+                        stage,
+                        [PlannedOperation(tool="build_bundle", arguments={})],
+                        None,
+                    )
+                    after = gate(stage, self.root)
+                    if failure is None and after.passed:
+                        self._complete(stage, after)
+                    else:
+                        self._block(
+                            stage,
+                            [failure] if failure else after.issues,
+                            [],
+                            ["build_bundle", "validate_bundle"],
+                        )
+            else:
+                await self._autonomous_layer(stage)
+            self.store.save(state)
+        if not self._cancel.is_set():
+            self._finish()
+
+    # -------------------------------------------------------- control
+
+    def _require_idle(self) -> None:
+        if self.state.transaction is not None:
+            raise SessionError(
+                "an action is being applied; wait for it to finish before changing "
+                "the session"
+            )
+
+    def pause(self, actor: Actor) -> SessionState:
+        self._require_idle()
+        self.state.status = SessionStatus.PAUSED
+        self.state.say("user", "pause", f"{actor.label} paused the session.")
+        self._save()
+        return self.state
+
+    def cancel(self, actor: Actor) -> SessionState:
+        self._require_idle()
+        self._withdraw_pending("the session was cancelled")
+        self.state.status = SessionStatus.CANCELLED
+        self.state.say("user", "cancel", f"{actor.label} cancelled the session.")
+        self.state.report = build_report(
+            self.root,
+            self.store,
+            self.state,
+            (self.state.report or {}).get("results"),
+        )
+        self._save()
+        return self.state
+
+    def switch_mode(
+        self,
+        mode: InteractionMode,
+        actor: Actor,
+        *,
+        policy: ExecutionPolicy | None = None,
+    ) -> SessionState:
+        """Change who drives the work; the draft files and history are kept."""
+        self._require_idle()
+        self._prepare()
+        state = self.state
+        if state.status is SessionStatus.CANCELLED:
+            raise SessionError("a cancelled session cannot be resumed")
+        if mode is not InteractionMode.MANUAL and actor.kind is not ActorKind.HUMAN:
+            raise SessionError("switching to an AI mode needs a person's actor label")
+        previous = state.mode
+        if policy is not None:
+            policy.approved_by = actor.label
+            policy.approved_at = now()
+            state.policy = policy
+        elif mode is InteractionMode.AUTONOMOUS:
+            state.policy.approved_by = actor.label
+            state.policy.approved_at = now()
+        if mode is InteractionMode.MANUAL:
+            self._withdraw_pending("you switched to manual mode")
+            state.status = SessionStatus.PAUSED
+        else:
+            if (
+                previous is not InteractionMode.ASSISTED
+                and mode is InteractionMode.ASSISTED
+            ):
+                for stage in ORDER:
+                    record = state.stages[stage]
+                    if record.status is StageStatus.BLOCKED:
+                        record.status = StageStatus.PENDING
+                        record.attempts = 0
+            if mode is InteractionMode.AUTONOMOUS:
+                self._withdraw_pending("autonomous mode decides without proposals")
+                for stage in ORDER:
+                    record = state.stages[stage]
+                    if record.status in {
+                        StageStatus.BLOCKED,
+                        StageStatus.NEEDS_APPROVAL,
+                        StageStatus.VALIDATION_FAILED,
+                        StageStatus.REPAIRING,
+                    }:
+                        record.status = StageStatus.PENDING
+                        record.attempts = 0
+            for later in (Stage.VERIFY, Stage.REPORT):
+                if state.stages[later].status is StageStatus.COMPLETED:
+                    state.stages[later].status = StageStatus.PENDING
+            state.status = SessionStatus.ACTIVE
+        state.mode = mode
+        state.mode_history.append(
+            {
+                "from": previous.value,
+                "to": mode.value,
+                "at": now(),
+                "actor": actor.label,
+            }
+        )
+        state.say(
+            "user",
+            "mode",
+            f"{actor.label} switched the session from {previous.value} to "
+            f"{mode.value}.",
+        )
+        self._save()
+        return state
+
+    def rollback(self, checkpoint_id: str, actor: Actor) -> SessionState:
+        """Restore ``splice/`` to a checkpoint (a person's explicit decision)."""
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError("rolling back needs a person's actor label")
+        self._require_idle()
+        with self.store.mutation_lock(self.state.id):
+            self.store.restore(self.state, checkpoint_id)
+        self._withdraw_pending(f"rolled back to {checkpoint_id}")
+        self._recheck_completed()
+        self.state.say("user", "rollback", f"{actor.label} restored {checkpoint_id}.")
+        self._save()
+        return self.state
+
+    def report(self) -> dict[str, Any]:
+        """The latest report, computing a provisional one when needed."""
+        if self.state.report and "completion" in self.state.report:
+            return self.state.report
+        return build_report(
+            self.root, self.store, self.state, (self.state.report or {}).get("results")
+        )

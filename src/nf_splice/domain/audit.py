@@ -18,8 +18,8 @@ class ChangeOrigin(str, Enum):
     MANUAL_CLI = "manual_cli"
     MANUAL_TUI = "manual_tui"
     EXTERNAL_EDIT = "external_edit"
-    AGENT_SUGGESTION = "agent_suggestion"
-    AGENT_PROPOSED_BATCH = "agent_proposed_batch"
+    AGENT_ASSISTED = "agent_assisted"
+    AGENT_AUTONOMOUS = "agent_autonomous"
     AUTOMATION = "automation"
     DISCOVERY = "discovery"
 
@@ -31,6 +31,7 @@ class ApprovalStatus(str, Enum):
     PROPOSED = "proposed"
     REJECTED = "rejected"
     AUTOMATION_POLICY = "automation_policy"
+    AGENT_POLICY = "agent_policy"
     NOT_REQUIRED = "not_required"
 
 

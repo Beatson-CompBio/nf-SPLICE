@@ -13,9 +13,8 @@ from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Header, ListView, Markdown, Static
 
-from nf_splice.agents.orchestration import proposal_book_path
 from nf_splice.agents.protocol import AgentProvider
-from nf_splice.agents.tools import ProposalBook
+from nf_splice.agents.state import InteractionMode
 from nf_splice.domain.audit import ChangeOrigin
 from nf_splice.interfaces.tui.screens import VIEWS
 from nf_splice.interfaces.tui.state import (
@@ -59,7 +58,7 @@ class HelpScreen(ModalScreen[None]):
 
 
 class NfSpliceApp(App[None]):
-    """Step-by-step authoring of a SPLICE bundle without AI or manual editing."""
+    """Manual, AI-assisted or autonomous authoring of a SPLICE bundle."""
 
     TITLE = "nf-splice"
     SUB_TITLE = "Guided SPLICE bundle wizard"
@@ -70,7 +69,7 @@ class NfSpliceApp(App[None]):
         Binding("escape", "step_back", "Back"),
         Binding("ctrl+d", "defer", "Finish later"),
         Binding("ctrl+r", "reload", "Reload files"),
-        Binding("ctrl+a", "assistant", "Assistant"),
+        Binding("ctrl+a", "assistant", "Ask AI"),
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
@@ -82,6 +81,7 @@ class NfSpliceApp(App[None]):
         actor: str | None = None,
         start: str | None = None,
         agent_provider: AgentProvider | None = None,
+        allow_remote_model: bool = False,
     ) -> None:
         super().__init__()
         self.repository = Path(repository).resolve()
@@ -95,11 +95,7 @@ class NfSpliceApp(App[None]):
         self.inspect_only = False
         self.busy = False
         self.agent_provider = agent_provider
-        self.agent_book = ProposalBook.load(
-            proposal_book_path(self.sessions.directory, self.repository)
-            if self.sessions.directory is not None
-            else None
-        )
+        self.allow_remote_model = allow_remote_model
 
     # ------------------------------------------------------------ layout
 
@@ -276,9 +272,16 @@ class NfSpliceApp(App[None]):
         )
 
     def action_assistant(self) -> None:
-        from nf_splice.interfaces.tui.screens.agent import AgentScreen
+        """Ask AI: read-only contextual help on any step."""
+        from nf_splice.interfaces.tui.screens.ask import AskScreen
 
-        self.push_screen(AgentScreen(self))
+        self.push_screen(AskScreen(self))
+
+    def open_session(self, mode: InteractionMode) -> None:
+        """Open the AI-assisted or autonomous session view."""
+        from nf_splice.interfaces.tui.screens.session import SessionScreen
+
+        self.push_screen(SessionScreen(self, mode))
 
     def resume(self) -> None:
         self.show_step(resume_step(self.snapshot, visited=self._visited()))

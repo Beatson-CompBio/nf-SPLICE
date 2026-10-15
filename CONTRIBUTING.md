@@ -64,8 +64,22 @@ NF_SPLICE_UPDATE_SNAPSHOTS=1 pytest tests/test_tui.py
 
 Substantive changes need an architecture decision record in
 [`docs/ARCHITECTURE_DECISIONS.md`](docs/ARCHITECTURE_DECISIONS.md), written
-with the change, and a row in the release ledger. The developer contract for
-assistant integrations is in [`docs/AGENTS.md`](docs/AGENTS.md).
+with the change, and a row in the release ledger. Coding agents (and people)
+should read [`AGENTS.md`](AGENTS.md); the run-time agent contract is in
+[`docs/AGENTS.md`](docs/AGENTS.md).
+
+## Agent skills
+
+The canonical skills are in `skills/<name>/SKILL.md`. After changing one,
+copy it into the package so the runtime and the wheel use the same text:
+
+```bash
+cp skills/nf-splice-authoring/SKILL.md src/nf_splice/agents/skills/nf-splice-authoring/SKILL.md
+```
+
+`tests/test_skills.py` fails when the two copies differ, a section is
+missing, or a skill names a tool, value, command or path that does not
+exist.
 
 ## Writing documentation
 

@@ -1,4 +1,11 @@
-"""Provider-neutral agent interface (no provider SDK is imported here)."""
+"""Provider-neutral agent protocol (no provider SDK is imported here).
+
+The session engine owns stages, permissions, execution, validation and
+persistence. A provider only runs *turns*: it receives an instruction and a
+tool invoker, may call the offered tools, and streams events back. Claude is
+the first concrete adapter; Codex, OpenCode or local models implement the
+same protocol in ``nf_splice.agents.providers`` without touching the engine.
+"""
 
 from __future__ import annotations
 
@@ -9,31 +16,21 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
-class AgentMode(str, Enum):
-    """What an agent session may do. ``off`` is the default everywhere."""
-
-    OFF = "off"
-    ASK = "ask"
-    SUGGEST = "suggest"
-    DRAFT = "draft"
-    APPLY = "apply"
-
-
 class EventKind(str, Enum):
-    """Kinds of streamed session events."""
+    """Kinds of streamed, provider-independent events."""
 
     MESSAGE = "message"
     TOOL_CALL = "tool_call"
     TOOL_RESULT = "tool_result"
-    PROPOSAL = "proposal"
     DENIED = "denied"
+    USAGE = "usage"
     ERROR = "error"
     DONE = "done"
 
 
 @dataclass(frozen=True, slots=True)
 class AgentEvent:
-    """One streamed, provider-independent event."""
+    """One streamed event."""
 
     kind: EventKind
     text: str = ""
@@ -42,27 +39,37 @@ class AgentEvent:
 
 @dataclass(frozen=True, slots=True)
 class ProviderCapabilities:
-    """What a provider implementation supports."""
+    """What a provider supports; the engine checks these before relying on them.
+
+    ``tool_calling`` is required for assisted and autonomous sessions and for
+    contextual help. ``continuation`` means the provider can resume its own
+    conversation across processes from a stored reference; without it the
+    engine sends a summary of the session instead.
+    """
 
     name: str
     remote: bool
+    tool_calling: bool
     streaming: bool
     cancellation: bool
     budgets: bool
+    continuation: bool
 
 
-@dataclass(frozen=True, slots=True)
-class SessionLimits:
-    """Resource controls; providers enforce what they support."""
+class ProviderUnavailable(RuntimeError):
+    """The provider's optional dependency is missing or cannot start."""
 
-    max_turns: int = 12
-    max_budget_usd: float | None = None
-    timeout_seconds: float = 300.0
-    model: str | None = None
+
+class CapabilityError(RuntimeError):
+    """The provider lacks a capability the requested mode needs."""
+
+
+class ConsentRequired(PermissionError):
+    """Repository context would go to a remote model without consent."""
 
 
 class ToolInvoker(Protocol):
-    """Deterministic nf-splice tool mediation used by every provider."""
+    """Deterministic nf-splice tool mediation offered to a provider turn."""
 
     def schemas(self) -> list[dict[str, Any]]: ...
 
@@ -70,28 +77,61 @@ class ToolInvoker(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class AgentContext:
-    """Bounded context handed to a provider session."""
+class TurnRequest:
+    """One bounded unit of provider work.
 
-    repository: Path
-    mode: AgentMode
-    tools: ToolInvoker
+    ``purpose`` is one of ``plan`` (stage changes for approval), ``execute``
+    (apply routine decisions under an autonomous policy), ``objection``,
+    ``question`` or ``help``. Limits apply to this turn only.
+    """
+
+    purpose: str
+    instruction: str
     system_prompt: str
-    limits: SessionLimits = field(default_factory=SessionLimits)
+    tools: ToolInvoker
+    stage: str | None = None
+    max_turns: int = 30
+    timeout_seconds: float = 600.0
+    max_budget_usd: float | None = None
+    model: str | None = None
+    conversation_ref: str | None = None
 
 
-class AgentSession(Protocol):
-    """A running conversation that streams events and can be cancelled."""
+class ProviderSession(Protocol):
+    """A provider conversation for one repository."""
 
-    def run(self, prompt: str) -> AsyncIterator[AgentEvent]: ...
+    @property
+    def conversation_ref(self) -> str | None: ...
+
+    def turn(self, request: TurnRequest) -> AsyncIterator[AgentEvent]: ...
 
     async def cancel(self) -> None: ...
 
 
 class AgentProvider(Protocol):
-    """A model provider adapter; adding one never changes core services."""
+    """A model provider adapter; adding one never changes the engine."""
 
     @property
     def capabilities(self) -> ProviderCapabilities: ...
 
-    def start(self, context: AgentContext) -> AgentSession: ...
+    def open(self, repository: Path) -> ProviderSession: ...
+
+
+def require_tool_calling(provider: AgentProvider) -> None:
+    """Fail clearly instead of silently dropping approval or validation."""
+    capabilities = provider.capabilities
+    if not capabilities.tool_calling:
+        raise CapabilityError(
+            f"provider {capabilities.name!r} cannot call structured tools, so it "
+            "cannot run nf-splice sessions or contextual help"
+        )
+
+
+def require_consent(provider: AgentProvider, allow_remote_model: bool) -> None:
+    """Refuse to send repository context to a remote model without consent."""
+    capabilities = provider.capabilities
+    if capabilities.remote and not allow_remote_model:
+        raise ConsentRequired(
+            f"{capabilities.name} sends repository context to a remote model; "
+            "give explicit consent with --allow-remote-model"
+        )

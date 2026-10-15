@@ -17,18 +17,39 @@ files in `splice/` that tells the platform what the pipeline is, which inputs
 it accepts, which outputs it produces, which software it needs and how to run
 it.
 
+**Agentic AI is built in.** An agent can do the integration work for you:
+read your Nextflow code, trace where every output is published, fill in and
+check each part of the bundle, and build it, using nf-splice's own validated
+operations. Work with it stage by stage, approving each change, or let it run
+unattended within a scope you approve. Or do it all yourself: AI is optional.
+
+## Three ways to work
+
+| | You | The agent |
+| --- | --- | --- |
+| **Manual** | Review each step in the wizard or with commands | Answers questions (*Ask AI*); never changes anything |
+| **AI-assisted** | Approve, question or object to each proposal | Proposes each stage with its diff and validation, then waits |
+| **Autonomous** | Approve the scope once, read the report | Does the whole integration and reports what is done or blocked |
+
+You can switch between them at any point; the work done so far is kept.
+
 ## Features
 
-- **Guided review.** Work through each part of the bundle in a terminal
-  wizard, with commands, or in your own editor. All three can be mixed.
+- **Agentic integration.** AI-assisted sessions and autonomous runs drive the
+  same operations you would use, with every change validated by nf-splice,
+  bounded permissions, checkpoints and a full audit trail.
+- **Every output route.** nf-splice traces Nextflow publication rules across
+  alternative and optional routes, so the output catalogue covers what the
+  pipeline *may* publish, not only what one run produced.
 - **Nothing is guessed.** Values found in your repository are suggestions
-  until you confirm them; open questions are listed until resolved.
+  until confirmed; open questions are listed until resolved; a model's word
+  is never treated as validation.
 - **Safe publishing.** Only valid bundles are published, existing files are
   never replaced silently, and an interrupted publication can be recovered.
 - **Standard formats.** Five versioned JSON contracts based on JSON Schema,
   plus an RO-Crate, documented key by key for tool developers.
-- **Works offline.** No network, Nextflow installation or AI account is
-  needed. AI assistance is optional and every suggestion needs approval.
+- **Works offline.** Without AI, no network, Nextflow installation or AI
+  account is needed.
 
 ## Install
 
@@ -41,26 +62,28 @@ nf-splice --version
 ```
 
 To try a branch before it is merged, add `@<branch>` to the address, for
-example `...nf-SPLICE.git@wip/nf-splice-v0.3.0`. For optional AI assistance,
-see [AI assistance](docs/guide/ai-assistant.md).
+example `...nf-SPLICE.git@wip/nf-splice-v0.3.0`. To use agentic AI, install
+the `claude` extra; see [Agentic AI](docs/guide/agentic-ai.md).
 
 ## Quick start
 
-From the root of your pipeline repository:
+From the root of your pipeline repository, either review it yourself:
 
 ```bash
 nf-splice init --accept-detected
 nf-splice tui
 ```
 
-`init` creates draft files from your repository. `tui` opens the wizard,
-which takes you through every review step to a published bundle. To work
-with commands instead:
+or let an agent propose each stage for your approval:
 
 ```bash
-nf-splice status
-nf-splice plan
-nf-splice build all
+nf-splice --actor "Your Name" session start --mode assisted --provider claude --allow-remote-model
+```
+
+or let it do the whole integration unattended and report back:
+
+```bash
+nf-splice --actor "Your Name" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results
 ```
 
 Follow the [Getting started guide](docs/guide/getting-started.md) for the
@@ -71,6 +94,7 @@ full walkthrough.
 | | |
 | --- | --- |
 | [User guide](docs/USAGE.md) | Everything you need to publish and maintain a bundle |
+| [Agentic AI](docs/guide/agentic-ai.md) | Ask AI, AI-assisted sessions and autonomous integration |
 | [Command reference](docs/reference/cli.md) | Every command and option |
 | [Building on SPLICE bundles](docs/CONTRACTS.md) | File formats for platform and tool developers |
 | [Schema reference](docs/schemas/README.md) | Every key of every file |
@@ -80,12 +104,14 @@ full walkthrough.
 
 nf-splice never publishes your Git e-mail address, never writes accounts,
 credentials or private paths into a bundle, and never contacts the network
-or an AI service unless you ask it to. See
+or an AI service unless you ask it to. Agent sessions stay in your
+repository's ignored `.nf-splice-local/` directory. See
 [Attribution and privacy](docs/guide/provenance.md#attribution-and-privacy).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and, for coding agents,
+[AGENTS.md](AGENTS.md).
 
 ## Licence
 

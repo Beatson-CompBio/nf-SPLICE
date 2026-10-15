@@ -1,4 +1,4 @@
-"""Welcome: create, resume or inspect only."""
+"""Welcome: choose how to work, then create, resume or inspect."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Button, Markdown
 
+from nf_splice.agents.state import InteractionMode
 from nf_splice.interfaces.tui.state import WizardSnapshot
 from nf_splice.interfaces.tui.widgets import StepView
 from nf_splice.services.workspace import initialise
@@ -21,10 +22,23 @@ class WelcomeView(StepView):
 
     def compose(self) -> ComposeResult:
         yield Markdown("", id="welcome-summary")
+        yield Markdown(
+            "**Manual**: review each step yourself. Press Ctrl+A on any step to "
+            "ask AI a question; it never changes anything.",
+            id="welcome-manual",
+        )
         with Horizontal(classes="row"):
             yield Button("Create new", id="welcome-create", variant="primary")
             yield Button("Resume existing", id="welcome-resume")
             yield Button("Inspect only", id="welcome-inspect")
+        yield Markdown(
+            "**Agentic AI**: let an agent do the integration work, either with "
+            "you approving each stage, or unattended within a scope you approve.",
+            id="welcome-agentic",
+        )
+        with Horizontal(classes="row"):
+            yield Button("AI-assisted session", id="welcome-assisted")
+            yield Button("Autonomous integration", id="welcome-autonomous")
 
     def refresh_view(self, snapshot: WizardSnapshot) -> None:
         drafts = (
@@ -48,6 +62,12 @@ class WelcomeView(StepView):
         elif event.button.id == "welcome-resume":
             event.stop()
             app.resume()
+        elif event.button.id == "welcome-assisted":
+            event.stop()
+            app.open_session(InteractionMode.ASSISTED)
+        elif event.button.id == "welcome-autonomous":
+            event.stop()
+            app.open_session(InteractionMode.AUTONOMOUS)
         elif event.button.id == "welcome-inspect":
             event.stop()
             app.inspect_only = True

@@ -123,7 +123,7 @@ def test_direct_edits_count_as_authored_and_survive_tool_patches(
         {"title": "Example"},
         ChangeContext(
             actor=Actor(label="assistant"),
-            origin=ChangeOrigin.AGENT_SUGGESTION,
+            origin=ChangeOrigin.AGENT_ASSISTED,
             approved=False,
         ),
         write=False,

@@ -1,7 +1,9 @@
 # Getting started
 
-This page takes you from installation to your first published SPLICE bundle.
-Allow about thirty minutes for a typical Nextflow pipeline.
+This page takes you from installation to your first published SPLICE bundle,
+reviewing it yourself. Allow about thirty minutes for a typical Nextflow
+pipeline. To let an agent do the work with you or for you instead, see
+[Agentic AI](agentic-ai.md).
 
 ## Requirements
 
@@ -10,7 +12,7 @@ Allow about thirty minutes for a typical Nextflow pipeline.
 - A Nextflow pipeline repository, ideally with a `nextflow_schema.json`
 
 You do not need Nextflow, Docker or an AI account. After installation, nf-splice
-works offline.
+works offline unless you choose to use agentic AI.
 
 ## Install
 
@@ -100,6 +102,10 @@ your repository: the drafts record the reviewed decisions for next time.
 
 ## Next steps
 
+- [Agentic AI](agentic-ai.md) shows how an agent can do this work with you,
+  or for you.
+- [Output routes and evidence](output-coverage.md) explains how to check
+  outputs across alternative routes with `nf-splice assess`.
 - [Publishing and updating](publishing.md) explains releasing a new version.
 - [Job outputs](job-outputs.md) explains what happens after each job runs.
 - [Core concepts](concepts.md) explains drafts, layers and review in more

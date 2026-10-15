@@ -14,9 +14,8 @@ from typing import Any
 import pytest
 
 from layer_fixtures import ADA, ready_repository, write_pipeline
-from nf_splice.agents import AgentMode, ProposalBook, approve, reject, run_agent
-from nf_splice.agents.providers.mock import ScriptedProvider
-from nf_splice.agents.tools import ProposalStatus
+from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
+from nf_splice.agents.providers.scripted import ScriptedProvider
 from nf_splice.contracts import families
 from nf_splice.drafts import DraftStoreError, read_yaml
 from nf_splice.layers.outputs import (
@@ -56,42 +55,42 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
 
     reject_output(manual, candidate, "Internal QC only", ADA)
 
-    book = ProposalBook()
-    result = asyncio.run(
-        run_agent(
-            assisted,
-            ScriptedProvider(
-                [
-                    {"tool": "list_output_candidates"},
-                    {
-                        "tool": "propose_output_review",
-                        "arguments": {
-                            "candidate_id": candidate,
-                            "action": "accept",
-                            "output": {},
-                            "rationale": "x",
+    engine = SessionEngine.create(
+        assisted,
+        mode=InteractionMode.ASSISTED,
+        provider=ScriptedProvider(
+            [
+                {
+                    "stage": "outputs",
+                    "purpose": "plan",
+                    "steps": [
+                        {"tool": "list_pending", "arguments": {"layer": "outputs"}},
+                        {
+                            "tool": "reject_output",
+                            "arguments": {
+                                "candidate_id": candidate,
+                                "reason": "Internal QC only",
+                            },
                         },
-                    },
-                    {
-                        "tool": "propose_output_review",
-                        "arguments": {
-                            "candidate_id": candidate,
-                            "action": "reject",
-                            "reason": "Internal QC only",
-                            "rationale": "Not for users.",
+                        {
+                            "tool": "submit_stage_proposal",
+                            "arguments": {"summary": "Reject the internal QC file."},
                         },
-                    },
-                ]
-            ),
-            "review the new candidate",
-            mode=AgentMode.SUGGEST,
-            book=book,
-        )
+                    ],
+                }
+            ]
+        ),
+        objective="review the new candidate",
+        policy=ExecutionPolicy(),
+        actor=ADA.actor,
     )
-    proposal = next(
-        item for item in result.proposals if item.payload["action"] == "reject"
-    )
-    approve(assisted, book, proposal.id, ADA.actor)
+    asyncio.run(engine.advance())
+    assert engine.state.pending is not None
+    assert engine.state.pending.stage.value == "outputs"
+    asyncio.run(engine.approve(ADA.actor))
+    # The next proposal is the build, which this scenario performs manually.
+    assert engine.state.pending is not None
+    assert engine.state.pending.stage.value == "build"
     # External editor change to a draft, then validate/promote without import.
     for root in (manual, assisted):
         draft = root / "splice" / "drafts" / "bundle.draft.yaml"
@@ -110,13 +109,6 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
         promote(root, None, ADA)
         assert validate_bundle(root).valid
     assert _published(manual) == _published(assisted)
-    assert book.proposals[proposal.id].status in {
-        ProposalStatus.APPROVED,
-        ProposalStatus.APPLIED,
-    }
-    for other in [item for item in book.proposals.values() if item.id != proposal.id]:
-        reject(book, other.id, "superseded")
-        assert other.status is ProposalStatus.REJECTED
 
 
 def test_s04_preview_reflects_external_draft_edits(tmp_path: Path) -> None:

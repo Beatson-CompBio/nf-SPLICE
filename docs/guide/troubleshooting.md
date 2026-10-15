@@ -47,6 +47,31 @@ overwriting your edit. Resolve the field in the draft and repeat.
 **Publication was interrupted.** Run `nf-splice draft recover` to restore
 the previous bundle.
 
+## Agentic AI sessions
+
+**"is stale: files changed after it was proposed".** A draft or a pipeline
+source changed after the agent made its proposal, so the proposal was
+withdrawn. Run `nf-splice session continue` for a new proposal based on the
+current files.
+
+**"is changing this repository's drafts".** Another session is applying
+changes. Wait for it to finish, or pause it with `nf-splice session pause`.
+
+**"needs a person's actor label".** Approvals and session starts are
+recorded with your name. Pass `--actor "Your Name"` or set
+`NF_SPLICE_ACTOR`.
+
+**"sends repository context to a remote model".** Add
+`--allow-remote-model` to consent to using a remote AI provider.
+
+**"the Claude provider needs the optional extra".** Install nf-splice with
+the `claude` extra; see [Agentic AI](agentic-ai.md#install).
+
+**The run ended as partial.** Read `nf-splice session report`. Each blocker
+names the decision, the affected file and a suggestion. Resume with
+`nf-splice session resume --mode assisted` to resolve them with the agent,
+or fix the drafts yourself and run `nf-splice session continue`.
+
 ## Getting more detail
 
 ```bash

@@ -2,7 +2,8 @@
 
 `nf-splice tui` opens a step-by-step wizard in your terminal. It covers every
 layer, from creating the drafts to publishing the bundle, without editing
-files by hand and without AI.
+files by hand. It works without AI, and with a provider it also runs
+AI-assisted and autonomous sessions.
 
 ```bash
 nf-splice tui
@@ -15,11 +16,16 @@ Welcome → Repository → Identity → Inputs → Outputs → Components
         → Execution profiles → Provenance → Drafts → Readiness → Build → Done
 ```
 
-On the Welcome step, choose:
+On the Welcome step, choose how to work:
 
-- **Create new** to create drafts from your repository;
+- **Create new** to create drafts from your repository and review them
+  yourself;
 - **Resume existing** to continue from where you left off;
-- **Inspect only** to browse without writing anything.
+- **Inspect only** to browse without writing anything;
+- **AI-assisted session** to let an agent propose each stage for your
+  approval (see [AI-assisted sessions](assisted-sessions.md));
+- **Autonomous integration** to let an agent do the integration within a
+  scope you approve (see [Autonomous integration](autonomous.md)).
 
 The rail on the left shows each step's state: ✓ complete, ○ to do,
 ! blocked, » deferred, · locked. Visiting a step unlocks the next ones.
@@ -34,7 +40,7 @@ Build stays locked until every layer is ready.
 | Ctrl+D or **Finish later** | Defer the step. Publishing stays blocked. |
 | Ctrl+R | Reload all files from disk |
 | F1 | Help for the current step |
-| Ctrl+A | Assistant panel (optional) |
+| Ctrl+A | Ask AI: read-only help on the current step |
 | Ctrl+Q | Quit |
 
 In tables:
@@ -64,7 +70,13 @@ Start without a session:
 nf-splice tui --no-session
 ```
 
-## The assistant
+## Agentic AI in the wizard
 
-The assistant panel is optional and off unless you start the wizard with an
-assistant. See [AI assistance](ai-assistant.md).
+Start the wizard with a provider to enable Ask AI and the session views:
+
+```bash
+nf-splice tui --provider claude --allow-remote-model
+```
+
+Sessions started in the wizard use the same session files as the
+`nf-splice session` commands. See [Agentic AI](agentic-ai.md).

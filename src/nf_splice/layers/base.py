@@ -253,6 +253,10 @@ class ChangeContext:
             return ApprovalStatus.PROPOSED
         if self.origin is ChangeOrigin.AUTOMATION:
             return ApprovalStatus.AUTOMATION_POLICY
+        if self.origin is ChangeOrigin.AGENT_AUTONOMOUS:
+            # An unattended agent decision under a user-granted policy is never
+            # recorded as human review.
+            return ApprovalStatus.AGENT_POLICY
         return ApprovalStatus.APPROVED
 
 

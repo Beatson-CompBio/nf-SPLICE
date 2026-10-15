@@ -89,11 +89,16 @@ containers_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(containers_app, name="containers")
-agent_app = typer.Typer(
-    help="Optional AI assistance: tools, runs, proposals and human approval.",
+session_app = typer.Typer(
+    help="AI-assisted and autonomous integration sessions (agentic AI).",
     no_args_is_help=True,
 )
-app.add_typer(agent_app, name="agent")
+app.add_typer(session_app, name="session")
+skills_app = typer.Typer(
+    help="The nf-splice skills that guide AI agents.",
+    no_args_is_help=True,
+)
+app.add_typer(skills_app, name="skills")
 preview_app = typer.Typer(
     help="Show derived, non-authoritative previews of published files.",
     no_args_is_help=True,
@@ -1583,127 +1588,678 @@ def audit_show_command(
     typer.echo(json.dumps({"records": records}, indent=2))
 
 
-def _agent_book(repository: Path) -> Any:
-    from nf_splice.agents import ProposalBook
-    from nf_splice.agents.orchestration import proposal_book_path
-    from nf_splice.interfaces.tui.state import default_session_directory
+# ---------------------------------------------------------------- agentic AI
 
-    return ProposalBook.load(
-        proposal_book_path(default_session_directory(), repository)
+ProviderOption = Annotated[
+    str,
+    typer.Option(
+        "--provider",
+        help="AI provider: claude (needs the claude extra), or scripted (offline, "
+        "needs --script).",
+    ),
+]
+ScriptOption = Annotated[
+    Path | None,
+    _existing_path("JSON turn script for the offline scripted provider."),
+]
+AllowRemoteOption = Annotated[
+    bool,
+    typer.Option(
+        "--allow-remote-model",
+        help="Consent to sending repository context to a remote model.",
+    ),
+]
+SessionOption = Annotated[
+    str | None,
+    typer.Option("--session", help="Session ID; the most recent when omitted."),
+]
+ExampleOutputOption = Annotated[
+    list[Path] | None,
+    typer.Option(
+        "--example-output",
+        exists=True,
+        resolve_path=True,
+        help="Results of one completed run (directory, saved listing or output "
+        "index) the agent may read as evidence. Repeatable.",
+    ),
+]
+AllowOption = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--allow",
+        help="Grant an extra permission: overwrite, external_tools, run_nextflow "
+        "or network. Repeatable.",
+    ),
+]
+
+
+def _agent_errors() -> tuple[type[BaseException], ...]:
+    from nf_splice.agents import (
+        CapabilityError,
+        PolicyViolation,
+        ProviderUnavailable,
+        SessionError,
+    )
+
+    return (
+        SessionError,
+        PolicyViolation,
+        PermissionError,
+        CapabilityError,
+        ProviderUnavailable,
+        *_ERRORS,
     )
 
 
-@agent_app.command("tools")
-def agent_tools_command(
-    repository: RepositoryOption = Path("."),
-    mode: str = typer.Option("suggest", help="ask, suggest, draft or apply."),
-) -> None:
-    """Print the structured tool schemas available to an agent (offline)."""
-    from nf_splice.agents import AgentMode, AgentPolicy, AgentToolbox
-
-    policy = AgentPolicy(repository=repository, mode=AgentMode(mode))
-    typer.echo(dumps(AgentToolbox(repository, policy).schemas()))
-
-
-@agent_app.command("run")
-def agent_run_command(
-    prompt: Annotated[str, typer.Argument(help="What the assistant should help with.")],
-    repository: RepositoryOption = Path("."),
-    provider: str = typer.Option(..., help="claude, or scripted (requires --script)."),
-    mode: str = typer.Option("suggest", help="ask, suggest or draft."),
-    script: Annotated[
-        Path | None,
-        _existing_path("JSON script of steps for the offline scripted provider."),
-    ] = None,
-    allow_remote_model: bool = typer.Option(
-        False, help="Consent to sending bounded repository context to a remote model."
-    ),
-    model: str | None = typer.Option(None, help="Explicit provider model name."),
-    max_turns: int = typer.Option(12, help="Maximum agent turns."),
-    max_budget_usd: float | None = typer.Option(None, help="Spending cap (provider)."),
-) -> None:
-    """Run an assistant session; it can only propose, never apply."""
-    import asyncio
-
-    from nf_splice.agents import AgentMode, SessionLimits, run_agent
-    from nf_splice.agents.orchestration import dumps as dump_run
-
-    selected = AgentMode(mode)
-    if selected in {AgentMode.OFF, AgentMode.APPLY}:
-        raise typer.BadParameter("use ask, suggest or draft; approvals are human-only")
-    agent_provider: Any
-    if provider == "claude":
-        from nf_splice.agents.providers.claude import ClaudeProvider
-
-        agent_provider = ClaudeProvider()
-    elif provider == "scripted":
-        if script is None:
-            raise typer.BadParameter("--provider scripted requires --script")
-        from nf_splice.agents.providers.mock import ScriptedProvider
-
-        agent_provider = ScriptedProvider(
-            json.loads(script.read_text(encoding="utf-8"))
-        )
-    else:
-        raise typer.BadParameter("provider must be claude or scripted")
-    book = _agent_book(repository)
+def _agent_run(action: Callable[[], T]) -> T:
     try:
-        result = asyncio.run(
-            run_agent(
-                repository,
-                agent_provider,
-                prompt,
-                mode=selected,
-                book=book,
-                allow_remote=allow_remote_model,
-                limits=SessionLimits(
-                    max_turns=max_turns, max_budget_usd=max_budget_usd, model=model
-                ),
-            )
-        )
-    except (PermissionError, RuntimeError) as error:
+        return action()
+    except _agent_errors() as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
-    typer.echo(dump_run(result))
 
 
-@agent_app.command("proposals")
-def agent_proposals_command(repository: RepositoryOption = Path(".")) -> None:
-    """List agent proposals and their status."""
-    book = _agent_book(repository)
-    typer.echo(dumps([item.to_json() for item in book.proposals.values()]))
-
-
-@agent_app.command("approve")
-def agent_approve_command(
-    proposal: str,
-    repository: RepositoryOption = Path("."),
-) -> None:
-    """Approve (and apply) one proposal as the human actor (--actor)."""
-    from nf_splice.agents import approve
-
+def _human() -> Any:
     actor = resolve_actor(_STATE["actor"])
     if actor.kind is not ActorKind.HUMAN:
-        typer.echo("approval needs a human actor label (--actor)", err=True)
+        typer.echo(
+            "this needs a person's actor label: pass --actor NAME or set "
+            "NF_SPLICE_ACTOR",
+            err=True,
+        )
         raise typer.Exit(code=2)
-    book = _agent_book(repository)
-    result = _run(lambda: approve(repository, book, proposal, actor))
-    typer.echo(dumps(result.to_json()))
-    if result.status.value != "applied":
-        raise typer.Exit(code=2)
+    return actor
 
 
-@agent_app.command("reject")
-def agent_reject_command(
-    proposal: str,
-    reason: str = typer.Option(..., help="Why the proposal is rejected."),
+def _make_provider(name: str, script: Path | None, progress: Path | None = None) -> Any:
+    from nf_splice.agents.providers import provider_for
+
+    try:
+        return provider_for(name, script=script, progress=progress)
+    except (ValueError, OSError) as error:
+        raise typer.BadParameter(str(error)) from error
+
+
+def _open_engine(repository: Path, session: str | None) -> Any:
+    from nf_splice.agents import SessionEngine
+
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    record = engine.state.provider
+    name = "claude" if record.name == "claude-agent-sdk" else record.name
+    progress = engine.session_directory / "scripted-progress.json"
+    engine.provider = _make_provider(
+        name, Path(record.script) if record.script else None, progress
+    )
+    return engine
+
+
+def _policy(
+    examples: list[Path] | None,
+    allow: list[str] | None,
+    allow_remote_model: bool,
+    *,
+    max_tool_calls: int,
+    max_stage_attempts: int,
+    max_budget_usd: float | None,
+    model: str | None,
+    turn_timeout: float,
+) -> Any:
+    from nf_splice.agents import Budgets, ExecutionPolicy, validate_grants
+
+    return ExecutionPolicy(
+        grants=_agent_run(lambda: validate_grants(list(allow or []))),
+        budgets=Budgets(
+            max_tool_calls=max_tool_calls,
+            max_stage_attempts=max_stage_attempts,
+            max_budget_usd=max_budget_usd,
+            model=model,
+            turn_timeout_seconds=turn_timeout,
+        ),
+        examples=[str(item) for item in examples or []],
+        allow_remote_model=allow_remote_model,
+    )
+
+
+def _show_session(engine: Any, json_output: bool, *, diff: bool = True) -> None:
+    from nf_splice.agents.prompts import proposal_text
+    from nf_splice.agents.stages import ORDER, spec
+
+    state = engine.state
+    if json_output:
+        typer.echo(
+            dumps(
+                {
+                    "session": state.id,
+                    "mode": state.mode.value,
+                    "status": state.status.value,
+                    "current_stage": state.current_stage.value
+                    if state.current_stage
+                    else None,
+                    "stages": {
+                        stage.value: state.stages[stage].status.value for stage in ORDER
+                    },
+                    "pending": state.pending.model_dump(mode="json")
+                    if state.pending
+                    else None,
+                    "blockers": [
+                        item.model_dump(mode="json")
+                        for item in state.blockers
+                        if not item.resolved
+                    ],
+                    "conversation": [
+                        item.model_dump(mode="json")
+                        for item in state.conversation[-20:]
+                    ],
+                    "usage": state.usage.model_dump(mode="json"),
+                }
+            )
+        )
+        return
+    status = state.status.value.replace("_", " ")
+    typer.echo(f"Session {state.id}: {state.mode.value}, {status}")
+    typer.echo(
+        "Stages: "
+        + ", ".join(
+            f"{spec(stage).title}={state.stages[stage].status.value}" for stage in ORDER
+        )
+    )
+    for entry in state.conversation[-6:]:
+        if entry.role in {"agent", "system"} and entry.kind not in {"proposal"}:
+            typer.echo(f"[{entry.role}] {entry.text}")
+    if state.pending is not None:
+        typer.echo("")
+        typer.echo(proposal_text(state.pending))
+        if diff and state.pending.diff:
+            typer.echo("Diff:")
+            typer.echo(state.pending.diff[:20000], nl=False)
+    hints = {
+        "awaiting_approval": "Next: `nf-splice session approve`, "
+        "`nf-splice session object TEXT` or `nf-splice session ask TEXT`.",
+        "awaiting_input": "Next: `nf-splice session reply TEXT`, or edit the drafts "
+        "and run `nf-splice session continue`.",
+        "paused": "Next: `nf-splice session resume`.",
+        "blocked": "Next: `nf-splice session report`, then "
+        "`nf-splice session resume --mode assisted` to resolve blockers.",
+        "completed": "Next: `nf-splice session report`.",
+    }
+    hint = hints.get(state.status.value)
+    if hint:
+        typer.echo(hint)
+
+
+def _interactive_step(engine: Any, choice: str) -> bool:
+    """Carry out one terminal choice; False ends the conversation."""
+    import asyncio
+
+    actor = _human()
+    if choice.startswith("a") and engine.state.pending is not None:
+        _agent_run(lambda: asyncio.run(engine.approve(actor)))
+    elif choice.startswith("o"):
+        objection = typer.prompt("What is wrong with the proposal?")
+        _agent_run(lambda: asyncio.run(engine.object(objection, actor)))
+    elif choice.startswith("r"):
+        answer = typer.prompt("Your answer")
+        _agent_run(lambda: asyncio.run(engine.reply(answer, actor)))
+    elif choice.startswith("q"):
+        question = typer.prompt("Your question")
+        typer.echo(_agent_run(lambda: asyncio.run(engine.ask(question, actor))))
+    elif choice.startswith("n"):
+        _agent_run(lambda: asyncio.run(engine.advance()))
+    elif choice.startswith("p"):
+        _agent_run(lambda: engine.pause(actor))
+        return False
+    elif choice.startswith("c"):
+        _agent_run(lambda: engine.cancel(actor))
+        return False
+    return True
+
+
+def _interactive(engine: Any) -> None:
+    """A conversational loop for an assisted session in a terminal."""
+    from nf_splice.agents import SessionStatus
+
+    while True:
+        _show_session(engine, False)
+        status = engine.state.status
+        if status is SessionStatus.AWAITING_APPROVAL:
+            prompt = "[a]pprove, [o]bject, ask a [q]uestion, [p]ause or [c]ancel"
+            default = "q"
+        elif status is SessionStatus.AWAITING_INPUT:
+            prompt = (
+                "[r]eply, ask a [q]uestion, [n] continue after editing, [p]ause or "
+                "[c]ancel"
+            )
+            default = "r"
+        else:
+            return
+        choice = typer.prompt(prompt, default=default).strip().lower()
+        if not _interactive_step(engine, choice):
+            return
+
+
+@app.command("ask")
+def ask_command(
+    question: Annotated[str, typer.Argument(help="What you want to know.")],
     repository: RepositoryOption = Path("."),
+    provider: ProviderOption = "claude",
+    script: ScriptOption = None,
+    allow_remote_model: AllowRemoteOption = False,
+    layer: str | None = typer.Option(None, help="The layer you are looking at."),
+    pointer: str | None = typer.Option(None, help="JSON pointer of the field."),
+    error: str | None = typer.Option(None, help="An error message to explain."),
+    candidate: str | None = typer.Option(None, help="A candidate ID to explain."),
+    example_output: ExampleOutputOption = None,
+    model: str | None = typer.Option(None, help="Explicit provider model."),
+    json_output: JsonOption = False,
 ) -> None:
-    """Reject one proposal."""
-    from nf_splice.agents import reject
+    """Ask AI about your pipeline or drafts; read-only, it never changes anything."""
+    import asyncio
 
-    book = _agent_book(repository)
-    typer.echo(dumps(_run(lambda: reject(book, proposal, reason)).to_json()))
+    from nf_splice.agents import ask_for_help
+
+    context = {
+        key: value
+        for key, value in {
+            "layer": layer,
+            "pointer": pointer,
+            "error": error,
+            "candidate": candidate,
+        }.items()
+        if value
+    }
+    agent = _make_provider(provider, script)
+    answer = _agent_run(
+        lambda: asyncio.run(
+            ask_for_help(
+                repository,
+                agent,
+                question,
+                context=context,
+                allow_remote_model=allow_remote_model,
+                examples=list(example_output or []),
+                model=model,
+            )
+        )
+    )
+    if json_output:
+        typer.echo(
+            dumps(
+                {
+                    "answer": answer.text,
+                    "tool_calls": answer.tool_calls,
+                    "denied": answer.denied,
+                }
+            )
+        )
+        return
+    typer.echo(answer.text)
+
+
+@session_app.command("start")
+def session_start_command(
+    repository: RepositoryOption = Path("."),
+    mode: str = typer.Option(
+        "assisted", help="assisted (you approve each stage) or autonomous."
+    ),
+    provider: ProviderOption = "claude",
+    script: ScriptOption = None,
+    allow_remote_model: AllowRemoteOption = False,
+    objective: str = typer.Option(
+        "Integrate this Nextflow pipeline with SPLICE.", help="What to achieve."
+    ),
+    example_output: ExampleOutputOption = None,
+    allow: AllowOption = None,
+    max_tool_calls: int = typer.Option(300, help="Tool calls for the whole session."),
+    max_stage_attempts: int = typer.Option(3, help="Attempts per stage."),
+    max_budget_usd: float | None = typer.Option(None, help="Provider spending cap."),
+    turn_timeout: float = typer.Option(600.0, help="Seconds per provider turn."),
+    model: str | None = typer.Option(None, help="Explicit provider model."),
+    interactive: bool | None = typer.Option(
+        None,
+        "--interactive/--no-interactive",
+        help="Converse in this terminal (default when it is a terminal).",
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Start an AI-assisted or autonomous integration session."""
+    import asyncio
+    import sys
+
+    from nf_splice.agents import InteractionMode, SessionEngine
+
+    if mode not in {"assisted", "autonomous"}:
+        raise typer.BadParameter("mode must be assisted or autonomous")
+    actor = _human()
+    policy = _policy(
+        example_output,
+        allow,
+        allow_remote_model,
+        max_tool_calls=max_tool_calls,
+        max_stage_attempts=max_stage_attempts,
+        max_budget_usd=max_budget_usd,
+        model=model,
+        turn_timeout=turn_timeout,
+    )
+    agent = _make_provider(provider, script)
+    engine = _agent_run(
+        lambda: SessionEngine.create(
+            repository,
+            mode=InteractionMode(mode),
+            provider=agent,
+            objective=objective,
+            policy=policy,
+            actor=actor,
+            script=str(script) if script else None,
+        )
+    )
+    if hasattr(agent, "progress"):
+        agent.progress = engine.session_directory / "scripted-progress.json"
+    _agent_run(lambda: asyncio.run(engine.advance()))
+    use_terminal = sys.stdin.isatty() if interactive is None else interactive
+    if mode == "assisted" and use_terminal and not json_output:
+        _interactive(engine)
+        return
+    if mode == "autonomous" and not json_output:
+        from nf_splice.agents.report import report_text
+
+        typer.echo(report_text(engine.report()))
+        return
+    _show_session(engine, json_output)
+
+
+@session_app.command("status")
+def session_status_command(
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    diff: bool = typer.Option(True, "--diff/--no-diff", help="Show the proposal diff."),
+    json_output: JsonOption = False,
+) -> None:
+    """Show a session's stages, conversation and pending proposal (read-only)."""
+    from nf_splice.agents import SessionEngine
+
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    _show_session(engine, json_output, diff=diff)
+
+
+@session_app.command("list")
+def session_list_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """List this repository's sessions, most recent first."""
+    from nf_splice.agents import SessionStore
+
+    sessions = _agent_run(lambda: SessionStore(repository).sessions())
+    if json_output:
+        typer.echo(
+            dumps(
+                [
+                    {
+                        "id": item.id,
+                        "mode": item.mode.value,
+                        "status": item.status.value,
+                        "updated_at": item.updated_at,
+                    }
+                    for item in sessions
+                ]
+            )
+        )
+        return
+    for item in sessions:
+        typer.echo(
+            f"{item.id}  {item.mode.value:<10} {item.status.value:<18} "
+            f"{item.updated_at}"
+        )
+    if not sessions:
+        typer.echo("No sessions.")
+
+
+@session_app.command("approve")
+def session_approve_command(
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Approve the pending proposal; it is applied and validated."""
+    import asyncio
+
+    actor = _human()
+    engine = _open_engine(repository, session)
+    _agent_run(lambda: asyncio.run(engine.approve(actor)))
+    _show_session(engine, json_output)
+
+
+@session_app.command("object")
+def session_object_command(
+    message: Annotated[str, typer.Argument(help="What is wrong with the proposal.")],
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Object to the pending proposal; the agent investigates and responds."""
+    import asyncio
+
+    actor = _human()
+    engine = _open_engine(repository, session)
+    _agent_run(lambda: asyncio.run(engine.object(message, actor)))
+    _show_session(engine, json_output)
+
+
+@session_app.command("reply")
+def session_reply_command(
+    message: Annotated[str, typer.Argument(help="Your answer to the agent.")],
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Answer the agent when it asks how to proceed."""
+    import asyncio
+
+    actor = _human()
+    engine = _open_engine(repository, session)
+    _agent_run(lambda: asyncio.run(engine.reply(message, actor)))
+    _show_session(engine, json_output)
+
+
+@session_app.command("ask")
+def session_ask_command(
+    question: Annotated[str, typer.Argument(help="Your question.")],
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+) -> None:
+    """Ask the session's agent a question; nothing changes."""
+    import asyncio
+
+    actor = resolve_actor(_STATE["actor"])
+    engine = _open_engine(repository, session)
+    typer.echo(_agent_run(lambda: asyncio.run(engine.ask(question, actor))))
+
+
+@session_app.command("continue")
+def session_continue_command(
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Continue after editing drafts yourself; files are checked again first."""
+    import asyncio
+
+    engine = _open_engine(repository, session)
+    _agent_run(lambda: asyncio.run(engine.advance()))
+    _show_session(engine, json_output)
+
+
+@session_app.command("pause")
+def session_pause_command(
+    repository: RepositoryOption = Path("."), session: SessionOption = None
+) -> None:
+    """Pause a session; resume it later in any mode."""
+    from nf_splice.agents import SessionEngine
+
+    actor = resolve_actor(_STATE["actor"])
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    _agent_run(lambda: engine.pause(actor))
+    typer.echo(f"Paused {engine.state.id}.")
+
+
+@session_app.command("cancel")
+def session_cancel_command(
+    repository: RepositoryOption = Path("."), session: SessionOption = None
+) -> None:
+    """Cancel a session; drafts and published files are kept as they are."""
+    from nf_splice.agents import SessionEngine
+
+    actor = resolve_actor(_STATE["actor"])
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    _agent_run(lambda: engine.cancel(actor))
+    typer.echo(f"Cancelled {engine.state.id}; your drafts are unchanged.")
+
+
+@session_app.command("resume")
+def session_resume_command(
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    mode: str | None = typer.Option(
+        None, help="Switch to assisted, autonomous or manual before continuing."
+    ),
+    allow: AllowOption = None,
+    interactive: bool | None = typer.Option(
+        None,
+        "--interactive/--no-interactive",
+        help="Converse in this terminal (default when it is a terminal).",
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Resume a session, optionally in another mode; work so far is kept."""
+    import asyncio
+    import sys
+
+    from nf_splice.agents import InteractionMode, SessionStatus
+
+    actor = resolve_actor(_STATE["actor"])
+    engine = _open_engine(repository, session)
+    target = InteractionMode(mode) if mode else engine.state.mode
+    if target is not InteractionMode.MANUAL:
+        actor = _human()
+    policy = None
+    if allow:
+        from nf_splice.agents import validate_grants
+
+        policy = engine.state.policy.model_copy(deep=True)
+        policy.grants = _agent_run(lambda: validate_grants(list(allow)))
+    if target is not engine.state.mode or policy is not None:
+        _agent_run(lambda: engine.switch_mode(target, actor, policy=policy))
+    elif engine.state.status is SessionStatus.PAUSED:
+        engine.state.status = SessionStatus.ACTIVE
+    if target is InteractionMode.MANUAL:
+        typer.echo(
+            f"{engine.state.id} is paused for manual work. Edit with nf-splice "
+            "commands or the wizard, then run "
+            "`nf-splice session resume --mode assisted`."
+        )
+        return
+    _agent_run(lambda: asyncio.run(engine.advance()))
+    use_terminal = sys.stdin.isatty() if interactive is None else interactive
+    if target is InteractionMode.ASSISTED and use_terminal and not json_output:
+        _interactive(engine)
+        return
+    _show_session(engine, json_output)
+
+
+@session_app.command("report")
+def session_report_command(
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Show the session's report: artefacts, results, blockers and audit."""
+    from nf_splice.agents import SessionEngine
+    from nf_splice.agents.report import report_text
+
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    report = engine.report()
+    typer.echo(dumps(report) if json_output else report_text(report))
+
+
+@session_app.command("rollback")
+def session_rollback_command(
+    checkpoint: Annotated[
+        str, typer.Argument(help="Checkpoint ID, e.g. checkpoint-2.")
+    ],
+    repository: RepositoryOption = Path("."),
+    session: SessionOption = None,
+) -> None:
+    """Restore splice/ to a session checkpoint."""
+    from nf_splice.agents import SessionEngine
+
+    actor = _human()
+    engine = _agent_run(lambda: SessionEngine.open(repository, session))
+    _agent_run(lambda: engine.rollback(checkpoint, actor))
+    typer.echo(f"Restored {checkpoint}.")
+
+
+@session_app.command("tools")
+def session_tools_command(
+    stage: str | None = typer.Option(None, help="Only the tools of one stage."),
+) -> None:
+    """Print the structured tool schemas agents can use (offline)."""
+    from nf_splice.agents.operations import CONTROL_SCHEMAS, OPERATIONS, READ_OPERATIONS
+    from nf_splice.agents.stages import spec
+
+    names = sorted(OPERATIONS)
+    if stage is not None:
+        try:
+            names = sorted(set(READ_OPERATIONS) | set(spec(stage).operations))
+        except ValueError as error:
+            raise typer.BadParameter(f"unknown stage {stage!r}") from error
+    typer.echo(
+        dumps(
+            [
+                OPERATIONS[name].schema()
+                | {"permission": OPERATIONS[name].permission.value}
+                for name in names
+            ]
+            + list(CONTROL_SCHEMAS.values())
+        )
+    )
+
+
+@skills_app.command("list")
+def skills_list_command() -> None:
+    """List the packaged skills."""
+    from nf_splice.agents import skills
+
+    for name in skills.NAMES:
+        typer.echo(f"{name}: {skills.load(name).description}")
+
+
+@skills_app.command("show")
+def skills_show_command(
+    name: Annotated[str, typer.Argument(help="Skill name.")],
+) -> None:
+    """Print one skill's SKILL.md."""
+    from nf_splice.agents import skills
+
+    typer.echo(_run(lambda: skills.skill_text(name)), nl=False)
+
+
+@skills_app.command("export")
+def skills_export_command(
+    destination: Annotated[
+        Path,
+        typer.Option(
+            "--dest",
+            file_okay=False,
+            resolve_path=True,
+            help="Directory to write <skill>/SKILL.md into, for example "
+            ".claude/skills for Claude Code.",
+        ),
+    ],
+) -> None:
+    """Copy the skills where an external coding agent discovers them."""
+    from nf_splice.agents import skills
+
+    for path in skills.export(destination):
+        typer.echo(f"wrote: {path}")
 
 
 @app.command("tui")
@@ -1712,14 +2268,15 @@ def tui_command(
     no_session: bool = typer.Option(
         False, "--no-session", help="Do not read or write wizard sessions."
     ),
-    agent: str | None = typer.Option(
-        None, help="Enable the optional assistant: claude."
+    provider: str | None = typer.Option(
+        None,
+        "--provider",
+        help="Enable agentic AI in the wizard: claude, or scripted with --script.",
     ),
-    allow_remote_model: bool = typer.Option(
-        False, help="Consent to bounded context being sent to the remote model."
-    ),
+    script: ScriptOption = None,
+    allow_remote_model: AllowRemoteOption = False,
 ) -> None:
-    """Open the guided terminal wizard (works fully without AI)."""
+    """Open the terminal wizard: manual, AI-assisted or autonomous."""
     from nf_splice.interfaces.tui import (
         NfSpliceApp,
         SessionStore,
@@ -1727,18 +2284,20 @@ def tui_command(
     )
 
     sessions = SessionStore(None if no_session else default_session_directory())
-    provider = None
-    if agent == "claude":
-        if not allow_remote_model:
-            typer.echo("--agent claude requires --allow-remote-model consent", err=True)
+    agent = None
+    if provider is not None:
+        agent = _make_provider(provider, script)
+        if agent.capabilities.remote and not allow_remote_model:
+            typer.echo(
+                f"--provider {provider} requires --allow-remote-model consent", err=True
+            )
             raise typer.Exit(code=2)
-        from nf_splice.agents.providers.claude import ClaudeProvider
-
-        provider = ClaudeProvider()
-    elif agent is not None:
-        raise typer.BadParameter("agent must be claude")
     NfSpliceApp(
-        repository, sessions=sessions, actor=_STATE["actor"], agent_provider=provider
+        repository,
+        sessions=sessions,
+        actor=_STATE["actor"],
+        agent_provider=agent,
+        allow_remote_model=allow_remote_model,
     ).run()
 
 

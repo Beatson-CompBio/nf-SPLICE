@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = [
     ROOT / "README.md",
     ROOT / "CONTRIBUTING.md",
+    ROOT / "AGENTS.md",
+    *sorted((ROOT / "skills").glob("*/SKILL.md")),
     *sorted((ROOT / "docs").rglob("*.md")),
 ]
 _FENCE = re.compile(r"```bash\n(.*?)```", re.DOTALL)

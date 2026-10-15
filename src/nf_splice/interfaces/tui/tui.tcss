@@ -16,4 +16,14 @@
 DataTable { height: auto; max-height: 14; margin-bottom: 1; }
 Input { margin-bottom: 1; }
 .issues { color: $warning; height: auto; }
-#agent-dialog { width: 90%; height: 85%; border: thick $accent; background: $surface; padding: 1; }
+#ask-dialog { width: 90%; height: 85%; border: thick $accent; background: $surface; padding: 1; }
+#ask-scroll { height: 1fr; }
+#session-dialog { width: 96%; height: 94%; border: thick $accent; background: $surface; padding: 0 1; }
+#session-title { height: auto; padding-bottom: 1; }
+#session-stages { height: auto; color: $text-muted; padding-bottom: 1; }
+#session-log-scroll { height: 1fr; min-height: 6; border: solid $primary; }
+#session-log { height: auto; }
+#session-proposal { height: auto; max-height: 16; }
+#session-diff-scroll { height: auto; max-height: 12; }
+#session-diff { height: auto; color: $text-muted; }
+#session-start .row Label { padding: 0 1; }

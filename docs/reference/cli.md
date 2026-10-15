@@ -27,7 +27,8 @@ Global options go before the command name, for example
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
 | [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
 | [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
-| [`nf-splice tui`](#nf-splice-tui) | Open the guided terminal wizard (works fully without AI). |
+| [`nf-splice ask`](#nf-splice-ask) | Ask AI about your pipeline or drafts; read-only, it never changes anything. |
+| [`nf-splice tui`](#nf-splice-tui) | Open the terminal wizard: manual, AI-assisted or autonomous. |
 | [`nf-splice analysis-output generate`](#nf-splice-analysis-output-generate) | Generate and schema-validate analysis_output.json for one completed job. |
 | [`nf-splice analysis-output validate`](#nf-splice-analysis-output-validate) | Validate an existing analysis_output.json against the static contract. |
 | [`nf-splice schema list`](#nf-splice-schema-list) | List the contract families and revisions emitted by this release. |
@@ -48,11 +49,23 @@ Global options go before the command name, for example
 | [`nf-splice containers classify`](#nf-splice-containers-classify) | Classify a container reference without network access. |
 | [`nf-splice containers cache-name`](#nf-splice-containers-cache-name) | Print the Nextflow Singularity/Apptainer cache file name. |
 | [`nf-splice containers verify`](#nf-splice-containers-verify) | Download and verify an image, then record its distribution (network). |
-| [`nf-splice agent tools`](#nf-splice-agent-tools) | Print the structured tool schemas available to an agent (offline). |
-| [`nf-splice agent run`](#nf-splice-agent-run) | Run an assistant session; it can only propose, never apply. |
-| [`nf-splice agent proposals`](#nf-splice-agent-proposals) | List agent proposals and their status. |
-| [`nf-splice agent approve`](#nf-splice-agent-approve) | Approve (and apply) one proposal as the human actor (--actor). |
-| [`nf-splice agent reject`](#nf-splice-agent-reject) | Reject one proposal. |
+| [`nf-splice session start`](#nf-splice-session-start) | Start an AI-assisted or autonomous integration session. |
+| [`nf-splice session status`](#nf-splice-session-status) | Show a session's stages, conversation and pending proposal (read-only). |
+| [`nf-splice session list`](#nf-splice-session-list) | List this repository's sessions, most recent first. |
+| [`nf-splice session approve`](#nf-splice-session-approve) | Approve the pending proposal; it is applied and validated. |
+| [`nf-splice session object`](#nf-splice-session-object) | Object to the pending proposal; the agent investigates and responds. |
+| [`nf-splice session reply`](#nf-splice-session-reply) | Answer the agent when it asks how to proceed. |
+| [`nf-splice session ask`](#nf-splice-session-ask) | Ask the session's agent a question; nothing changes. |
+| [`nf-splice session continue`](#nf-splice-session-continue) | Continue after editing drafts yourself; files are checked again first. |
+| [`nf-splice session pause`](#nf-splice-session-pause) | Pause a session; resume it later in any mode. |
+| [`nf-splice session cancel`](#nf-splice-session-cancel) | Cancel a session; drafts and published files are kept as they are. |
+| [`nf-splice session resume`](#nf-splice-session-resume) | Resume a session, optionally in another mode; work so far is kept. |
+| [`nf-splice session report`](#nf-splice-session-report) | Show the session's report: artefacts, results, blockers and audit. |
+| [`nf-splice session rollback`](#nf-splice-session-rollback) | Restore splice/ to a session checkpoint. |
+| [`nf-splice session tools`](#nf-splice-session-tools) | Print the structured tool schemas agents can use (offline). |
+| [`nf-splice skills list`](#nf-splice-skills-list) | List the packaged skills. |
+| [`nf-splice skills show`](#nf-splice-skills-show) | Print one skill's SKILL.md. |
+| [`nf-splice skills export`](#nf-splice-skills-export) | Copy the skills where an external coding agent discovers them. |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
 
 ### nf-splice inspect
@@ -201,9 +214,35 @@ nf-splice assess [OPTIONS]
 | `--write-analysis-output` | `<directory>` |  | Directory for the analysis_output.json generated from each example. |
 | `--json` |  |  | Emit stable JSON. |
 
+### nf-splice ask
+
+Ask AI about your pipeline or drafts; read-only, it never changes anything.
+
+```text
+nf-splice ask [OPTIONS] QUESTION
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `QUESTION` | yes | What you want to know. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--provider` | `<str>` | `claude` | AI provider: claude (needs the claude extra), or scripted (offline, needs --script). |
+| `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
+| `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
+| `--layer` | `<str>` |  | The layer you are looking at. |
+| `--pointer` | `<str>` |  | JSON pointer of the field. |
+| `--error` | `<str>` |  | An error message to explain. |
+| `--candidate` | `<str>` |  | A candidate ID to explain. |
+| `--example-output` | `<path>` |  | Results of one completed run (directory, saved listing or output index) the agent may read as evidence. Repeatable. |
+| `--model` | `<str>` |  | Explicit provider model. |
+| `--json` |  |  | Emit stable JSON. |
+
 ### nf-splice tui
 
-Open the guided terminal wizard (works fully without AI).
+Open the terminal wizard: manual, AI-assisted or autonomous.
 
 ```text
 nf-splice tui [OPTIONS]
@@ -213,8 +252,9 @@ nf-splice tui [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--no-session` |  |  | Do not read or write wizard sessions. |
-| `--agent` | `<str>` |  | Enable the optional assistant: claude. |
-| `--allow-remote-model` |  |  | Consent to bounded context being sent to the remote model. |
+| `--provider` | `<str>` |  | Enable agentic AI in the wizard: claude, or scripted with --script. |
+| `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
+| `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
 
 ### nf-splice analysis-output generate
 
@@ -527,86 +567,258 @@ nf-splice containers verify [OPTIONS] CONTAINER URL
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--registry` | `<str>` |  | Configured Nextflow registry. |
 
-### nf-splice agent tools
+### nf-splice session start
 
-Print the structured tool schemas available to an agent (offline).
+Start an AI-assisted or autonomous integration session.
 
 ```text
-nf-splice agent tools [OPTIONS]
+nf-splice session start [OPTIONS]
 ```
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--mode` | `<str>` | `suggest` | ask, suggest, draft or apply. |
+| `--mode` | `<str>` | `assisted` | assisted (you approve each stage) or autonomous. |
+| `--provider` | `<str>` | `claude` | AI provider: claude (needs the claude extra), or scripted (offline, needs --script). |
+| `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
+| `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
+| `--objective` | `<str>` | `Integrate this Nextflow pipeline with SPLICE.` | What to achieve. |
+| `--example-output` | `<path>` |  | Results of one completed run (directory, saved listing or output index) the agent may read as evidence. Repeatable. |
+| `--allow` | `<str>` |  | Grant an extra permission: overwrite, external_tools, run_nextflow or network. Repeatable. |
+| `--max-tool-calls` | `<int>` | `300` | Tool calls for the whole session. |
+| `--max-stage-attempts` | `<int>` | `3` | Attempts per stage. |
+| `--max-budget-usd` | `<float>` |  | Provider spending cap. |
+| `--turn-timeout` | `<float>` | `600.0` | Seconds per provider turn. |
+| `--model` | `<str>` |  | Explicit provider model. |
+| `--interactive` |  |  | Converse in this terminal (default when it is a terminal). |
+| `--json` |  |  | Emit stable JSON. |
 
-### nf-splice agent run
+### nf-splice session status
 
-Run an assistant session; it can only propose, never apply.
+Show a session's stages, conversation and pending proposal (read-only).
 
 ```text
-nf-splice agent run [OPTIONS] PROMPT
+nf-splice session status [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--diff` |  | `True` | Show the proposal diff. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session list
+
+List this repository's sessions, most recent first.
+
+```text
+nf-splice session list [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session approve
+
+Approve the pending proposal; it is applied and validated.
+
+```text
+nf-splice session approve [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session object
+
+Object to the pending proposal; the agent investigates and responds.
+
+```text
+nf-splice session object [OPTIONS] MESSAGE
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `PROMPT` | yes | What the assistant should help with. |
+| `MESSAGE` | yes | What is wrong with the proposal. |
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--provider` | `<str>` |  | claude, or scripted (requires --script). |
-| `--mode` | `<str>` | `suggest` | ask, suggest or draft. |
-| `--script` | `<path>` |  | JSON script of steps for the offline scripted provider. |
-| `--allow-remote-model` |  |  | Consent to sending bounded repository context to a remote model. |
-| `--model` | `<str>` |  | Explicit provider model name. |
-| `--max-turns` | `<int>` | `12` | Maximum agent turns. |
-| `--max-budget-usd` | `<float>` |  | Spending cap (provider). |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--json` |  |  | Emit stable JSON. |
 
-### nf-splice agent proposals
+### nf-splice session reply
 
-List agent proposals and their status.
+Answer the agent when it asks how to proceed.
 
 ```text
-nf-splice agent proposals [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-| --- | --- | --- | --- |
-| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-
-### nf-splice agent approve
-
-Approve (and apply) one proposal as the human actor (--actor).
-
-```text
-nf-splice agent approve [OPTIONS] PROPOSAL
+nf-splice session reply [OPTIONS] MESSAGE
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `PROPOSAL` | yes |  |
+| `MESSAGE` | yes | Your answer to the agent. |
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--json` |  |  | Emit stable JSON. |
 
-### nf-splice agent reject
+### nf-splice session ask
 
-Reject one proposal.
+Ask the session's agent a question; nothing changes.
 
 ```text
-nf-splice agent reject [OPTIONS] PROPOSAL
+nf-splice session ask [OPTIONS] QUESTION
 ```
 
 | Argument | Required | Description |
 | --- | --- | --- |
-| `PROPOSAL` | yes |  |
+| `QUESTION` | yes | Your question. |
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
-| `--reason` | `<str>` |  | Why the proposal is rejected. |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+
+### nf-splice session continue
+
+Continue after editing drafts yourself; files are checked again first.
+
+```text
+nf-splice session continue [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session pause
+
+Pause a session; resume it later in any mode.
+
+```text
+nf-splice session pause [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+
+### nf-splice session cancel
+
+Cancel a session; drafts and published files are kept as they are.
+
+```text
+nf-splice session cancel [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+
+### nf-splice session resume
+
+Resume a session, optionally in another mode; work so far is kept.
+
+```text
+nf-splice session resume [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--mode` | `<str>` |  | Switch to assisted, autonomous or manual before continuing. |
+| `--allow` | `<str>` |  | Grant an extra permission: overwrite, external_tools, run_nextflow or network. Repeatable. |
+| `--interactive` |  |  | Converse in this terminal (default when it is a terminal). |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session report
+
+Show the session's report: artefacts, results, blockers and audit.
+
+```text
+nf-splice session report [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice session rollback
+
+Restore splice/ to a session checkpoint.
+
+```text
+nf-splice session rollback [OPTIONS] CHECKPOINT
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `CHECKPOINT` | yes | Checkpoint ID, e.g. checkpoint-2. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--session` | `<str>` |  | Session ID; the most recent when omitted. |
+
+### nf-splice session tools
+
+Print the structured tool schemas agents can use (offline).
+
+```text
+nf-splice session tools [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--stage` | `<str>` |  | Only the tools of one stage. |
+
+### nf-splice skills list
+
+List the packaged skills.
+
+```text
+nf-splice skills list
+```
+
+### nf-splice skills show
+
+Print one skill's SKILL.md.
+
+```text
+nf-splice skills show NAME
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `NAME` | yes | Skill name. |
+
+### nf-splice skills export
+
+Copy the skills where an external coding agent discovers them.
+
+```text
+nf-splice skills export [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--dest` | `<directory>` |  | Directory to write <skill>/SKILL.md into, for example .claude/skills for Claude Code. |
 
 ### nf-splice preview outputs
 

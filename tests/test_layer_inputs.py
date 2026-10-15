@@ -34,7 +34,7 @@ from nf_splice.services.input_policy import (
 FIXTURE = Path(__file__).parent / "fixtures" / "nf-schema" / "nextflow_schema.json"
 DRAFT = "splice/drafts/inputs.schema.draft.yaml"
 AGENT = ChangeContext(
-    actor=Actor(label="assistant"), origin=ChangeOrigin.AGENT_SUGGESTION
+    actor=Actor(label="assistant"), origin=ChangeOrigin.AGENT_ASSISTED
 )
 
 
@@ -154,14 +154,14 @@ def test_permissions_are_enforced_in_services_not_ui(tmp_path: Path) -> None:
 def test_agents_cannot_change_access_without_a_human_approver(tmp_path: Path) -> None:
     _repository(tmp_path)
     before = (tmp_path / DRAFT).read_bytes()
-    with pytest.raises(LayerError, match="human approval"):
+    with pytest.raises(LayerError, match="user's approval"):
         set_access(tmp_path, ["max_cpus"], ["user", "agent"], AGENT)
     assert (tmp_path / DRAFT).read_bytes() == before
     proposal = set_access(tmp_path, ["genome"], ["user"], AGENT, write=False)
     assert "editable_by" in proposal.diff and not proposal.wrote
     approved = ChangeContext(
         actor=Actor(label="assistant"),
-        origin=ChangeOrigin.AGENT_SUGGESTION,
+        origin=ChangeOrigin.AGENT_ASSISTED,
         approved_by=Actor(label="Ada"),
     )
     assert set_access(tmp_path, ["genome"], ["user"], approved).wrote

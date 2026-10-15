@@ -2,7 +2,8 @@
 
 nf-splice prepares a Nextflow pipeline for the SPLICE platform. It reads your
 repository, helps you review what it finds, and publishes a validated SPLICE
-workflow bundle in `splice/`.
+workflow bundle in `splice/`. Do the work yourself, or let the built-in
+agentic AI do it with you or for you.
 
 New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 
@@ -36,14 +37,21 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 
 | Page | Covers |
 | --- | --- |
+| [Agentic AI](guide/agentic-ai.md) | The three ways to work, permissions, providers and privacy |
+| [Ask AI in manual mode](guide/ask-ai.md) | Doing it yourself, with read-only answers to your questions |
+| [AI-assisted sessions](guide/assisted-sessions.md) | The agent proposes each stage; you approve, object or ask |
+| [Autonomous integration](guide/autonomous.md) | The agent integrates the pipeline within a scope you approve |
 | [The guided wizard](guide/wizard.md) | Reviewing everything step by step in the terminal |
 | [Automation and CI](guide/automation.md) | Checks, JSON output and reproducible review in CI |
-| [AI assistance](guide/ai-assistant.md) | Optional suggestions, always approved by a person |
 
 ## Tutorials
 
 | Tutorial | Page |
 | --- | --- |
+| Manual integration with Ask AI | [Ask AI in manual mode](guide/ask-ai.md#tutorial-manual-integration-with-ask-ai) |
+| Assisted integration with disagreement and repair | [AI-assisted sessions](guide/assisted-sessions.md#tutorial-disagreement-and-repair) |
+| Unattended integration and its report | [Autonomous integration](guide/autonomous.md#tutorial-an-unattended-integration) |
+| A blocker, resolved in an assisted session | [Autonomous integration](guide/autonomous.md#tutorial-a-blocker-resolved-in-an-assisted-session) |
 | Several Nextflow routes, one example run | [Output routes and evidence](guide/output-coverage.md#tutorial-several-routes-one-example) |
 | No example results | [Output routes and evidence](guide/output-coverage.md#tutorial-no-example-results) |
 | Optional nf-core checks | [Output routes and evidence](guide/output-coverage.md#tutorial-optional-nf-core-checks) |

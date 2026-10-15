@@ -69,11 +69,14 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Current | — |
 | ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Superseded | ADR-0041 |
 | ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Current | — |
-| ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Current | — |
+| ADR-0039 | Offer optional, provider-neutral agents that can only propose through deterministic tools | Superseded | ADR-0044 |
 | ADR-0040 | Gate releases on a Python 3.10-3.14 matrix, packaging and repository hygiene | Current | — |
 | ADR-0041 | Support only 0.3.0 contracts and remove pre-release 0.1.0 compatibility | Current | — |
 | ADR-0042 | Trace output publication routes and assess contract validity, observed outputs and coverage separately | Current | — |
 | ADR-0043 | Run optional external checkers only when installed, applicable and explicitly permitted | Current | — |
+| ADR-0044 | Offer manual, AI-assisted and autonomous work as three policies over one deterministic session engine | Current | — |
+| ADR-0045 | Govern agents with operation-level permissions, bound approvals and truthful attribution | Current | — |
+| ADR-0046 | Keep provider-neutral skills canonical in the repository, packaged and loaded by the runtime | Current | — |
 
 ---
 
@@ -1157,6 +1160,8 @@ authority between two files, and the document was described as per run.
 | Implementation | `src/nf_splice/domain/audit.py`, `src/nf_splice/services/audit.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_audit.py` |
 
+Amended by ADR-0045 (2026-10-15): agent origins are `agent_assisted` and `agent_autonomous`; autonomous decisions carry approval `agent_policy`.
+
 ### Context
 
 The platform needs to know who reviewed a bundle change and whether a human
@@ -1745,12 +1750,14 @@ Existing integrations store reviewed decisions in `splice/nf-splice.yaml`
 | Scope | Terminal user interface |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0014, ADR-0029, ADR-0030, ADR-0036, ADR-0041 |
+| Related | ADR-0014, ADR-0029, ADR-0030, ADR-0036, ADR-0041, ADR-0044 |
 | Implementation | `src/nf_splice/interfaces/tui/`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_tui.py`, `tests/tui_helpers.py` |
 
 
 Amended by ADR-0041 (2026-10-15): the Migration step was removed from the wizard.
+
+Amended by ADR-0044 (2026-10-15): the welcome step offers manual, AI-assisted and autonomous work; Ctrl+A opens read-only Ask AI; sessions have their own views.
 
 ### Context
 
@@ -1805,12 +1812,12 @@ The 0.1.0 dashboard showed every layer at once, wrote the monolithic
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 12 |
 | Scope | AI integration, permissions and privacy |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0044 |
 | Related | ADR-0002, ADR-0005, ADR-0014, ADR-0029, ADR-0032, ADR-0038 |
 | Implementation | `src/nf_splice/agents/`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/agent.py`, `docs/AGENTS.md`, `pyproject.toml` |
 | Tests | `tests/test_agents.py` |
@@ -1984,7 +1991,7 @@ that new users and integrators had to read past.
 | Scope | Output discovery, examples and assessment |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0027, ADR-0028 |
+| Related | ADR-0027, ADR-0028, ADR-0044 |
 | Implementation | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/services/coverage.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `tests/fixtures/multi-route-0.3.0/` |
 | Tests | `tests/test_routes.py`, `tests/test_coverage.py`, `tests/test_output_discovery.py` |
 
@@ -2053,9 +2060,9 @@ publish.
 | Scope | Optional nf-core and Nextflow checks |
 | Supersedes | — |
 | Superseded by | — |
-| Related | ADR-0017, ADR-0042 |
+| Related | ADR-0017, ADR-0045, ADR-0042 |
 | Implementation | `src/nf_splice/services/checks.py`, `src/nf_splice/services/coverage.py` |
-| Tests | `tests/test_coverage.py` |
+| Tests | `tests/test_coverage.py`, `tests/test_agents.py` |
 
 ### Context
 
@@ -2084,3 +2091,211 @@ contact the network, so it is not a read-only check.
 - Against nf-core 4.0.2 without Nextflow the check reports `not_run` with the
   reason; with Nextflow and the permissions it runs and its counts are
   recorded.
+
+---
+
+## ADR-0044: Offer manual, AI-assisted and autonomous work as three policies over one deterministic session engine
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's three-mode agentic implementation instructions for 0.3.0 |
+| Scope | AI integration, sessions, CLI and wizard |
+| Supersedes | ADR-0039 |
+| Superseded by | — |
+| Related | ADR-0014, ADR-0030, ADR-0036, ADR-0038, ADR-0045, ADR-0042, ADR-0046 |
+| Implementation | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/sandbox.py`, `src/nf_splice/agents/help.py`, `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/session.py`, `src/nf_splice/interfaces/tui/screens/ask.py` |
+| Tests | `tests/test_agents.py`, `tests/test_agent_interfaces.py`, `tests/test_scenarios.py` |
+
+### Context
+
+Integrating a pipeline with SPLICE is mostly careful, repetitive review work:
+reading Nextflow code, tracing outputs, confirming identity, choosing access
+policies and profiles. An agent can do much of it, but people need different
+amounts of control: some want to drive and ask questions, some want an agent
+to propose each step and wait, and some want the work done unattended within
+limits they set. All three must produce the same files and the same
+validation as manual work.
+
+### Decision
+
+- nf-splice offers three interaction modes over one engine and one set of
+  deterministic services:
+  - **Manual**: the CLI and the wizard. *Ask AI* (`nf-splice ask`, Ctrl+A)
+    answers one question with read-only tools; it never edits, stages or
+    builds and starts no session.
+  - **AI-assisted**: a persistent session. For each stage the agent stages
+    exact operations, which run through the real services on a private copy
+    of the repository so the person sees the diff and the validation outcome.
+    Only the person's approval applies them; an objection starts an
+    investigation and possibly a revised proposal; a question or silence is
+    never approval.
+  - **Autonomous**: after a person approves the scope, permissions and
+    budgets, the agent applies routine decisions directly, stage by stage,
+    without prompts. A stage that cannot be completed with evidence becomes a
+    recorded blocker; independent stages continue; the final report is
+    truthful about partial completion.
+- The engine is a typed state machine over the stages discover, identity,
+  inputs, outputs, components, execution profiles, provenance, cross-layer
+  validation, build, verify and report. Each stage runs a bounded loop:
+  observe, plan, propose or execute, validate, reflect. A stage is complete
+  only when its deterministic gate passes (layer validation, the cross-layer
+  publication plan, bundle validation); a model's statement never completes
+  a stage. Retries need progress: an attempt that leaves the draft content
+  and the issues unchanged ends the retries.
+- Discovery and the build are proposed or executed deterministically, without
+  a model. Approved operations run under a checkpoint of `splice/`; a failed
+  operation restores it. A transaction marker makes an interrupted action
+  roll back on the next load.
+- Sessions persist atomically in a versioned format inside the repository's
+  ignored `.nf-splice-local/agent/` workspace (with its own `.gitignore`), or
+  under `NF_SPLICE_AGENT_DIR`. They record mode, stage records, proposals,
+  approvals, objections, conversation, evidence, blockers, checkpoints, usage
+  and the provider's conversation reference. Draft and source fingerprints
+  detect external edits: affected stages reopen and stale proposals are
+  withdrawn. A file lock stops two sessions changing the same drafts.
+- Modes can be switched in any direction (`nf-splice session resume --mode`);
+  the draft files, evidence and history carry over. Switching is refused
+  while an action is being applied. Manual mode pauses the session.
+- The provider protocol is turn-based and SDK-free: capabilities (remote,
+  tool calling, streaming, cancellation, budgets, continuation), a session
+  that runs turns with a tool invoker, and cancellation. Providers without
+  structured tool calling are refused. Remote providers need explicit
+  consent. The Claude Agent SDK adapter and an offline scripted provider are
+  implemented; Codex and OpenCode adapters fit the same protocol and are not
+  implemented.
+- CLI: `nf-splice ask`, `nf-splice session start|status|list|approve|object|reply|ask|continue|pause|cancel|resume|report|rollback|tools`
+  and `nf-splice skills list|show|export`. The wizard's welcome step offers
+  the three ways of working; session views share state with the CLI.
+
+### Alternatives rejected
+
+- Renaming the previous ask/suggest/draft modes: they produced proposals
+  only, so neither a conversation that executes approved work nor unattended
+  integration was possible.
+- A graph-orchestration framework: a typed stage machine covers branching,
+  rollback, resumption and human checkpoints without tying the core to one
+  provider.
+- Letting a provider SDK edit files directly: bypasses validation,
+  attribution and permissions.
+
+### Consequences
+
+- The previous propose-only agent commands are replaced by `ask` and
+  `session`.
+- Autonomous runs make policy-scoped, local, reversible draft edits without
+  per-stage approval; ADR-0045 bounds and attributes them.
+- Live provider behaviour depends on the provider account; offline tests use
+  the scripted provider with the real engine and services.
+
+---
+
+## ADR-0045: Govern agents with operation-level permissions, bound approvals and truthful attribution
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's three-mode agentic implementation instructions for 0.3.0 |
+| Scope | AI permissions, approvals, audit and privacy |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0029, ADR-0032, ADR-0044 |
+| Implementation | `src/nf_splice/agents/permissions.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/domain/audit.py`, `src/nf_splice/layers/base.py`, `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/audit.py` |
+| Tests | `tests/test_agents.py`, `tests/test_audit.py`, `tests/test_layer_inputs.py` |
+
+### Context
+
+An agent that can apply changes needs limits that are finer than read versus
+write, approvals that cannot be reused for something else, and records that
+never present an agent's decision as a person's review.
+
+### Decision
+
+- Every operation declares one permission: `read`, `draft_edit`, `build`,
+  `overwrite`, `external_tools`, `run_nextflow` or `network`. Sessions grant
+  `read`, `draft_edit` and `build` by default; others are added explicitly
+  (`--allow`). `install`, `publish_external`, `credentials` and
+  `human_consent` can never be granted, and no operation needs them.
+  Publishing maintainers' contact details is a `human_consent` decision.
+- Each turn offers only the operations of its stage plus read operations;
+  arguments are validated against JSON schemas; layer-scoped operations are
+  limited to the stage's draft; tool-call, turn, time and spending budgets
+  end a run safely.
+- Paths are resolved inside the repository, never through `..`, absolute
+  paths or symbolic links. Secrets-like files are never read; tool results
+  are redacted and size-bounded. Repository text is returned as untrusted
+  content, and the system prompt tells the agent not to follow instructions
+  in it; no operation can change a session's permissions.
+- An approval records the proposal, its operations' digest, the draft
+  fingerprint, the person and the time. A proposal is stale, and cannot be
+  approved, when drafts or pipeline sources change after it was made.
+- Change origins are `agent_assisted` (applied after a person's approval,
+  who is recorded as `approved_by`) and `agent_autonomous` (approval status
+  `agent_policy`, no human approver). Every tool call is logged with its
+  outcome in the session's `tools.jsonl`. Sandbox previews write no private
+  audit records.
+
+### Alternatives rejected
+
+- A single "apply" permission: cannot separate a draft edit from a build,
+  an overwrite or an external tool.
+- Recording autonomous changes as approved by the person who started the
+  run: misrepresents who decided.
+
+### Consequences
+
+- ADR-0029's origin list now reads `agent_assisted` and `agent_autonomous`.
+- An assisting agent still cannot change parameter access without the
+  person's approval of the stage (ADR-0032).
+
+---
+
+## ADR-0046: Keep provider-neutral skills canonical in the repository, packaged and loaded by the runtime
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's three-mode agentic implementation instructions for 0.3.0, section 9 |
+| Scope | Agent instructions and skills |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0040, ADR-0044 |
+| Implementation | `AGENTS.md`, `docs/AGENTS.md`, `skills/`, `src/nf_splice/agents/skills/`, `src/nf_splice/agents/skills.py`, `src/nf_splice/agents/prompts.py`, `pyproject.toml` |
+| Tests | `tests/test_skills.py`, `tests/test_packaging.py`, `tests/test_docs.py` |
+
+### Context
+
+Agents need the same procedures whether they are nf-splice's embedded agent
+or an external coding agent, and whatever their vendor. Markdown that no
+runtime loads drifts and misleads.
+
+### Decision
+
+- The root `AGENTS.md` is the development contract for this repository;
+  `docs/AGENTS.md` is the run-time agent contract.
+- Four skills live in `skills/<name>/SKILL.md`: `nf-splice-authoring`,
+  `nf-splice-output-discovery`, `nf-splice-validation` and
+  `nf-splice-agent-operations`. Each covers when to use it, prerequisites,
+  tools, workflow, verification gates, failure handling, evidence reporting
+  and safety boundaries, using only implemented tools and commands.
+- Byte-identical copies are packaged in `nf_splice/agents/skills/`. The
+  engine puts the relevant skills into every provider turn's system prompt,
+  so every provider uses the same procedures. `nf-splice skills export`
+  copies them to the directory an external tool discovers, such as
+  `.claude/skills` for Claude Code.
+- Tests fail on drift between the copies, missing sections, tool names or
+  values that do not exist in the code, unresolvable commands or links, and
+  skills missing from the wheel.
+
+### Alternatives rejected
+
+- Vendor-specific skill directories as the source: contradictory copies.
+- Loading skills through the Claude SDK's settings: requires enabling
+  project settings, which the least-privilege configuration disables.
+
+### Consequences
+
+- Changing a skill means changing `skills/` and refreshing the packaged copy.
