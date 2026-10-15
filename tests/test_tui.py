@@ -4,10 +4,9 @@ import asyncio
 import json
 from pathlib import Path
 
-from textual.widgets import Button, Input, ListView, Select, Static
+from textual.widgets import Button, ListView, Select, Static
 from typer.testing import CliRunner
 
-from nf_splice.cli import app as cli_app
 from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.services import (
     ApplicationService,
@@ -209,84 +208,3 @@ def _milestone_d_repository(root: Path) -> ApplicationService:
         encoding="utf-8",
     )
     return service
-
-
-def test_cli_and_tui_save_byte_identical_execution_and_provenance_state(
-    tmp_path: Path,
-) -> None:
-    cli_root = tmp_path / "cli"
-    tui_root = tmp_path / "tui"
-    cli_root.mkdir()
-    tui_root.mkdir()
-    _milestone_d_repository(cli_root)
-    tui_service = _milestone_d_repository(tui_root)
-    profile_decisions = cli_root / "profiles.json"
-    profile_decisions.write_text(
-        json.dumps(
-            [
-                {
-                    "profile": "profile:local",
-                    "type": "development",
-                    "description": "Supported local execution.",
-                    "executor": "local",
-                    "container_engine": "singularity",
-                    "config_source": "conf/local.config",
-                }
-            ]
-        ),
-        encoding="utf-8",
-    )
-    provenance_decision = cli_root / "provenance.json"
-    provenance_decision.write_text(
-        json.dumps({"include": True}),
-        encoding="utf-8",
-    )
-    assert (
-        runner.invoke(
-            cli_app,
-            [
-                "configure",
-                "execution-profiles",
-                "--repository",
-                str(cli_root),
-                "--decision-file",
-                str(profile_decisions),
-            ],
-        ).exit_code
-        == 0
-    )
-    assert (
-        runner.invoke(
-            cli_app,
-            [
-                "configure",
-                "provenance",
-                "--repository",
-                str(cli_root),
-                "--decision-file",
-                str(provenance_decision),
-            ],
-        ).exit_code
-        == 0
-    )
-
-    tui_service.discover_execution_profiles(tui_root)
-    tui_service.discover_provenance(tui_root)
-    tui_app = NfSpliceApp(tui_service.inspect(tui_root), tui_root, tui_service)
-
-    async def exercise() -> None:
-        async with tui_app.run_test() as pilot:
-            tui_app.query_one("#profile-type", Select).value = "development"
-            tui_app.query_one(
-                "#profile-description", Input
-            ).value = "Supported local execution."
-            tui_app.query_one("#select-profile", Button).press()
-            await pilot.pause()
-            tui_app.query_one("#select-provenance", Button).press()
-            await pilot.pause()
-
-    asyncio.run(exercise())
-
-    assert (cli_root / "splice" / "nf-splice.yaml").read_bytes() == (
-        tui_root / "splice" / "nf-splice.yaml"
-    ).read_bytes()

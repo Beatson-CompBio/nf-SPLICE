@@ -1,13 +1,14 @@
-"""Command-line entry point for nf-splice."""
+"""Command-line entry point for nf-splice (file-first authoring, 0.3.0)."""
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Annotated, Protocol
+from typing import Annotated, Any, ParamSpec, TypeVar
 
 import typer
+import yaml  # type: ignore[import-untyped]
 
 from nf_splice import __version__
 from nf_splice.contracts import (
@@ -19,37 +20,23 @@ from nf_splice.contracts import (
     release,
     validate_contract_document,
 )
-from nf_splice.domain import (
-    InputCandidate,
-    OutputCandidate,
-    ProvenanceCandidate,
-)
-from nf_splice.interfaces.tui import NfSpliceApp
+from nf_splice.domain.access import LEGACY_CLASSIFICATION_ACCESS
+from nf_splice.domain.audit import ChangeOrigin
+from nf_splice.domain.inputs import InputClassification
+from nf_splice.drafts import DraftConflictError, DraftStoreError
+from nf_splice.inspectors.containers import classify_reference, nextflow_cache_filename
+from nf_splice.layers import ChangeContext, LayerError, confirm_values
+from nf_splice.layers import components as component_layer
+from nf_splice.layers import execution as execution_layer
+from nf_splice.layers import inputs as input_layer
+from nf_splice.layers import outputs as output_layer
+from nf_splice.layers import provenance as provenance_layer
+from nf_splice.layers.base import LAYERS, layer_spec
+from nf_splice.layers.bundle import set_identity_fields, validate_bundle_draft
 from nf_splice.runtime import (
     AnalysisOutputError,
     generate_analysis_output,
     load_and_validate_analysis_output,
-)
-from nf_splice.services import (
-    ApplicationService,
-    AuthoringOperationError,
-    ChangeKind,
-    ComponentReviewError,
-    ExecutionProfileError,
-    InputReviewError,
-    Operation,
-    OutputReviewError,
-    ProvenanceReviewError,
-    StateMigrationError,
-    StaticChangeKind,
-    WorkspaceSnapshot,
-    apply_output_decision_file,
-    plan_document,
-    unresolved_component_candidates,
-    unresolved_execution_profiles,
-    unresolved_input_candidates,
-    unresolved_output_candidates,
-    unresolved_provenance_candidates,
 )
 from nf_splice.services.audit import (
     audit_directory,
@@ -57,10 +44,35 @@ from nf_splice.services.audit import (
     resolve_actor,
     suggest_git_identity,
 )
+from nf_splice.services.containers import ContainerServiceError
+from nf_splice.services.lifecycle import (
+    LifecycleError,
+    plan_promotion,
+    promote,
+    recover,
+    validate_bundle,
+    validate_layer,
+)
+from nf_splice.services.migration import (
+    MigrationError,
+    apply_draft_migration,
+    plan_draft_migration,
+)
+from nf_splice.services.state import (
+    StateMigrationError,
+    apply_state_migration,
+    plan_state_migration,
+)
+from nf_splice.services.workspace import (
+    dumps,
+    initialise,
+    inspect_layer,
+    workspace_status,
+)
 
 app = typer.Typer(
     name="nf-splice",
-    help="Author and maintain a SPLICE integration layer.",
+    help="Author and maintain a SPLICE workflow bundle from editable drafts.",
     add_completion=False,
     no_args_is_help=True,
 )
@@ -79,8 +91,27 @@ audit_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(audit_app, name="audit")
+draft_app = typer.Typer(
+    help="List, inspect, validate, edit, confirm and promote draft files.",
+    no_args_is_help=True,
+)
+app.add_typer(draft_app, name="draft")
+containers_app = typer.Typer(
+    help="Classify container references and verify downloadable images.",
+    no_args_is_help=True,
+)
+app.add_typer(containers_app, name="containers")
+migrate_app = typer.Typer(
+    help="Preview or apply migration of 0.1.0 authoring state into drafts.",
+    no_args_is_help=True,
+)
+app.add_typer(migrate_app, name="migrate")
+preview_app = typer.Typer(
+    help="Show derived, non-authoritative previews of published files.",
+    no_args_is_help=True,
+)
+app.add_typer(preview_app, name="preview")
 
-_service = ApplicationService()
 RepositoryOption = Annotated[
     Path,
     typer.Option(
@@ -90,12 +121,11 @@ RepositoryOption = Annotated[
         file_okay=False,
         dir_okay=True,
         resolve_path=True,
-        help="Nextflow pipeline repository to inspect.",
+        help="Pipeline repository root.",
     ),
 ]
 OptionalExistingPath = Annotated[
-    Path | None,
-    typer.Option(exists=True, resolve_path=True),
+    Path | None, typer.Option(exists=True, resolve_path=True)
 ]
 OutputDirectoryOption = Annotated[
     Path,
@@ -107,58 +137,56 @@ OutputDirectoryOption = Annotated[
         help="Directory in which to write analysis_output.json.",
     ),
 ]
-ExportUnresolvedOption = Annotated[
-    Path | None,
-    typer.Option(
-        help="Write unresolved candidates as JSON; use '-' for standard output."
-    ),
-]
-SetFieldOption = Annotated[
+SetOption = Annotated[
     list[str] | None,
-    typer.Option(
-        "--set",
-        help=(
-            "Repeat PARAMETER=CLASSIFICATION or CANDIDATE_ID.FIELD=VALUE for "
-            "explicit non-interactive review."
-        ),
+    typer.Option("--set", help="Repeatable explicit review value KEY=VALUE."),
+]
+JsonOption = Annotated[bool, typer.Option("--json", help="Emit stable JSON.")]
+LayerArgument = Annotated[
+    str,
+    typer.Argument(
+        help="Layer: bundle, inputs, outputs, components, execution-profiles, "
+        "provenance."
     ),
 ]
+_ERRORS = (
+    OSError,
+    UnicodeError,
+    ValueError,
+    LayerError,
+    LifecycleError,
+    DraftStoreError,
+    DraftConflictError,
+)
+_STATE: dict[str, str | None] = {"actor": None}
+T = TypeVar("T")
+P = ParamSpec("P")
 
 
-class _BuildChange(Protocol):
-    @property
-    def path(self) -> Path: ...
-
-    @property
-    def kind(self) -> ChangeKind | StaticChangeKind: ...
-
-    @property
-    def diff(self) -> str: ...
+def _context(origin: ChangeOrigin = ChangeOrigin.MANUAL_CLI) -> ChangeContext:
+    actor = resolve_actor(_STATE["actor"])
+    return ChangeContext(actor=actor, origin=origin)
 
 
-def _layer_build_document(
-    target: str,
-    changes: Iterable[_BuildChange],
-    *,
-    wrote: bool,
-    check: bool,
-    non_interactive: bool,
-) -> dict[str, object]:
-    """Return one stable JSON envelope for every layer build target."""
-    return {
-        "target": target,
-        "changes": [
-            {
-                "path": item.path.as_posix().split("/splice/", 1)[-1],
-                "kind": item.kind.value,
-                "diff": item.diff,
-            }
-            for item in changes
-        ],
-        "wrote": wrote,
-        "check": check,
-        "non_interactive": non_interactive,
-    }
+def _run(action: Callable[[], T]) -> T:
+    try:
+        return action()
+    except DraftConflictError as error:
+        typer.echo(f"conflict: {error}", err=True)
+        for conflict in error.conflicts:
+            typer.echo(
+                f"  {conflict.path or '/'}: planned against {conflict.expected!r}, "
+                f"now {conflict.actual!r}",
+                err=True,
+            )
+        raise typer.Exit(code=2) from error
+    except _ERRORS as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+
+def _call(func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    return _run(lambda: func(*args, **kwargs))
 
 
 def _version_callback(value: bool) -> None:
@@ -176,73 +204,105 @@ def cli(
         is_eager=True,
         help="Show the nf-splice version and exit.",
     ),
+    actor: str | None = typer.Option(
+        None,
+        "--actor",
+        help="Public actor label recorded with review events (never an e-mail).",
+        envvar="NF_SPLICE_ACTOR",
+    ),
 ) -> None:
-    """Author and maintain a SPLICE integration layer."""
+    """Author and maintain a SPLICE workflow bundle from editable drafts."""
+    _STATE["actor"] = actor
 
 
-def _inspection_lines(snapshot: WorkspaceSnapshot) -> list[str]:
-    inspection = snapshot.inspection
-    revision = inspection.repository_revision or "not detected"
-    lines = [
-        f"Repository: {inspection.root}",
-        f"Revision: {revision}",
-        f"SPLICE tree: {inspection.splice_tree.state.value}",
-        f"Evidence: {len(inspection.evidence)}",
-    ]
-    lines.extend(
-        f"  {item.kind.value}: {item.count}" for item in snapshot.evidence_counts
-    )
-    if snapshot.warnings:
-        lines.append("Warnings:")
-        lines.extend(f"  - {warning}" for warning in snapshot.warnings)
-    return lines
+def _value(text: str) -> Any:
+    stripped = text.strip()
+    if stripped[:1] in {"[", "{"} or stripped in {"true", "false", "null"}:
+        return json.loads(stripped)
+    return text
 
 
-def _status_lines(snapshot: WorkspaceSnapshot) -> list[str]:
-    unresolved = snapshot.authoring.unresolved_decisions
-    unresolved_text = "not available" if unresolved is None else str(unresolved)
-    lines = _inspection_lines(snapshot)
-    lines.extend(
-        [
-            f"Authoring state: {snapshot.authoring.state.value}",
-            f"Unresolved decisions: {unresolved_text}",
-            f"Build: {snapshot.build_status}",
-            f"Validation: {snapshot.validation_status}",
-            "Layers:",
-        ]
-    )
-    for layer in snapshot.layers:
-        layer_unresolved = (
-            "not available"
-            if layer.unresolved_decisions is None
-            else str(layer.unresolved_decisions)
-        )
-        lines.append(
-            f"  {layer.name}: {layer.status.value}; unresolved={layer_unresolved}"
-        )
-    return lines
+def _assignments(values: list[str] | None) -> list[tuple[str, str]]:
+    result = []
+    for item in values or []:
+        left, separator, right = item.partition("=")
+        if not separator or not left:
+            raise LayerError(f"--set expects KEY=VALUE, got {item!r}")
+        result.append((left.strip(), right))
+    return result
 
 
-def _echo_lines(lines: list[str]) -> None:
-    typer.echo("\n".join(lines))
+def _issues_report(layer: str) -> Callable[[Path], int]:
+    def report(repository: Path) -> int:
+        validation = validate_layer(repository, layer)
+        for item in validation.issues:
+            typer.echo(
+                f"{item.severity.value}: {item.path}#{item.pointer or '/'} "
+                f"[{item.code}] {item.message}",
+                err=True,
+            )
+        return len(validation.errors)
+
+    return report
 
 
-def _unavailable(operation: Operation) -> None:
-    result = _service.unavailable(operation)
-    typer.echo(result.message, err=True)
-    raise typer.Exit(code=2)
+def _finish(repository: Path, layer: str, saved: str) -> None:
+    errors = _issues_report(layer)(repository)
+    if errors:
+        typer.echo(f"{saved}; {errors} blocking issue(s) remain.", err=True)
+        raise typer.Exit(code=2)
+    typer.echo(f"{saved}; the {layer} draft is ready to promote.")
+
+
+# ---------------------------------------------------------------- inspection
 
 
 @app.command("inspect")
-def inspect_command(repository: RepositoryOption = Path(".")) -> None:
-    """Inspect pipeline evidence and the existing repository-root splice/ tree."""
-    _echo_lines(_inspection_lines(_service.inspect(repository)))
+def inspect_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Inspect pipeline evidence and the splice/ tree (read-only)."""
+    status = workspace_status(repository)
+    if json_output:
+        typer.echo(dumps(status.to_json()))
+        return
+    inspection = status.inspection
+    typer.echo(f"Repository: {inspection.root}")
+    typer.echo(f"Revision: {inspection.repository_revision or 'not detected'}")
+    typer.echo(f"SPLICE tree: {inspection.splice_tree.state.value}")
+    typer.echo(f"Evidence: {len(inspection.evidence)}")
+    for item in status.evidence_counts:
+        typer.echo(f"  {item.kind.value}: {item.count}")
+    if status.warnings:
+        typer.echo("Warnings:")
+        for warning in status.warnings:
+            typer.echo(f"  - {warning}")
 
 
 @app.command("status")
-def status_command(repository: RepositoryOption = Path(".")) -> None:
-    """Show the shared read-only integration workspace status."""
-    _echo_lines(_status_lines(_service.inspect(repository)))
+def status_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Show each layer's draft-derived status (read-only)."""
+    status = workspace_status(repository)
+    if json_output:
+        typer.echo(dumps(status.to_json()))
+        return
+    typer.echo(f"Repository: {status.inspection.root}")
+    typer.echo(f"SPLICE tree: {status.inspection.splice_tree.state.value}")
+    typer.echo("Layers:")
+    for item in status.artifacts:
+        finals = ", ".join(f"{final.path}={final.state.value}" for final in item.finals)
+        typer.echo(
+            f"  {item.layer}: {item.state.value}; errors={item.errors}; "
+            f"warnings={item.warnings}; finals: {finals}"
+        )
+    for warning in status.warnings:
+        typer.echo(f"warning: {warning}")
+    typer.echo(f"Bundle ready to publish: {'yes' if status.ready else 'no'}")
+
+
+# ---------------------------------------------------------------- init
 
 
 @app.command("init")
@@ -252,102 +312,200 @@ def init_command(
     pipeline_version: str | None = typer.Option(
         None, "--pipeline-version", help="Reviewed pipeline version."
     ),
-    repository_url: str | None = typer.Option(
-        None, help="Reviewed pipeline repository URL."
-    ),
+    repository_url: str | None = typer.Option(None, help="Reviewed repository URL."),
     release_url: str | None = typer.Option(None, help="Optional release URL."),
+    description: str | None = typer.Option(None, help="Concise description."),
+    title: str | None = typer.Option(None, help="Display title."),
+    licence: str | None = typer.Option(None, help="Licence identifier."),
+    example_output_tree: OptionalExistingPath = None,
+    contract_version: str | None = typer.Option(
+        None, help="Reviewed analysis-output schema version (X.Y.Z)."
+    ),
     accept_detected: bool = typer.Option(
         False,
-        help="Explicitly accept unambiguous identity evidence detected in config/Git.",
+        help="Explicitly confirm every unanimous detected identity value.",
     ),
+    json_output: JsonOption = False,
 ) -> None:
-    """Initialise splice/nf-splice.yaml with reviewed pipeline identity."""
-    try:
-        document = _service.initialise(
+    """Create absent drafts from evidence; existing drafts are never replaced."""
+    explicit = {
+        key: value
+        for key, value in {
+            "name": name,
+            "version": pipeline_version,
+            "repository_url": repository_url,
+            "release_url": release_url,
+            "description": description,
+            "title": title,
+            "licence": licence,
+        }.items()
+        if value is not None
+    }
+    report = _run(
+        lambda: initialise(
             repository,
-            name=name,
-            version=pipeline_version,
-            repository_url=repository_url,
-            release_url=release_url,
+            _context(),
+            identity=explicit,
             accept_detected=accept_detected,
+            example_output_tree=example_output_tree,
+            contract_version=contract_version,
         )
-    except (OSError, AuthoringOperationError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    typer.echo(
-        f"Initialised {repository / 'splice' / 'nf-splice.yaml'} for "
-        f"{document.pipeline.name} {document.pipeline.version}."
     )
-
-
-@app.command("migrate-state")
-def migrate_state_command(
-    repository: RepositoryOption = Path("."),
-    apply: bool = typer.Option(
-        False,
-        "--apply",
-        help="Apply the displayed migration while preserving legacy source files.",
-    ),
-) -> None:
-    """Preview or explicitly apply legacy root-state reconciliation."""
-    try:
-        result = (
-            _service.apply_state_migration(repository)
-            if apply
-            else _service.plan_state_migration(repository)
-        )
-    except (OSError, StateMigrationError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    if not result.changes:
-        typer.echo("No repository-root legacy state was detected.")
-        return
-    for change in result.changes:
+    if json_output:
         typer.echo(
-            f"{change.kind.value}: {change.source.relative_to(repository)} -> "
-            f"{change.destination.relative_to(repository)}"
-        )
-    if apply:
-        if result.wrote:
-            typer.echo(
-                "Migration applied atomically; legacy source files were preserved."
+            dumps(
+                {
+                    "created": list(report.created),
+                    "preserved": list(report.preserved),
+                    "identity_conflicts": list(report.identity.conflicts),
+                    "confirmed": list(report.confirmed),
+                    "notes": list(report.notes),
+                }
             )
-        else:
-            typer.echo("Canonical state is already byte-identical; no files changed.")
-    else:
-        typer.echo(
-            "Preview complete; repository was not changed. Pass --apply to migrate."
         )
+        return
+    for layer in report.created:
+        typer.echo(f"created: {layer_spec(layer).draft}")
+    for layer in report.preserved:
+        typer.echo(f"preserved existing draft: {layer_spec(layer).draft}")
+    for pointer in report.identity.conflicts:
+        typer.echo(f"conflicting evidence for {pointer}; choose a value", err=True)
+    for note in report.notes:
+        typer.echo(f"note: {note}")
+    typer.echo("Drafts are the editable source; run `nf-splice status` next.")
 
 
-def _parse_field_reviews(
-    candidates: tuple[OutputCandidate, ...], assignments: list[str]
-) -> list[tuple[str, dict[str, object]]]:
-    by_id = {item.id: item for item in candidates}
+# ---------------------------------------------------------------- configure
+
+
+def _configure_identity(
+    repository: Path,
+    assignments: list[tuple[str, str]],
+    confirm: bool,
+    approve_publication: bool,
+) -> None:
+    changes: dict[str, Any] = {key: _value(value) for key, value in assignments}
+    if approve_publication:
+        changes["maintainers_publication_approved"] = True
+    if changes:
+        _run(lambda: set_identity_fields(repository, changes, _context()))
+    if confirm:
+        pending = [
+            item.pointer
+            for item in validate_bundle_draft(repository).issues
+            if item.code == "unconfirmed_detected_value"
+        ]
+        if pending:
+            _run(lambda: confirm_values(repository, "bundle", pending, _context()))
+    _finish(repository, "bundle", "Identity draft saved")
+
+
+def _access_for(value: str) -> list[str]:
+    try:
+        principals, _visibility = LEGACY_CLASSIFICATION_ACCESS[
+            InputClassification(value)
+        ]
+        return [item.value for item in principals]
+    except ValueError:
+        return [
+            item.strip()
+            for item in value.split(",")
+            if item.strip() and item.strip() != "none"
+        ]
+
+
+def _configure_inputs(
+    repository: Path,
+    assignments: list[tuple[str, str]],
+    visibility: list[tuple[str, str]],
+    decision_file: Path | None,
+    reimport: bool,
+) -> None:
+    if not read_layer_exists(repository, "inputs"):
+        _run(lambda: input_layer.import_inputs(repository))
+    if reimport:
+        _run(lambda: input_layer.apply_reimport(repository, _context()))
+    reviews: list[dict[str, Any]] = []
+    if decision_file is not None:
+        loaded = json.loads(decision_file.read_text(encoding="utf-8"))
+        if not isinstance(loaded, list):
+            raise typer.BadParameter("input decision file must be a JSON array")
+        reviews.extend(loaded)
+    reviews.extend(
+        {"parameter": name, "editable_by": value} for name, value in assignments
+    )
+    hidden = dict(visibility)
+    for review in reviews:
+        name = str(review["parameter"]).removeprefix("input:")
+        value = review.get("editable_by", review.get("classification", ""))
+        principals = value if isinstance(value, list) else _access_for(str(value))
+        legacy_visibility = None
+        try:
+            legacy_visibility = LEGACY_CLASSIFICATION_ACCESS[
+                InputClassification(str(value))
+            ][1]
+        except ValueError:
+            pass
+        selected = hidden.pop(name, review.get("visibility")) or (
+            legacy_visibility.value if legacy_visibility else None
+        )
+        _call(
+            input_layer.set_access,
+            repository,
+            [name],
+            principals,
+            _context(),
+            visibility=selected,
+        )
+    for name, value in hidden.items():
+        current = _parameter_access(repository, name)
+        _call(
+            input_layer.set_access,
+            repository,
+            [name],
+            current,
+            _context(),
+            visibility=value,
+        )
+    _finish(repository, "inputs", "Inputs draft saved")
+
+
+def read_layer_exists(repository: Path, layer: str) -> bool:
+    return (repository / layer_spec(layer).draft).exists()
+
+
+def _parameter_access(repository: Path, name: str) -> list[str]:
+    from nf_splice.layers.base import read_layer
+
+    state = read_layer(repository, "inputs")
+    if state.draft is None:
+        return []
+    for parameter in input_layer.iter_parameters(state.draft.data):
+        if parameter.name == name:
+            return list(parameter.editable_by or ())
+    raise LayerError(f"unknown parameter {name!r}")
+
+
+def _output_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
+    candidates = {item.id: item for item in output_layer.pending_candidates(repository)}
     fields: dict[str, dict[str, str]] = {}
-    for assignment in assignments:
-        left, separator, value = assignment.partition("=")
-        candidate_field, dot, field = left.rpartition(".")
-        if not separator or not dot or candidate_field not in by_id or not field:
-            raise OutputReviewError("--set must use EXISTING_CANDIDATE_ID.FIELD=VALUE")
-        fields.setdefault(candidate_field, {})[field] = value
-
-    reviews: list[tuple[str, dict[str, object]]] = []
+    for left, value in assignments:
+        candidate_id, dot, field = left.rpartition(".")
+        if not dot or candidate_id not in candidates:
+            raise LayerError("--set must use PENDING_CANDIDATE_ID.FIELD=VALUE")
+        fields.setdefault(candidate_id, {})[field] = value
     for candidate_id, assigned in fields.items():
-        candidate = by_id[candidate_id]
-        action = assigned.pop("action", "accept")
-        if action == "reject":
-            reviews.append(
-                (
-                    candidate_id,
-                    {"action": "reject", "reason": assigned.get("reason", "")},
-                )
+        candidate = candidates[candidate_id]
+        if assigned.pop("action", "accept") == "reject":
+            _call(
+                output_layer.reject_output,
+                repository,
+                candidate_id,
+                assigned.get("reason", ""),
+                _context(),
             )
             continue
-        if action != "accept":
-            raise OutputReviewError("repeatable --set action must be accept or reject")
-        sequence_fields = {"formats", "scopes", "entity_types", "path_patterns"}
-        output: dict[str, object] = {
+        output: dict[str, Any] = {
             "key": candidate.suggested_key,
             "title": candidate.suggested_title or candidate.suggested_key,
             "description": candidate.suggested_description or "",
@@ -361,25 +519,22 @@ def _parse_field_reviews(
             "path_patterns": [candidate.path_pattern] if candidate.path_pattern else [],
         }
         for field, value in assigned.items():
-            if field in sequence_fields:
+            if field in {"formats", "scopes", "entity_types", "path_patterns"}:
                 output[field] = [part for part in value.split(",") if part]
             elif field != "reason":
                 output[field] = value
-        reviews.append((candidate_id, output))
-    return reviews
+        _call(output_layer.accept_output, repository, candidate_id, output, _context())
 
 
-def _export_unresolved(path: Path | None, candidates: tuple[object, ...]) -> None:
+def _export(path: Path | None, items: Iterable[Any]) -> None:
     if path is None:
         return
     content = (
-        json.dumps(
+        dumps(
             [
-                item.model_dump(mode="json")
-                for item in candidates
-                if hasattr(item, "model_dump")
-            ],
-            indent=2,
+                item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                for item in items
+            ]
         )
         + "\n"
     )
@@ -389,735 +544,669 @@ def _export_unresolved(path: Path | None, candidates: tuple[object, ...]) -> Non
         path.write_text(content, encoding="utf-8")
 
 
+def _component_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
+    grouped: dict[str, dict[str, str]] = {}
+    pending = {item.id for item in component_layer.pending_components(repository)}
+    for left, value in assignments:
+        candidate_id = next(
+            (
+                item
+                for item in sorted(pending, key=len, reverse=True)
+                if left == item or left.startswith(item + ".")
+            ),
+            None,
+        )
+        if candidate_id is None:
+            raise LayerError(f"unknown pending component in {left!r}")
+        field = left[len(candidate_id) + 1 :] if left != candidate_id else "action"
+        grouped.setdefault(candidate_id, {})[field] = value
+    for candidate_id, fields in grouped.items():
+        if fields.get("action") == "reject":
+            _call(
+                component_layer.reject_component,
+                repository,
+                candidate_id,
+                fields.get("reason", "rejected"),
+                _context(),
+            )
+            continue
+        sources: dict[str, str] = {
+            key: fields[key]
+            for key in ("docker", "singularity", "apptainer")
+            if key in fields
+        }
+        _call(
+            component_layer.accept_component,
+            repository,
+            candidate_id,
+            _context(),
+            version=fields.get("version"),
+            sources=sources or None,
+        )
+
+
+def _profile_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
+    grouped: dict[str, dict[str, str]] = {}
+    pending = {item.id for item in execution_layer.pending_profiles(repository)}
+    for left, value in assignments:
+        candidate_id = next(
+            (
+                item
+                for item in sorted(pending, key=len, reverse=True)
+                if left.startswith(item + ".")
+            ),
+            None,
+        )
+        if candidate_id is None:
+            raise LayerError(f"unknown pending profile in {left!r}")
+        grouped.setdefault(candidate_id, {})[left[len(candidate_id) + 1 :]] = value
+    for candidate_id, fields in grouped.items():
+        if fields.get("action") == "reject":
+            _call(
+                execution_layer.reject_profile,
+                repository,
+                candidate_id,
+                fields.get("reason", ""),
+                _context(),
+            )
+            continue
+        generate: dict[str, dict[str, Any]] | None = (
+            {"process": {}, "user_params": {}, "platform_params": {}}
+            if fields.get("generate") == "true"
+            else None
+        )
+        _call(
+            execution_layer.review_profile,
+            repository,
+            candidate_id,
+            _context(),
+            profile_type=fields.get("type", ""),
+            description=fields.get("description", ""),
+            executor=fields.get("executor", ""),
+            container_engine=fields.get("container_engine", ""),
+            config_source=fields.get("config_source"),
+            generate=generate,
+        )
+
+
 @app.command("configure")
 def configure_command(
-    layer: str = typer.Argument(help="Integration layer name."),
+    layer: LayerArgument,
     repository: RepositoryOption = Path("."),
+    set_field: SetOption = None,
+    visibility: Annotated[
+        list[str] | None,
+        typer.Option("--visibility", help="Inputs: NAME=standard|advanced|hidden."),
+    ] = None,
+    decision_file: OptionalExistingPath = None,
     example_output_tree: OptionalExistingPath = None,
     publish_directory: OptionalExistingPath = None,
-    decision_file: OptionalExistingPath = None,
-    export_unresolved: ExportUnresolvedOption = None,
-    set_field: SetFieldOption = None,
     contract_version: str | None = typer.Option(
-        None,
-        help=(
-            "Reviewed output-contract schema version (X.Y.Z), independent of "
-            "pipeline version."
-        ),
+        None, help="Outputs: reviewed analysis-output schema version X.Y.Z."
     ),
+    export_unresolved: Annotated[
+        Path | None,
+        typer.Option(help="Write pending candidates as JSON ('-' for stdout)."),
+    ] = None,
     accept_detected: bool = typer.Option(
-        False,
-        help="Explicitly accept every detected component without conflicts.",
+        False, help="Identity/components: explicitly accept unambiguous evidence."
+    ),
+    approve_maintainer_publication: bool = typer.Option(
+        False, help="Identity: approve publishing maintainer contacts."
+    ),
+    require_downloadable: Annotated[
+        str | None,
+        typer.Option(
+            help="Components: true/false whether images must be downloadable."
+        ),
+    ] = None,
+    default_profile: str | None = typer.Option(
+        None, "--default", help="Execution profiles: the reviewed default profile ID."
+    ),
+    slurm_default: bool = typer.Option(
+        False, help="Execution profiles: add the generated SPLICE Slurm candidate."
+    ),
+    strategy: str | None = typer.Option(
+        None, help="Provenance: include, enriched or generated."
+    ),
+    reimport: bool = typer.Option(
+        False, help="Inputs: apply a conflict-free nextflow_schema.json re-import."
     ),
 ) -> None:
-    """Discover and explicitly review one integration layer."""
-    if layer not in {
-        "inputs",
-        "outputs",
-        "components",
-        "execution-profiles",
-        "provenance",
-    }:
-        _unavailable(Operation.CONFIGURE)
-    try:
-        if layer == "inputs":
-            document = _service.discover_inputs(repository)
-            input_candidates = unresolved_input_candidates(document)
-            input_reviews: list[dict[str, object]] = []
-            if decision_file is not None:
-                loaded: object = json.loads(decision_file.read_text(encoding="utf-8"))
-                if not isinstance(loaded, list) or not all(
-                    isinstance(item, dict) for item in loaded
-                ):
-                    raise InputReviewError(
-                        "input decision file must contain a JSON array"
-                    )
-                input_reviews.extend(loaded)
-            input_reviews.extend(
-                _parse_input_reviews(input_candidates, set_field or [])
-            )
-            for review in input_reviews:
-                name = str(review.get("parameter", ""))
-                candidate_id = name if name.startswith("input:") else f"input:{name}"
-                document = _service.review_input(
-                    repository,
-                    candidate_id,
-                    str(review.get("classification", "")),
-                    type_override=(
-                        str(review["type"]) if review.get("type") is not None else None
-                    ),
-                    description_override=(
-                        str(review["description"])
-                        if review.get("description") is not None
-                        else None
-                    ),
-                )
-            input_candidates = unresolved_input_candidates(document)
-            _export_unresolved(export_unresolved, input_candidates)
-            if input_candidates:
-                typer.echo(
-                    f"{len(input_candidates)} input parameter(s) still require review.",
-                    err=True,
-                )
-                raise typer.Exit(code=2)
-            typer.echo("Input review is complete; canonical authoring state saved.")
-            return
-
-        if layer == "components":
-            document = _service.discover_components(repository)
-            if accept_detected:
-                document = _service.accept_unambiguous_components(repository)
-            component_candidates = unresolved_component_candidates(document)
-            component_reviews: list[dict[str, object]] = []
-            if decision_file is not None:
-                loaded = json.loads(decision_file.read_text(encoding="utf-8"))
-                if not isinstance(loaded, list) or not all(
-                    isinstance(item, dict) for item in loaded
-                ):
-                    raise ComponentReviewError(
-                        "component decision file must contain a JSON array"
-                    )
-                component_reviews.extend(loaded)
-            component_reviews.extend(
-                _parse_component_reviews(component_candidates, set_field or [])
-            )
-            for review in component_reviews:
-                candidate_id = str(review.get("component", ""))
-                document = _service.review_component(
-                    repository,
-                    candidate_id,
-                    version=(
-                        str(review["version"])
-                        if review.get("version") is not None
-                        else None
-                    ),
-                    container_uri=(
-                        str(review["container_uri"])
-                        if review.get("container_uri") is not None
-                        else None
-                    ),
-                )
-            component_candidates = unresolved_component_candidates(document)
-            _export_unresolved(export_unresolved, component_candidates)
-            if component_candidates:
-                typer.echo(
-                    f"{len(component_candidates)} component(s) still require review.",
-                    err=True,
-                )
-                raise typer.Exit(code=2)
-            typer.echo("Component review is complete; canonical authoring state saved.")
-            return
-
-        if layer == "execution-profiles":
-            document = _service.discover_execution_profiles(repository)
-            profile_candidates = unresolved_execution_profiles(document)
-            profile_reviews: list[dict[str, object]] = []
-            if decision_file is not None:
-                loaded = json.loads(decision_file.read_text(encoding="utf-8"))
-                if not isinstance(loaded, list) or not all(
-                    isinstance(item, dict) for item in loaded
-                ):
-                    raise ExecutionProfileError(
-                        "execution-profile decision file must contain a JSON array"
-                    )
-                profile_reviews.extend(loaded)
-            profile_reviews.extend(
-                _parse_profile_reviews(profile_candidates, set_field or [])
-            )
-            for review in profile_reviews:
-                candidate_id = str(review.get("profile", ""))
-                if review.get("action") == "reject":
-                    document = _service.reject_execution_profile(
-                        repository,
-                        candidate_id,
-                        str(review.get("reason", "")),
-                    )
-                    continue
-                document = _service.review_execution_profile(
-                    repository,
-                    candidate_id,
-                    profile_type=str(review.get("type", "")),
-                    description=str(review.get("description", "")),
-                    executor=(
-                        str(review["executor"])
-                        if review.get("executor") is not None
-                        else None
-                    ),
-                    container_engine=(
-                        str(review["container_engine"])
-                        if review.get("container_engine") is not None
-                        else None
-                    ),
-                    config_source=(
-                        str(review["config_source"])
-                        if review.get("config_source") is not None
-                        else None
-                    ),
-                )
-            profile_candidates = unresolved_execution_profiles(document)
-            _export_unresolved(export_unresolved, profile_candidates)
-            if profile_candidates:
-                typer.echo(
-                    f"{len(profile_candidates)} execution profile(s) still require "
-                    "review.",
-                    err=True,
-                )
-                raise typer.Exit(code=2)
-            typer.echo(
-                "Execution-profile review is complete; canonical authoring state saved."
-            )
-            return
-
-        if layer == "provenance":
-            document = _service.discover_provenance(repository)
-            provenance_candidates = unresolved_provenance_candidates(document)
-            provenance_review_data = _provenance_review(decision_file, set_field or [])
-            if provenance_review_data is not None:
-                candidate_id = _select_provenance_candidate(
-                    provenance_candidates, provenance_review_data
-                )
-                document = _service.review_provenance(repository, candidate_id)
-            provenance_candidates = unresolved_provenance_candidates(document)
-            _export_unresolved(export_unresolved, provenance_candidates)
-            if provenance_candidates:
-                typer.echo(
-                    f"{len(provenance_candidates)} provenance strategy candidate(s) "
-                    "still require review.",
-                    err=True,
-                )
-                raise typer.Exit(code=2)
-            typer.echo(
-                "Provenance review is complete; canonical authoring state saved."
-            )
-            return
-
-        result = _service.discover_outputs(
-            repository,
-            example_output_tree=example_output_tree,
-            publish_directory=publish_directory,
-            contract_version=contract_version,
+    """Review one layer by targeted, attributed edits to its draft."""
+    name = _run(lambda: layer_spec("bundle" if layer == "identity" else layer).name)
+    assignments = _assignments(set_field)
+    if name == "bundle":
+        _configure_identity(
+            repository, assignments, accept_detected, approve_maintainer_publication
         )
-        document = result.document
+        return
+    if name == "inputs":
+        _configure_inputs(
+            repository, assignments, _assignments(visibility), decision_file, reimport
+        )
+        return
+    if name == "outputs":
+        _run(
+            lambda: output_layer.discover_outputs(
+                repository,
+                example_output_tree=example_output_tree,
+                publish_directory=publish_directory,
+            )
+        )
+        if contract_version is not None:
+            _run(
+                lambda: output_layer.set_contract_version(
+                    repository, contract_version, _context()
+                )
+            )
         if decision_file is not None:
-            document = apply_output_decision_file(repository, decision_file)
-        output_candidates = unresolved_output_candidates(document)
-        for candidate_id, review in _parse_field_reviews(
-            output_candidates, set_field or []
-        ):
-            if review.get("action") == "reject":
-                document = _service.reject_output(
-                    repository, candidate_id, str(review.get("reason", ""))
+            loaded = yaml.safe_load(decision_file.read_text(encoding="utf-8"))
+            _run(
+                lambda: output_layer.apply_decision_file(repository, loaded, _context())
+            )
+        _output_reviews(repository, assignments)
+        _export(export_unresolved, output_layer.pending_candidates(repository))
+        _finish(repository, "outputs", "Outputs draft saved")
+        return
+    if name == "components":
+        _run(lambda: component_layer.discover_components(repository))
+        if accept_detected:
+            _run(
+                lambda: component_layer.accept_unambiguous_components(
+                    repository, _context()
                 )
-            else:
-                document = _service.accept_output(repository, candidate_id, review)
-        output_candidates = unresolved_output_candidates(document)
-        _export_unresolved(export_unresolved, output_candidates)
-    except (OSError, ValueError, AuthoringOperationError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    if output_candidates:
+            )
+        _component_reviews(repository, assignments)
+        if require_downloadable is not None:
+            _run(
+                lambda: component_layer.set_image_policy(
+                    repository, require_downloadable.lower() == "true", _context()
+                )
+            )
+        _export(
+            export_unresolved,
+            [
+                {
+                    "id": item.id,
+                    "problems": list(item.problems),
+                    "proposed_sources": dict(item.proposed_sources),
+                }
+                for item in component_layer.pending_components(repository)
+            ],
+        )
+        _finish(repository, "components", "Components draft saved")
+        return
+    if name == "execution-profiles":
+        _run(lambda: execution_layer.discover_execution(repository))
+        _profile_reviews(repository, assignments)
+        if slurm_default:
+            _run(
+                lambda: execution_layer.add_slurm_default_candidate(
+                    repository, _context()
+                )
+            )
+        if default_profile is not None:
+            _run(
+                lambda: execution_layer.set_default_profile(
+                    repository, default_profile, _context()
+                )
+            )
+        _export(export_unresolved, execution_layer.pending_profiles(repository))
+        _finish(repository, "execution-profiles", "Execution-profile draft saved")
+        return
+    if strategy == "include":
+        _run(lambda: provenance_layer.choose_include(repository, _context()))
+    elif strategy == "enriched":
+        _run(lambda: provenance_layer.prepare_enrichment(repository, _context()))
+    elif strategy == "generated":
+        _run(lambda: provenance_layer.generate_minimal(repository, _context()))
+    elif strategy is not None:
+        raise typer.BadParameter("strategy must be include, enriched or generated")
+    analysis = provenance_layer.analyse_ro_crate(repository)
+    for finding in analysis.findings:
         typer.echo(
-            f"{len(output_candidates)} output candidate(s) still require review.",
-            err=True,
+            f"{finding.severity.value}: ro-crate {finding.pointer} "
+            f"[{finding.code}] {finding.message}"
         )
+    _finish(repository, "provenance", "Provenance draft saved")
+
+
+# ---------------------------------------------------------------- drafts
+
+
+@draft_app.command("list")
+def draft_list_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """List every draft with its derived state (read-only)."""
+    status = workspace_status(repository)
+    if json_output:
+        typer.echo(dumps([item.to_json() for item in status.artifacts]))
+        return
+    for item in status.artifacts:
+        typer.echo(
+            f"{item.draft}: {item.state.value} "
+            f"(errors={item.errors}, warnings={item.warnings})"
+        )
+
+
+@draft_app.command("inspect")
+def draft_inspect_command(
+    layer: LayerArgument,
+    repository: RepositoryOption = Path("."),
+    json_output: JsonOption = False,
+) -> None:
+    """Show per-field issues for one draft (read-only)."""
+    report = _run(lambda: inspect_layer(repository, layer))
+    if json_output:
+        typer.echo(dumps(report))
+    else:
+        typer.echo(f"{report['draft']}: {'ready' if report['ready'] else 'not ready'}")
+        for item in report["issues"]:
+            typer.echo(_issue_line(item))
+    if not report["ready"]:
         raise typer.Exit(code=2)
-    typer.echo("Output review is complete; canonical authoring state saved.")
 
 
-def _parse_input_reviews(
-    candidates: tuple[InputCandidate, ...], assignments: list[str]
-) -> list[dict[str, object]]:
-    """Parse repeatable input classifications without interface-side semantics."""
-    by_id = {item.id: item for item in candidates}
-    by_name = {item.name: item.id for item in candidates}
-    grouped: dict[str, dict[str, object]] = {}
-    for assignment in assignments:
-        left, separator, value = assignment.partition("=")
-        if not separator:
-            raise InputReviewError("input --set must contain '='")
-        matched = next(
-            (
-                candidate_id
-                for candidate_id in sorted(by_id, key=len, reverse=True)
-                if left == candidate_id or left.startswith(candidate_id + ".")
-            ),
-            None,
+@draft_app.command("validate")
+def draft_validate_command(
+    layer: Annotated[
+        str | None, typer.Argument(help="Layer; all when omitted.")
+    ] = None,
+    repository: RepositoryOption = Path("."),
+    json_output: JsonOption = False,
+) -> None:
+    """Validate one or all drafts (read-only)."""
+    names = [layer_spec(layer).name] if layer else [spec.name for spec in LAYERS]
+    reports = [_call(inspect_layer, repository, name) for name in names]
+    if json_output:
+        typer.echo(
+            dumps({"valid": all(item["ready"] for item in reports), "layers": reports})
         )
-        if matched is None:
-            name, dot, field = left.partition(".")
-            matched = by_name.get(name)
-            if matched is None:
-                raise InputReviewError(f"unknown input parameter {name!r}")
-            selected_field = field if dot else "classification"
-        else:
-            selected_field = (
-                left[len(matched) + 1 :] if left != matched else "classification"
+    else:
+        for report in reports:
+            typer.echo(
+                f"{report['draft']}: {'ready' if report['ready'] else 'not ready'}"
             )
-        grouped.setdefault(matched, {"parameter": matched})[selected_field] = value
-    return list(grouped.values())
+            for item in report["issues"]:
+                typer.echo(_issue_line(item))
+    if not all(item["ready"] for item in reports):
+        raise typer.Exit(code=2)
 
 
-def _parse_component_reviews(
-    candidates: tuple[object, ...], assignments: list[str]
-) -> list[dict[str, object]]:
-    """Parse explicit component selections against currently unresolved IDs."""
-    identifiers = {str(item.id) for item in candidates if hasattr(item, "id")}
-    grouped: dict[str, dict[str, object]] = {}
-    for assignment in assignments:
-        left, separator, value = assignment.partition("=")
-        if not separator:
-            raise ComponentReviewError("component --set must contain '='")
-        candidate_id = next(
-            (
-                item
-                for item in sorted(identifiers, key=len, reverse=True)
-                if left == item or left.startswith(item + ".")
-            ),
-            None,
-        )
-        if candidate_id is None:
-            raise ComponentReviewError(f"unknown component candidate in {left!r}")
-        field = left[len(candidate_id) + 1 :] if left != candidate_id else "accept"
-        review = grouped.setdefault(candidate_id, {"component": candidate_id})
-        if field != "accept":
-            review[field] = value
-    return list(grouped.values())
+@draft_app.command("diff")
+def draft_diff_command(
+    layer: Annotated[
+        str | None, typer.Argument(help="Layer; whole bundle when omitted.")
+    ] = None,
+    repository: RepositoryOption = Path("."),
+    json_output: JsonOption = False,
+) -> None:
+    """Show the final-file diff promotion would produce (read-only)."""
+    plan = _run(lambda: plan_promotion(repository, layer))
+    _echo_plan(plan.to_json(), json_output)
 
 
-def _parse_profile_reviews(
-    candidates: tuple[object, ...], assignments: list[str]
-) -> list[dict[str, object]]:
-    """Parse repeatable profile selections against unresolved candidate IDs."""
-    identifiers = {str(item.id) for item in candidates if hasattr(item, "id")}
-    grouped: dict[str, dict[str, object]] = {}
-    for assignment in assignments:
-        left, separator, value = assignment.partition("=")
-        if not separator:
-            raise ExecutionProfileError("execution-profile --set must contain '='")
-        candidate_id = next(
-            (
-                item
-                for item in sorted(identifiers, key=len, reverse=True)
-                if left == item or left.startswith(item + ".")
-            ),
-            None,
-        )
-        if candidate_id is None:
-            raise ExecutionProfileError(
-                f"unknown execution profile candidate in {left!r}"
+def _issue_line(item: dict[str, Any]) -> str:
+    return (
+        f"  {item['severity']}: {item['pointer'] or '/'} "
+        f"[{item['code']}] {item['message']}"
+    )
+
+
+def _echo_plan(document: dict[str, Any], json_output: bool) -> None:
+    if json_output:
+        typer.echo(dumps(document))
+    else:
+        for item in document["blockers"]:
+            typer.echo(
+                f"blocked: {item['layer']}{item['pointer']}: {item['message']}",
+                err=True,
             )
-        field = left[len(candidate_id) + 1 :] if left != candidate_id else "action"
-        grouped.setdefault(candidate_id, {"profile": candidate_id})[field] = value
-    return list(grouped.values())
+        for item in document["changes"]:
+            typer.echo(f"{item['kind']}: splice/{item['path']} ({item['state']})")
+            if item["diff"]:
+                typer.echo(item["diff"], nl=not item["diff"].endswith("\n"))
+    if not document["ready"]:
+        raise typer.Exit(code=2)
 
 
-def _provenance_review(
-    decision_file: Path | None, assignments: list[str]
-) -> dict[str, object] | None:
-    """Load one explicit provenance decision from JSON and/or repeatable fields."""
-    review: dict[str, object] = {}
-    if decision_file is not None:
-        loaded: object = json.loads(decision_file.read_text(encoding="utf-8"))
-        if not isinstance(loaded, dict):
-            raise ProvenanceReviewError(
-                "provenance decision file must contain a JSON object"
-            )
-        review.update(loaded)
-    for assignment in assignments:
-        left, separator, value = assignment.partition("=")
-        if not separator or not left.startswith("provenance."):
-            raise ProvenanceReviewError(
-                "provenance --set must use provenance.FIELD=VALUE"
-            )
-        field = left.removeprefix("provenance.")
-        review[field] = value
-    return review or None
+@draft_app.command("confirm")
+def draft_confirm_command(
+    layer: LayerArgument,
+    pointers: Annotated[list[str], typer.Argument(help="JSON pointers to confirm.")],
+    repository: RepositoryOption = Path("."),
+) -> None:
+    """Record deliberate confirmation of current (detected) draft values."""
+    event = _run(
+        lambda: confirm_values(repository, layer_spec(layer).name, pointers, _context())
+    )
+    typer.echo(f"Confirmed {len(pointers)} value(s) ({event.id}).")
 
 
-def _select_provenance_candidate(
-    candidates: tuple[ProvenanceCandidate, ...], review: dict[str, object]
-) -> str:
-    """Resolve explicit approval of the sole repository-root source."""
-    if str(review.get("include", "")).lower() not in {"true", "yes", "1"}:
-        raise ProvenanceReviewError(
-            'approve inclusion with provenance.include=true or JSON {"include": true}'
+@draft_app.command("edit")
+def draft_edit_command(
+    layer: LayerArgument,
+    patch: Annotated[
+        Path,
+        typer.Option(
+            exists=True,
+            dir_okay=False,
+            resolve_path=True,
+            help="JSON list of patch operations with expected values.",
+        ),
+    ],
+    repository: RepositoryOption = Path("."),
+    apply: bool = typer.Option(False, "--apply", help="Write the approved edit."),
+) -> None:
+    """Plan (default) or apply a JSON-pointer patch to one draft."""
+    from nf_splice.services.workspace import apply_patch, plan_patch
+
+    operations = json.loads(patch.read_text(encoding="utf-8"))
+    result = _run(
+        lambda: (apply_patch if apply else plan_patch)(
+            repository, layer_spec(layer).name, operations, _context()
         )
-    candidate_id = review.get("candidate")
-    if candidate_id is not None:
-        selected = str(candidate_id)
-        if not any(item.id == selected for item in candidates):
-            raise ProvenanceReviewError(f"unknown provenance candidate {selected!r}")
-        return selected
-    if len(candidates) != 1:
-        raise ProvenanceReviewError(
-            "repository-root RO-Crate candidate is missing or ambiguous"
+    )
+    typer.echo(result.diff or "No change.", nl=not result.diff.endswith("\n"))
+    typer.echo("Applied." if result.wrote else "Preview only; pass --apply to write.")
+
+
+@draft_app.command("sync-identity")
+def draft_sync_identity_command(repository: RepositoryOption = Path(".")) -> None:
+    """Update the inputs draft's identity envelope from bundle.draft.yaml."""
+    result = _run(lambda: input_layer.sync_identity(repository, _context()))
+    typer.echo(result.diff or "Identity envelope already current.")
+
+
+@draft_app.command("promote")
+def draft_promote_command(
+    layer: Annotated[
+        str | None, typer.Argument(help="Layer; whole bundle when omitted.")
+    ] = None,
+    repository: RepositoryOption = Path("."),
+    replace_existing: bool = typer.Option(
+        False, help="Replace differing published files after review."
+    ),
+    overwrite_edited: Annotated[
+        list[str] | None,
+        typer.Option(help="Published path whose external edit may be overwritten."),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Promote one ready layer, or publish the whole ready bundle."""
+    result = _run(
+        lambda: promote(
+            repository,
+            layer,
+            _context(),
+            replace_existing=replace_existing,
+            overwrite_edited=overwrite_edited or (),
         )
-    return str(candidates[0].id)
+    )
+    if json_output:
+        typer.echo(dumps(result.plan.to_json() | {"wrote": list(result.wrote)}))
+        return
+    for path in result.wrote:
+        typer.echo(f"wrote: splice/{path}")
+    typer.echo(
+        "Published files are up to date." if not result.wrote else "Promotion complete."
+    )
+
+
+@draft_app.command("recover")
+def draft_recover_command(repository: RepositoryOption = Path(".")) -> None:
+    """Restore the previous release after an interrupted publication."""
+    result = _run(lambda: recover(repository))
+    typer.echo(
+        f"Restored {len(result.restored)} file(s)."
+        if result.recovered
+        else "Nothing to recover."
+    )
+
+
+# ---------------------------------------------------------------- plan/build/validate
 
 
 @app.command("plan")
 def plan_command(
-    target: str = typer.Argument("all", help="Complete integration target."),
+    target: Annotated[str, typer.Argument(help="'all' or a layer name.")] = "all",
     repository: RepositoryOption = Path("."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit a stable machine-readable plan."
-    ),
+    json_output: JsonOption = False,
 ) -> None:
-    """Preview complete reviewed integration changes and blockers."""
-    try:
-        plan = _service.plan_integration(repository, target=target)
-    except (OSError, ValueError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    if json_output:
-        typer.echo(json.dumps(plan_document(plan), indent=2))
-    else:
-        for blocker in plan.blockers:
-            typer.echo(f"blocked: {blocker}", err=True)
-        for change in plan.changes:
-            typer.echo(f"{change.kind.value}: {change.path}")
-            if change.diff:
-                typer.echo(change.diff, nl=not change.diff.endswith("\n"))
+    """Preview promotion/publication changes and blockers (read-only)."""
+    plan = _run(
+        lambda: plan_promotion(
+            repository, None if target in {"all", "bundle"} else target
+        )
+    )
+    _echo_plan(plan.to_json(), json_output)
+    if not json_output:
         typer.echo("Plan complete; repository was not changed.")
-    if not plan.ready:
-        raise typer.Exit(code=2)
 
 
 @app.command("build")
 def build_command(
-    target: str = typer.Argument(help="Integration layer name or 'all'."),
+    target: Annotated[str, typer.Argument(help="'all', 'bundle' or a layer name.")],
     repository: RepositoryOption = Path("."),
-    check: bool = typer.Option(
-        False, help="Show deterministic generated-file changes without writing."
-    ),
+    check: bool = typer.Option(False, help="Show changes without writing."),
     replace_existing: bool = typer.Option(
-        False,
-        help=(
-            "Replace a differing recognized generated artefact after reviewing "
-            "its diff."
-        ),
+        False, help="Replace differing published files after review."
     ),
+    overwrite_edited: Annotated[
+        list[str] | None,
+        typer.Option(help="Published path whose external edit may be overwritten."),
+    ] = None,
     non_interactive: bool = typer.Option(
-        False,
-        "--non-interactive",
-        help="Fail on every unresolved decision or required review.",
+        False, "--non-interactive", help="Never prompt; fail on blockers."
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit a stable machine-readable build result."
-    ),
+    json_output: JsonOption = False,
 ) -> None:
-    """Build one reviewed static layer or the complete integration."""
-    if target not in {
-        "all",
-        "bundle",
-        "outputs",
-        "inputs",
-        "components",
-        "execution-profiles",
-        "provenance",
-    }:
-        _unavailable(Operation.BUILD)
-    try:
-        if target in {"all", "bundle"}:
-            result = _service.build_integration(
-                repository,
-                target=target,
-                replace_existing=replace_existing,
-                check=check,
-            )
-            if json_output:
-                payload = plan_document(result.plan)
-                payload["wrote"] = result.wrote
-                payload["check"] = check
-                payload["non_interactive"] = non_interactive
-                typer.echo(json.dumps(payload, indent=2))
-            else:
-                for integration_change in result.plan.changes:
-                    typer.echo(
-                        f"{integration_change.kind.value}: {integration_change.path}"
-                    )
-                    if integration_change.diff:
-                        typer.echo(
-                            integration_change.diff,
-                            nl=not integration_change.diff.endswith("\n"),
-                        )
-                if check:
-                    typer.echo("Check complete; repository was not changed.")
-                elif result.wrote:
-                    typer.echo(f"Built reviewed {target} integration artefacts.")
-                else:
-                    typer.echo(
-                        "Integration artefacts are byte-identical; no files changed."
-                    )
-            return
-        if target == "execution-profiles":
-            execution_plan = _service.plan_execution_profiles(repository)
-            if check:
-                if json_output:
-                    typer.echo(
-                        json.dumps(
-                            _layer_build_document(
-                                target,
-                                execution_plan.changes,
-                                wrote=False,
-                                check=True,
-                                non_interactive=non_interactive,
-                            ),
-                            indent=2,
-                        )
-                    )
-                else:
-                    for change in execution_plan.changes:
-                        typer.echo(f"{change.kind.value}: {change.path}")
-                        if change.diff:
-                            typer.echo(change.diff, nl=not change.diff.endswith("\n"))
-                    typer.echo("Check complete; repository was not changed.")
-                return
-            execution_result = _service.build_execution_profiles(
-                repository, replace_existing=replace_existing
-            )
-            if json_output:
-                typer.echo(
-                    json.dumps(
-                        _layer_build_document(
-                            target,
-                            execution_result.changes,
-                            wrote=execution_result.wrote,
-                            check=False,
-                            non_interactive=non_interactive,
-                        ),
-                        indent=2,
-                    )
-                )
-                return
-            for change in execution_result.changes:
-                typer.echo(f"{change.kind.value}: {change.path}")
-                if change.diff:
-                    typer.echo(change.diff, nl=not change.diff.endswith("\n"))
-            if execution_result.wrote:
-                changed = sum(
-                    item.kind is not StaticChangeKind.UNCHANGED
-                    for item in execution_result.changes
-                )
-                typer.echo(f"Built {changed} reviewed execution artefact(s).")
-            else:
-                typer.echo("Execution artefacts are byte-identical; no files changed.")
-            return
-        if target == "provenance":
-            provenance_plan = _service.plan_provenance(repository)
-            if check:
-                if json_output:
-                    typer.echo(
-                        json.dumps(
-                            _layer_build_document(
-                                target,
-                                (provenance_plan.change,),
-                                wrote=False,
-                                check=True,
-                                non_interactive=non_interactive,
-                            ),
-                            indent=2,
-                        )
-                    )
-                else:
-                    typer.echo(
-                        f"{provenance_plan.change.kind.value}: "
-                        f"{provenance_plan.change.path}"
-                    )
-                    if provenance_plan.change.diff:
-                        typer.echo(
-                            provenance_plan.change.diff,
-                            nl=not provenance_plan.change.diff.endswith("\n"),
-                        )
-                    typer.echo("Check complete; repository was not changed.")
-                return
-            provenance_result = _service.build_provenance(
-                repository, replace_existing=replace_existing
-            )
-            if json_output:
-                typer.echo(
-                    json.dumps(
-                        _layer_build_document(
-                            target,
-                            (provenance_result.change,),
-                            wrote=provenance_result.wrote,
-                            check=False,
-                            non_interactive=non_interactive,
-                        ),
-                        indent=2,
-                    )
-                )
-                return
-            typer.echo(
-                f"{provenance_result.change.kind.value}: "
-                f"{provenance_result.change.path}"
-            )
-            if provenance_result.change.diff:
-                typer.echo(
-                    provenance_result.change.diff,
-                    nl=not provenance_result.change.diff.endswith("\n"),
-                )
-            if provenance_result.wrote:
-                typer.echo("Built reviewed provenance artefact.")
-            else:
-                typer.echo("Provenance artefact is byte-identical; no files changed.")
-            return
-        if target in {"inputs", "components"}:
-            static_plan = _service.plan_static_layer(repository, target)
-            if check:
-                if json_output:
-                    typer.echo(
-                        json.dumps(
-                            _layer_build_document(
-                                target,
-                                (static_plan.change,),
-                                wrote=False,
-                                check=True,
-                                non_interactive=non_interactive,
-                            ),
-                            indent=2,
-                        )
-                    )
-                else:
-                    typer.echo(
-                        f"{static_plan.change.kind.value}: {static_plan.change.path}"
-                    )
-                    if static_plan.change.diff:
-                        typer.echo(
-                            static_plan.change.diff,
-                            nl=not static_plan.change.diff.endswith("\n"),
-                        )
-                    typer.echo("Check complete; repository was not changed.")
-                return
-            static_result = _service.build_static_layer(
-                repository, target, replace_existing=replace_existing
-            )
-            if json_output:
-                typer.echo(
-                    json.dumps(
-                        _layer_build_document(
-                            target,
-                            (static_result.change,),
-                            wrote=static_result.wrote,
-                            check=False,
-                            non_interactive=non_interactive,
-                        ),
-                        indent=2,
-                    )
-                )
-                return
-            typer.echo(
-                f"{static_result.change.kind.value}: {static_result.change.path}"
-            )
-            if static_result.change.diff:
-                typer.echo(
-                    static_result.change.diff,
-                    nl=not static_result.change.diff.endswith("\n"),
-                )
-            if static_result.wrote:
-                typer.echo(f"Built reviewed {target} artefact.")
-            elif static_result.change.kind is StaticChangeKind.UNCHANGED:
-                typer.echo(
-                    f"Reviewed {target} artefact is byte-identical; no files changed."
-                )
-            return
-        output_plan = _service.plan_output_contracts(repository)
-        if check:
-            if json_output:
-                typer.echo(
-                    json.dumps(
-                        _layer_build_document(
-                            target,
-                            output_plan.changes,
-                            wrote=False,
-                            check=True,
-                            non_interactive=non_interactive,
-                        ),
-                        indent=2,
-                    )
-                )
-            else:
-                for output_change in output_plan.changes:
-                    typer.echo(f"{output_change.kind.value}: {output_change.path}")
-                    if output_change.diff:
-                        typer.echo(
-                            output_change.diff,
-                            nl=not output_change.diff.endswith("\n"),
-                        )
-                typer.echo("Check complete; repository was not changed.")
-            return
-        output_result = _service.build_output_contracts(
-            repository, replace_existing=replace_existing
+    """Promote validated drafts to published files (whole bundle for 'all')."""
+    layer = None if target in {"all", "bundle"} else target
+    if check:
+        plan = _run(lambda: plan_promotion(repository, layer))
+        document = plan.to_json() | {
+            "wrote": [],
+            "check": True,
+            "non_interactive": non_interactive,
+        }
+        _echo_plan(document, json_output)
+        if not json_output:
+            typer.echo("Check complete; repository was not changed.")
+        return
+    result = _run(
+        lambda: promote(
+            repository,
+            layer,
+            _context(),
+            replace_existing=replace_existing,
+            overwrite_edited=overwrite_edited or (),
         )
-        if json_output:
-            typer.echo(
-                json.dumps(
-                    _layer_build_document(
-                        target,
-                        output_result.changes,
-                        wrote=output_result.wrote,
-                        check=False,
-                        non_interactive=non_interactive,
-                    ),
-                    indent=2,
-                )
-            )
-            return
-        for output_change in output_result.changes:
-            typer.echo(f"{output_change.kind.value}: {output_change.path}")
-            if output_change.diff:
-                typer.echo(
-                    output_change.diff,
-                    nl=not output_change.diff.endswith("\n"),
-                )
-    except (OSError, ValueError) as error:
-        typer.echo(str(error), err=True)
-        raise typer.Exit(code=2) from error
-    changed = sum(
-        item.kind is not ChangeKind.UNCHANGED for item in output_result.changes
     )
-    if output_result.wrote:
-        typer.echo(f"Built {changed} reviewed output-contract artefact(s).")
-    else:
-        typer.echo("Output contracts are already byte-identical; no files changed.")
+    if json_output:
+        typer.echo(
+            dumps(
+                result.plan.to_json()
+                | {
+                    "wrote": list(result.wrote),
+                    "check": False,
+                    "non_interactive": non_interactive,
+                }
+            )
+        )
+        return
+    for change in result.plan.changes:
+        typer.echo(f"{change.kind}: splice/{change.path}")
+    typer.echo(
+        f"Built {len(result.wrote)} file(s)."
+        if result.wrote
+        else "Published files are byte-identical; no files changed."
+    )
 
 
 @app.command("validate")
 def validate_command(
-    repository: RepositoryOption = Path("."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit a stable machine-readable validation report."
-    ),
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
 ) -> None:
-    """Validate canonical readiness and the complete static bundle."""
-    report = _service.validate_integration(repository)
+    """Validate the published bundle, cross-file identity and lock (read-only)."""
+    report = validate_bundle(repository)
     if json_output:
         typer.echo(
-            json.dumps(
+            dumps(
                 {
                     "valid": report.valid,
                     "checked_files": report.checked_files,
-                    "issues": [
-                        {
-                            "path": item.path,
-                            "rule": item.rule,
-                            "message": item.message,
-                        }
-                        for item in report.issues
-                    ],
-                },
-                indent=2,
+                    "issues": [item.to_json() for item in report.issues],
+                }
             )
         )
     elif report.valid:
         typer.echo(
-            f"Valid SPLICE integration with {report.checked_files} managed files."
+            f"Valid SPLICE bundle ({report.checked_files} contract files checked)."
         )
+        for item in report.issues:
+            typer.echo(f"warning: {item.path} [{item.rule}] {item.message}")
     else:
-        for issue in report.issues:
-            typer.echo(f"{issue.path} [{issue.rule}]: {issue.message}", err=True)
+        for item in report.issues:
+            typer.echo(
+                f"{item.severity.value}: {item.path} [{item.rule}] {item.message}",
+                err=True,
+            )
     if not report.valid:
         raise typer.Exit(code=2)
+
+
+@preview_app.command("outputs")
+def preview_outputs_command(
+    repository: RepositoryOption = Path("."),
+    output_format: str = typer.Option("json", "--format", help="json or yaml."),
+) -> None:
+    """Print the derived outputs.schema.json/outputs.yaml (never written)."""
+    typer.echo(
+        _run(lambda: output_layer.preview_outputs(repository, output_format)), nl=False
+    )
+
+
+# ---------------------------------------------------------------- containers
+
+
+@containers_app.command("classify")
+def containers_classify_command(reference: str) -> None:
+    """Classify a container reference without network access."""
+    typer.echo(classify_reference(reference).value)
+
+
+@containers_app.command("cache-name")
+def containers_cache_name_command(
+    reference: str,
+    registry: str | None = typer.Option(None, help="Configured registry."),
+) -> None:
+    """Print the Nextflow Singularity/Apptainer cache file name."""
+    typer.echo(nextflow_cache_filename(reference, registry=registry))
+
+
+@containers_app.command("verify")
+def containers_verify_command(
+    container: Annotated[
+        str, typer.Argument(help="Container ID from the components draft.")
+    ],
+    url: Annotated[str, typer.Argument(help="HTTPS URL of the static image.")],
+    repository: RepositoryOption = Path("."),
+    registry: str | None = typer.Option(None, help="Configured Nextflow registry."),
+) -> None:
+    """Download and verify an image, then record its distribution (network)."""
+    try:
+        result = component_layer.verify_distribution(
+            repository, container, url, _context(), registry=registry
+        )
+    except ContainerServiceError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    except _ERRORS as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    typer.echo(result.diff)
+    typer.echo("Verified distribution recorded.")
+
+
+# ---------------------------------------------------------------- migration
+
+
+@migrate_app.command("drafts")
+def migrate_drafts_command(
+    repository: RepositoryOption = Path("."),
+    apply: bool = typer.Option(False, "--apply", help="Create the previewed drafts."),
+    map_library_to_run: bool = typer.Option(
+        False, help="Reviewed: legacy library IDs are platform run IDs."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Preview (default) or apply migration of splice/nf-splice.yaml to drafts."""
+    try:
+        plan = (
+            apply_draft_migration(
+                repository,
+                _context(ChangeOrigin.MIGRATION),
+                map_library_to_run=map_library_to_run,
+            )
+            if apply
+            else plan_draft_migration(repository, map_library_to_run=map_library_to_run)
+        )
+    except (MigrationError, *_ERRORS) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(dumps(plan.to_json() | {"applied": apply}))
+        return
+    for note in plan.notes:
+        typer.echo(f"{note.kind}: {note.layer}{note.pointer}: {note.message}")
+    typer.echo(
+        "Drafts created; legacy state preserved."
+        if apply
+        else "Preview only; pass --apply to create drafts."
+    )
+
+
+@app.command("migrate-state")
+def migrate_state_command(
+    repository: RepositoryOption = Path("."),
+    apply: bool = typer.Option(
+        False, "--apply", help="Apply the displayed relocation."
+    ),
+) -> None:
+    """Preview or apply relocation of repository-root legacy state into splice/."""
+    try:
+        result = (
+            apply_state_migration(repository)
+            if apply
+            else plan_state_migration(repository)
+        )
+    except (OSError, StateMigrationError) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if not result.changes:
+        typer.echo("No repository-root legacy state was detected.")
+        return
+    for change in result.changes:
+        typer.echo(
+            f"{change.kind.value}: {change.source.relative_to(repository)} -> "
+            f"{change.destination.relative_to(repository)}"
+        )
+    if apply:
+        typer.echo(
+            "Migration applied atomically; legacy source files were preserved."
+            if result.wrote
+            else "Destination is already byte-identical; no files changed."
+        )
+    else:
+        typer.echo(
+            "Preview complete; repository was not changed. Pass --apply to migrate."
+        )
+
+
+# ---------------------------------------------------------------- analysis output
 
 
 def _metadata_file(path: Path | None, label: str) -> dict[str, object] | None:
@@ -1467,9 +1556,18 @@ def audit_show_command(
 
 
 @app.command("tui")
-def tui_command(repository: RepositoryOption = Path(".")) -> None:
-    """Open the terminal workspace and guided layer-review forms."""
-    NfSpliceApp(_service.inspect(repository), repository, _service).run()
+def tui_command(
+    repository: RepositoryOption = Path("."),
+    no_session: bool = typer.Option(
+        False, "--no-session", help="Do not read or write wizard sessions."
+    ),
+) -> None:
+    """Open the guided terminal wizard."""
+    from nf_splice.interfaces.tui import NfSpliceApp
+    from nf_splice.services import ApplicationService
+
+    service = ApplicationService()
+    NfSpliceApp(service.inspect(repository), repository, service).run()
 
 
 def main() -> None:

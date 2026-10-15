@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import subprocess
 from pathlib import Path
 
@@ -12,7 +11,6 @@ from pydantic import ValidationError
 from textual.widgets import Button, Input, Select, Static
 from typer.testing import CliRunner
 
-from nf_splice.cli import app
 from nf_splice.domain import (
     DEFAULT_JOB_CATEGORY,
     DecisionStatus,
@@ -160,27 +158,6 @@ def test_repository_without_git_metadata_accepts_complete_explicit_identity(
 
     assert document.pipeline.repository_url == "https://github.com/org/pipeline"
     assert document.evidence == ()
-
-
-def test_cli_initialises_reviewed_identity(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app,
-        [
-            "init",
-            "--repository",
-            str(tmp_path),
-            "--name",
-            "pipeline",
-            "--pipeline-version",
-            "2.3.4",
-            "--repository-url",
-            "https://github.com/org/pipeline",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert "Initialised" in result.output
-    assert load_repository_document(tmp_path).pipeline.name == "pipeline"
 
 
 def test_static_and_tree_discovery_merge_duplicates_and_generalise_samples(
@@ -335,101 +312,6 @@ def test_review_vocabulary_merge_and_split_transitions(tmp_path: Path) -> None:
     assert statuses[by_key["second"]] is DecisionStatus.REJECTED
     assert statuses[by_key["broad"]] is DecisionStatus.REJECTED
     assert unresolved_output_candidates(document) == ()
-
-
-def test_cli_exports_unresolved_and_applies_explicit_decision_file(
-    tmp_path: Path,
-) -> None:
-    _initialise(tmp_path)
-    candidate_id = _one_candidate(tmp_path)
-    export = tmp_path / "unresolved.json"
-
-    unresolved_result = runner.invoke(
-        app,
-        [
-            "configure",
-            "outputs",
-            "--repository",
-            str(tmp_path),
-            "--export-unresolved",
-            str(export),
-        ],
-    )
-
-    assert unresolved_result.exit_code == 2
-    exported = json.loads(export.read_text(encoding="utf-8"))
-    assert exported[0]["id"]
-    other_ids = [item["id"] for item in exported if item["id"] != candidate_id]
-    decision_file = tmp_path / "decisions.yaml"
-    decision_file.write_text(
-        "actions:\n"
-        "  - action: accept\n"
-        f"    candidate_id: {candidate_id}\n"
-        "    output:\n"
-        "      key: report\n"
-        "      title: Analysis report\n"
-        "      description: Reviewed HTML report produced by the pipeline.\n"
-        "      category: job_report\n"
-        "      formats: [html]\n"
-        "      scopes: [job]\n"
-        "      entity_types: [file]\n"
-        "      path_patterns: ['^reports/[^/]+\\.html$']\n"
-        + "".join(
-            "  - action: reject\n"
-            f"    candidate_id: {other_id}\n"
-            "    reason: Covered by the reviewed file-level output.\n"
-            for other_id in other_ids
-        ),
-        encoding="utf-8",
-    )
-
-    reviewed_result = runner.invoke(
-        app,
-        [
-            "configure",
-            "outputs",
-            "--repository",
-            str(tmp_path),
-            "--decision-file",
-            str(decision_file),
-        ],
-    )
-
-    assert reviewed_result.exit_code == 0
-    assert "Output review is complete" in reviewed_result.output
-
-
-def test_cli_repeatable_field_options_complete_non_interactive_review(
-    tmp_path: Path,
-) -> None:
-    _initialise(tmp_path)
-    _one_candidate(tmp_path)
-    candidates = unresolved_output_candidates(load_repository_document(tmp_path))
-    report = next(item for item in candidates if item.suggested_key == "report")
-    other = next(item for item in candidates if item.id != report.id)
-
-    result = runner.invoke(
-        app,
-        [
-            "configure",
-            "outputs",
-            "--repository",
-            str(tmp_path),
-            "--set",
-            f"{report.id}.description=Reviewed HTML report.",
-            "--set",
-            f"{report.id}.category=job_report",
-            "--set",
-            f"{report.id}.scopes=job",
-            "--set",
-            f"{other.id}.action=reject",
-            "--set",
-            f"{other.id}.reason=Covered by the reviewed file output.",
-        ],
-    )
-
-    assert result.exit_code == 0
-    assert unresolved_output_candidates(load_repository_document(tmp_path)) == ()
 
 
 def test_cli_and_tui_save_byte_identical_authoring_state(tmp_path: Path) -> None:

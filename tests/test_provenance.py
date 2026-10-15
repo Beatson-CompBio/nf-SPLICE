@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from nf_splice.cli import app
 from nf_splice.renderers import ProvenanceRenderError
 from nf_splice.services import (
     ApplicationService,
-    ProvenanceReviewError,
     StaticChangeKind,
     unresolved_provenance_candidates,
 )
@@ -40,26 +37,6 @@ def _crate_bytes() -> bytes:
         b'    {"@id":"./","@type":"Dataset","name":"Pipeline"}\r\n'
         b"  ]\r\n}\r\n"
     )
-
-
-def test_missing_root_ro_crate_stops_with_nf_core_recovery_instruction(
-    tmp_path: Path,
-) -> None:
-    service = _repository(tmp_path)
-
-    with pytest.raises(
-        ProvenanceReviewError,
-        match=r"nf-core pipelines rocrate \.`, then retry",
-    ):
-        service.discover_provenance(tmp_path)
-
-    configured = runner.invoke(
-        app,
-        ["configure", "provenance", "--repository", str(tmp_path)],
-    )
-    assert configured.exit_code == 2
-    assert "nf-core pipelines rocrate ." in configured.output
-    assert "then retry" in configured.output
 
 
 def test_root_ro_crate_requires_review_and_is_copied_byte_for_byte(
@@ -100,28 +77,3 @@ def test_invalid_root_ro_crate_is_not_rewritten_or_built(tmp_path: Path) -> None
 
     assert (tmp_path / "ro-crate-metadata.json").read_bytes() == source
     assert not (tmp_path / "splice" / "ro-crate-metadata.json").exists()
-
-
-def test_cli_reviews_and_builds_root_ro_crate(tmp_path: Path) -> None:
-    _repository(tmp_path)
-    (tmp_path / "ro-crate-metadata.json").write_bytes(_crate_bytes())
-    decision = tmp_path / "provenance.json"
-    decision.write_text(json.dumps({"include": True}), encoding="utf-8")
-
-    configured = runner.invoke(
-        app,
-        [
-            "configure",
-            "provenance",
-            "--repository",
-            str(tmp_path),
-            "--decision-file",
-            str(decision),
-        ],
-    )
-    built = runner.invoke(app, ["build", "provenance", "-r", str(tmp_path)])
-
-    assert configured.exit_code == 0
-    assert "Provenance review is complete" in configured.output
-    assert built.exit_code == 0
-    assert "Built reviewed provenance artefact" in built.output

@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
-from textual.widgets import Button, Static
 from typer.testing import CliRunner
 
-from nf_splice.cli import app
 from nf_splice.domain import (
     DEFAULT_JOB_CATEGORY,
     AuthoringDocument,
@@ -38,9 +35,7 @@ from nf_splice.domain.execution import (
     ExecutionProfileType,
 )
 from nf_splice.domain.inputs import InputClassification
-from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.services import (
-    ApplicationService,
     IntegrationBuildError,
     StaticChangeKind,
     build_integration,
@@ -285,101 +280,6 @@ def test_bundle_only_requires_current_layer_materialisations(tmp_path: Path) -> 
 
     build_integration(tmp_path)
     assert not build_integration(tmp_path, target="bundle").wrote
-
-
-def test_cli_plan_build_and_validate_have_stable_json_results(tmp_path: Path) -> None:
-    complete_repository(tmp_path)
-
-    planned = runner.invoke(app, ["plan", "all", "-r", str(tmp_path), "--json"])
-    checked = runner.invoke(
-        app,
-        ["build", "all", "-r", str(tmp_path), "--check", "--json"],
-    )
-    built = runner.invoke(
-        app, ["build", "all", "-r", str(tmp_path), "--non-interactive"]
-    )
-    validated = runner.invoke(app, ["validate", "-r", str(tmp_path), "--json"])
-
-    assert planned.exit_code == 0
-    assert json.loads(planned.output)["ready"] is True
-    assert checked.exit_code == 0
-    assert json.loads(checked.output)["wrote"] is False
-    assert built.exit_code == 0
-    assert validated.exit_code == 0
-    assert json.loads(validated.output) == {
-        "valid": True,
-        "checked_files": 10,
-        "issues": [],
-    }
-
-
-def test_individual_layer_check_has_the_same_stable_json_envelope(
-    tmp_path: Path,
-) -> None:
-    complete_repository(tmp_path)
-
-    checked = runner.invoke(
-        app,
-        ["build", "inputs", "-r", str(tmp_path), "--check", "--json"],
-    )
-
-    assert checked.exit_code == 0
-    assert json.loads(checked.output) == {
-        "target": "inputs",
-        "changes": [
-            {
-                "path": "inputs.schema.json",
-                "kind": "create",
-                "diff": json.loads(checked.output)["changes"][0]["diff"],
-            }
-        ],
-        "wrote": False,
-        "check": True,
-        "non_interactive": False,
-    }
-
-
-def test_tui_and_cli_build_the_same_complete_bundle(tmp_path: Path) -> None:
-    cli_root = tmp_path / "cli"
-    tui_root = tmp_path / "tui"
-    cli_root.mkdir()
-    tui_root.mkdir()
-    complete_repository(cli_root)
-    complete_repository(tui_root)
-
-    cli_result = runner.invoke(app, ["build", "all", "-r", str(cli_root)])
-    service = ApplicationService()
-    tui = NfSpliceApp(service.inspect(tui_root), tui_root, service)
-
-    async def exercise() -> None:
-        async with tui.run_test() as pilot:
-            tui.query_one("#plan-all", Button).press()
-            await pilot.pause()
-            assert "create: splice/bundle.json" in str(
-                tui.query_one("#integration-summary", Static).content
-            )
-            tui.query_one("#build-all", Button).press()
-            await pilot.pause()
-            tui.query_one("#validate-all", Button).press()
-            await pilot.pause()
-            assert "Valid integration (10 files)." in str(
-                tui.query_one("#integration-summary", Static).content
-            )
-
-    asyncio.run(exercise())
-
-    assert cli_result.exit_code == 0
-    cli_files = {
-        path.relative_to(cli_root / "splice").as_posix(): path.read_bytes()
-        for path in (cli_root / "splice").rglob("*")
-        if path.is_file() and path.name != "nf-splice.yaml"
-    }
-    tui_files = {
-        path.relative_to(tui_root / "splice").as_posix(): path.read_bytes()
-        for path in (tui_root / "splice").rglob("*")
-        if path.is_file() and path.name != "nf-splice.yaml"
-    }
-    assert tui_files == cli_files
 
 
 def test_unconfigured_repository_reports_blockers_without_writes(
