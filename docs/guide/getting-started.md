@@ -6,17 +6,27 @@ Allow about thirty minutes for a typical Nextflow pipeline.
 ## Requirements
 
 - Python 3.10 to 3.14
+- Git, and read access to the nf-SPLICE GitHub repository
 - A Nextflow pipeline repository, ideally with a `nextflow_schema.json`
-- Git (optional, used only as a source of suggestions)
 
-You do not need Nextflow, Docker, an internet connection or an AI account.
+You do not need Nextflow, Docker or an AI account. After installation, nf-splice
+works offline.
 
 ## Install
 
+nf-splice is installed from GitHub; it is not published on PyPI. Use a
+virtual environment so it does not affect other Python tools:
+
 ```bash
-python -m pip install nf-splice
+python -m venv ~/.venvs/nf-splice
+. ~/.venvs/nf-splice/bin/activate
+python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
 nf-splice --version
 ```
+
+To try a branch before it is merged, add `@<branch>` to the address, for
+example `"git+https://github.com/Beatson-CompBio/nf-SPLICE.git@wip/nf-splice-v0.3.0"`. If Git asks for credentials, sign in
+with your GitHub account; the repository is private.
 
 ## 1. Create the drafts
 
@@ -66,7 +76,8 @@ If you prefer commands or scripts, review each layer with
 routes write the same files and can be mixed freely. The layer guides
 describe each step:
 
-1. [Identity](identity.md): name, version, description, authors
+1. [Identity](identity.md): name, version, description, authors. When it
+   is ready, run `nf-splice draft sync-identity`.
 2. [Inputs](inputs.md): who may change each parameter
 3. [Outputs](outputs.md): what the pipeline produces
 4. [Components](components.md): modules and container images

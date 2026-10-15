@@ -32,14 +32,17 @@ it.
 
 ## Install
 
-Requires Python 3.10 to 3.14.
+Requires Python 3.10 to 3.14, Git, and read access to this repository.
+nf-splice is installed from GitHub; it is not published on PyPI.
 
 ```bash
-python -m pip install nf-splice
+python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
+nf-splice --version
 ```
 
-For optional AI assistance, install `'nf-splice[claude]'` instead; see
-[AI assistance](docs/guide/ai-assistant.md).
+To try a branch before it is merged, add `@<branch>` to the address, for
+example `...nf-SPLICE.git@wip/nf-splice-v0.3.0`. For optional AI assistance,
+see [AI assistance](docs/guide/ai-assistant.md).
 
 ## Quick start
 

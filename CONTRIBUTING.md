@@ -2,6 +2,8 @@
 
 ## Set up
 
+Clone the repository, then from its root:
+
 ```bash
 . scripts/dev-env.sh
 python -m venv .nf-splice-local/venv

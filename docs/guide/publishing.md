@@ -50,9 +50,14 @@ drafts in line and publish again:
 ```bash
 nf-splice configure identity --set version=1.3.0
 nf-splice draft sync-identity
+nf-splice configure provenance --strategy generated
 nf-splice draft diff
 nf-splice build all --replace-existing
 ```
+
+Re-run the provenance step with the strategy you chose before (`generated`
+or `enriched`) so the RO-Crate carries the new version. With `include`,
+update your root `ro-crate-metadata.json` first.
 
 nf-splice never replaces a published file silently: after reviewing the
 difference, pass `--replace-existing`.

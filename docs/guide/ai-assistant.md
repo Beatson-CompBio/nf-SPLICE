@@ -8,10 +8,11 @@ approves the proposal.
 ## Install
 
 ```bash
-python -m pip install 'nf-splice[claude]'
+python -m pip install "nf-splice[claude] @ git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
 ```
 
-This adds the Claude Agent SDK. Without it, no AI code is loaded at all.
+This adds the Claude Agent SDK to the normal installation. Without it, no AI
+code is loaded at all.
 
 ## Ask for suggestions
 

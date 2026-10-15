@@ -80,10 +80,11 @@ nf-splice configure identity --approve-maintainer-publication
 
 Your Git name and e-mail address are never used for either.
 
-## After changing identity
+## Copy the identity to the inputs draft
 
-The other layers repeat the pipeline identity. When you change the name,
-version or repository URL, update the inputs draft to match:
+The inputs draft repeats the pipeline identity. Copy it once the identity
+layer is ready, and again whenever you change the name, version or
+repository URL:
 
 ```bash
 nf-splice draft sync-identity

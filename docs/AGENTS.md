@@ -62,7 +62,7 @@ outside the repository next to wizard sessions (`NF_SPLICE_SESSION_DIR`).
 
 ## Claude Agent SDK provider
 
-Install with `pip install 'nf-splice[claude]'` (Claude Agent SDK
+Install the `claude` extra (Claude Agent SDK
 `>=0.2.167,<0.3`, Python 3.10-3.14). The adapter configures the SDK for least
 privilege: built-in tools are disabled (`tools=[]`) **and** listed in
 `disallowed_tools`; user/project settings are not loaded
