@@ -1562,12 +1562,15 @@ def tui_command(
         False, "--no-session", help="Do not read or write wizard sessions."
     ),
 ) -> None:
-    """Open the guided terminal wizard."""
-    from nf_splice.interfaces.tui import NfSpliceApp
-    from nf_splice.services import ApplicationService
+    """Open the guided terminal wizard (works fully without AI)."""
+    from nf_splice.interfaces.tui import (
+        NfSpliceApp,
+        SessionStore,
+        default_session_directory,
+    )
 
-    service = ApplicationService()
-    NfSpliceApp(service.inspect(repository), repository, service).run()
+    sessions = SessionStore(None if no_session else default_session_directory())
+    NfSpliceApp(repository, sessions=sessions, actor=_STATE["actor"]).run()
 
 
 def main() -> None:

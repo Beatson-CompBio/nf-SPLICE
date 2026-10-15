@@ -1,0 +1,19 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+  ✓ Components
+  ✓ Execution profiles
+  ✓ Provenance
+  ✓ Drafts
+  ✓ Readiness
+  ✓ Build
+▶ ✓ Done
+== done
+Bundle valid: yes (6 contract files)
+The reviewed decisions are the committed draft files; reproduce and check them in CI with:
+  nf-splice draft validate
+  nf-splice build all --check --json
+  nf-splice validate --json

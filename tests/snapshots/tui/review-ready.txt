@@ -1,0 +1,21 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+  ✓ Components
+  ✓ Execution profiles
+  ✓ Provenance
+  ✓ Drafts
+▶ ✓ Readiness
+  ○ Build
+  · Done
+== review
+All layers are ready. Continue to Build to review the plan diff.
+<button Fix bundle>
+<button Fix inputs>
+<button Fix outputs>
+<button Fix components>
+<button Fix execution-profiles>
+<button Fix provenance>

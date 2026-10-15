@@ -141,3 +141,36 @@ def ready_repository(root: Path) -> None:
     )
     set_default_profile(root, "profile-local-6c6f63616c", ADA)
     generate_minimal(root, ADA, at="2026-10-15T10:00:00Z")
+
+
+def write_root_crate(root: Path, name: str, version: str) -> None:
+    """A current, standards-compliant repository-root RO-Crate."""
+    import json
+
+    crate = {
+        "@context": "https://w3id.org/ro/crate/1.1/context",
+        "@graph": [
+            {
+                "@id": "ro-crate-metadata.json",
+                "@type": "CreativeWork",
+                "about": {"@id": "./"},
+                "conformsTo": {"@id": "https://w3id.org/ro/crate/1.1"},
+            },
+            {
+                "@id": "./",
+                "@type": "Dataset",
+                "name": name,
+                "version": version,
+                "mainEntity": {"@id": "main.nf"},
+            },
+            {
+                "@id": "main.nf",
+                "@type": ["File", "SoftwareSourceCode", "ComputationalWorkflow"],
+                "name": name,
+                "version": version,
+            },
+        ],
+    }
+    (root / "ro-crate-metadata.json").write_text(
+        json.dumps(crate, indent=2) + "\n", encoding="utf-8"
+    )

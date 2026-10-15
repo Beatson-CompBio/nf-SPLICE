@@ -1,0 +1,56 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+  ✓ Components
+  ✓ Execution profiles
+▶ ✓ Provenance
+  ✓ Drafts
+  ✓ Readiness
+  ○ Build
+  · Done
+== provenance
+WARNING /@graph/.//description  ./ has no description; reviewed value is 'Reference pipeline.'
+WARNING /@graph/mainEntity/url  mainEntity has no url; reviewed value is 'https://github.com/org/reference'
+<button Include unchanged>
+<button Review enriched copy>
+<button Generate minimal>
+{
+  "@context": "https://w3id.org/ro/crate/1.1/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": {
+        "@id": "https://w3id.org/ro/crate/1.1"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "name": "reference",
+      "version": "1.0.0",
+      "mainEntity": {
+        "@id": "main.nf"
+      }
+    },
+    {
+      "@id": "main.nf",
+      "@type": [
+        "File",
+        "SoftwareSourceCode",
+        "ComputationalWorkflow"
+      ],
+      "name": "reference",
+      "version": "1.0.0"
+    }
+  ]
+}
+
+WARNING /@graph/.//description  ./ has no description; reviewed value is 'Reference pipeline.'
+WARNING /@graph/mainEntity/url  mainEntity has no url; reviewed value is 'https://github.com/org/reference'

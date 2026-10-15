@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import asyncio
 import subprocess
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
-from textual.widgets import Button, Input, Select, Static
 from typer.testing import CliRunner
 
 from nf_splice.domain import (
@@ -18,11 +16,8 @@ from nf_splice.domain import (
     OutputFormat,
     OutputScope,
     ReviewedOutput,
-    dump_authoring_document,
 )
-from nf_splice.interfaces.tui import NfSpliceApp
 from nf_splice.services import (
-    ApplicationService,
     IdentityResolutionError,
     accept_output,
     discover_outputs,
@@ -312,48 +307,3 @@ def test_review_vocabulary_merge_and_split_transitions(tmp_path: Path) -> None:
     assert statuses[by_key["second"]] is DecisionStatus.REJECTED
     assert statuses[by_key["broad"]] is DecisionStatus.REJECTED
     assert unresolved_output_candidates(document) == ()
-
-
-def test_cli_and_tui_save_byte_identical_authoring_state(tmp_path: Path) -> None:
-    cli_root = tmp_path / "cli"
-    tui_root = tmp_path / "tui"
-    cli_root.mkdir()
-    tui_root.mkdir()
-    for root in (cli_root, tui_root):
-        _initialise(root)
-        _one_candidate(root)
-    cli_candidate = unresolved_output_candidates(load_repository_document(cli_root))[0]
-    tui_candidate = unresolved_output_candidates(load_repository_document(tui_root))[0]
-    accept_output(cli_root, cli_candidate.id, _review())
-
-    service = ApplicationService()
-    tui = NfSpliceApp(service.inspect(tui_root), tui_root, service)
-
-    async def exercise() -> None:
-        async with tui.run_test() as pilot:
-            tui.query_one("#output-key", Input).value = "report"
-            tui.query_one("#output-title", Input).value = "Analysis report"
-            tui.query_one(
-                "#output-description", Input
-            ).value = "Reviewed HTML report produced by the pipeline."
-            tui.query_one("#output-category", Input).value = "job_report"
-            tui.query_one("#output-format", Select).value = "html"
-            tui.query_one("#output-scope", Select).value = "job"
-            tui.query_one("#output-entity", Select).value = "file"
-            tui.query_one("#output-pattern", Input).value = r"^reports/[^/]+\.html$"
-            tui.query_one("#preview-output", Button).press()
-            await pilot.pause()
-            assert "Ready to save report" in str(
-                tui.query_one("#review-summary", Static).content
-            )
-            tui.query_one("#accept-output", Button).press()
-            await pilot.pause()
-
-    asyncio.run(exercise())
-
-    cli_document = load_repository_document(cli_root)
-    tui_document = load_repository_document(tui_root)
-    assert tui_candidate.id == cli_candidate.id
-    assert dump_authoring_document(tui_document) == dump_authoring_document(
-        cli_document
-    )

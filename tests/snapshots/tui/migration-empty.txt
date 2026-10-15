@@ -1,0 +1,18 @@
+  ✓ Welcome
+  ✓ Repository
+▶ ✓ Migration
+  ! Identity
+  · Inputs
+  · Outputs
+  · Components
+  · Execution profiles
+  · Provenance
+  · Drafts
+  ○ Readiness
+  · Build
+  · Done
+== migration
+No 0.1.0 authoring state was found; nothing to migrate.
+(migration-map-library) False
+Legacy library IDs are platform run IDs (reviewed mapping)
+<button Apply migration>

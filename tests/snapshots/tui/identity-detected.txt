@@ -1,0 +1,60 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+▶ ! Identity
+  ! Inputs
+  ! Outputs
+  ! Components
+  ! Execution profiles
+  ! Provenance
+  ✓ Drafts
+  ○ Readiness
+  · Build
+  · Done
+== identity
+Detected evidence
+description: "Reference pipeline." (nextflow.config:5)
+name: "reference" (nextflow.config:2)
+name: "reference" (ro-crate-metadata.json#./name)
+repository_url: "https://github.com/org/reference" (nextflow.config:4)
+version: "1.0.0" (nextflow.config:3)
+version: "1.0.0" (ro-crate-metadata.json#./version)
+[id] reference
+[name] reference
+[version] 1.0.0
+[engine] nextflow
+[title]
+[description] Reference pipeline.
+[long description]
+[readme]
+[repository url] https://github.com/org/reference
+[project url]
+[release url]
+[licence]
+[licence url]
+[documentation url]
+[support url]
+[engine version min]
+[engine versions tested]
+[pipeline type]
+[modality]
+[released at]
+[keywords (comma separated)]
+[citation DOI]
+Authors (ordered)
+[author name]
+[affiliation]
+[ORCID URL]
+<button Add author>
+<button Remove selected>
+Funders: name|award id per line in the field below
+[Funder name|award id; ...]
+(identity-publish-contacts) False
+I approve publishing maintainer contacts in bundle.json
+<button Save identity>
+<button Confirm detected values>
+ERROR /pipeline/description  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/description)
+ERROR /pipeline/id  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/id)
+ERROR /pipeline/name  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/name)
+ERROR /pipeline/repository_url  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/repository_url)
+ERROR /pipeline/version  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/version)

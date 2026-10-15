@@ -1,0 +1,27 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+▶ ✓ Components
+  ! Execution profiles
+  ! Provenance
+  ✓ Drafts
+  ○ Readiness
+  · Build
+  · Done
+== components
+<button Discover modules>
+<button Accept all unambiguous>
+<button Accept selected>
+(components-require) False
+Ingestion requires a verified downloadable image per container
+<button Save image policy>
+container-<hash> | quay.io/example/tool:1.0 |  | none (source only) |
+[container id]
+[https:// image URL]
+(components-approve-network) False
+I approve downloading this image now
+<button Verify image>
+No issues: this layer is ready to promote.

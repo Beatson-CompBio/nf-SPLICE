@@ -68,6 +68,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Proposed | — |
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Proposed | — |
 | ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Proposed | — |
+| ADR-0038 | Replace the dashboard with a guided, session-resumable Textual wizard over shared services | Proposed | — |
 
 ---
 
@@ -1003,8 +1004,12 @@ draft from a model would discard developer edits and comments.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0024, ADR-0025, ADR-0028 |
-| Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui.py` |
+| Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/` |
 | Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_authoring.py` |
+
+Correction 2026-10-15: the Implementation row now names the `interfaces/tui/`
+wizard package that replaced `interfaces/tui.py` (ADR-0038); the decision is
+unchanged.
 
 ### Context
 
@@ -1711,3 +1716,66 @@ Existing integrations store reviewed decisions in `splice/nf-splice.yaml`
 ### Consequences
 
 - A migrated bundle needs the reported blockers resolved before publishing.
+
+---
+
+## ADR-0038: Replace the dashboard with a guided, session-resumable Textual wizard over shared services
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 11 |
+| Scope | Terminal user interface |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0014, ADR-0029, ADR-0030, ADR-0036 |
+| Implementation | `src/nf_splice/interfaces/tui/`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_tui.py`, `tests/tui_helpers.py` |
+
+### Context
+
+The 0.1.0 dashboard showed every layer at once, wrote the monolithic
+`nf-splice.yaml` and indexed candidates by cursor position.
+
+### Decision
+
+- `nf-splice tui` launches a guided wizard (package
+  `nf_splice.interfaces.tui`): welcome (create / resume / inspect only),
+  repository, migration, identity, inputs, outputs, components, execution
+  profiles, provenance, drafts, readiness, build and done. A declarative
+  step graph (`steps.py`) defines prerequisites and derives completion from
+  a service-computed snapshot; visiting a step unlocks its dependants so a
+  step may be deferred, while build stays locked until every layer is ready.
+- Every view calls the shared file-first services with origin
+  `manual_tui`; confirmed choices are targeted draft patches, never
+  `nf-splice.yaml`. Service calls run in Textual thread workers; results
+  are re-derived from disk after each action. Errors persist in the status
+  line until a later success.
+- Candidate tables use stable candidate IDs as row keys; inputs use
+  keyboard toggles (u/p/g, v) staged until Save; outputs support
+  accept/reject/mark+merge/split keys with an inline regex preview and free
+  text categories with suggestions; components separate registry sources
+  from verified downloads and require explicit network approval; profiles
+  show generated config previews and a single default; provenance shows the
+  field-level RO-Crate report; drafts list external edits and can open
+  `$EDITOR`; readiness links to the step that fixes each blocker; build
+  shows the plan diff and publishes explicitly; done shows validation and
+  the equivalent CLI checks.
+- Sessions (`WizardSession`) store only navigation, visited/deferred steps,
+  unsaved form text and draft hashes, under `NF_SPLICE_SESSION_DIR` or the
+  user cache, never inside `splice/`. `--no-session` disables them. Deleting
+  a session loses no reviewed state; changed draft hashes are reported on
+  resume. Inspect-only mode and read-only repositories never write.
+- The CLI/TUI equivalence gate authors the same repository through both
+  interfaces and requires identical parsed drafts and byte-identical
+  published files. Reviewed text snapshots of every step (including empty
+  and error states) are committed under `tests/snapshots/tui/`.
+
+### Alternatives rejected
+
+- Per-screen hard-coded routing: diverges from service readiness.
+
+### Consequences
+
+- Replaces the dashboard and its `nf-splice.yaml` equivalence test.

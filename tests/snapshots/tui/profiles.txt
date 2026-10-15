@@ -1,0 +1,44 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+  ✓ Components
+▶ ✓ Execution profiles
+  ! Provenance
+  ✓ Drafts
+  ○ Readiness
+  · Build
+  · Done
+== profiles
+<button Discover profiles>
+<button Add SPLICE Slurm candidate>
+<profile-type> development
+development
+▼
+▲
+[description] Local development.
+<profile-executor> local
+local
+▼
+▲
+<profile-engine> singularity
+singularity
+▼
+▲
+<profile-route> adopt
+adopt existing config
+▼
+▲
+[config source for adopt (e.g. conf/local.config)] conf/local.config
+<button Support selected>
+[reject reason]
+<button Reject selected>
+<profiles-default> profile-local-6c6f63616c
+Local (profile-local-6c6f63616c)
+▼
+▲
+<button Set default>
+
+No issues: this layer is ready to promote.

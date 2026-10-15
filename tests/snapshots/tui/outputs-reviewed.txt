@@ -1,0 +1,47 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+▶ ✓ Outputs
+  ! Components
+  ! Execution profiles
+  ! Provenance
+  ✓ Drafts
+  ○ Readiness
+  · Build
+  · Done
+== outputs
+[Example output tree directory (optional)]
+<button Discover>
+[analysis-output schema version X.Y.Z] 1.0.0
+<button Set version>
+publishDir: main.nf:2 (confidence 0.65)
+[stable key] reports
+[title] Reports
+[description]
+[category (free text)] job_report
+[stage (optional free text)]
+<output-format> directory
+directory
+▼
+▲
+<output-scope> Select.NULL
+scope
+▼
+▲
+<output-entity> directory
+directory
+▼
+▲
+[anchored path pattern(s), comma separated] ^reports/.+$
+^reports/.+$: matches 0 example path(s) []
+[reject reason] Not published
+<button Accept>
+<button Reject>
+<button Merge marked>
+<button Split patterns>
+<button Preview JSON>
+Reviewed outputs in draft: 1. Candidates: accepted=1, rejected=1
+
+No issues: this layer is ready to promote.

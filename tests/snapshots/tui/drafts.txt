@@ -1,0 +1,24 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Migration
+  ✓ Identity
+  ✓ Inputs
+  ✓ Outputs
+  ✓ Components
+  ✓ Execution profiles
+  ✓ Provenance
+▶ ✓ Drafts
+  ✓ Readiness
+  ○ Build
+  · Done
+== drafts
+bundle | splice/drafts/bundle.draft.yaml | ready | 0 | 0
+inputs | splice/drafts/inputs.schema.draft.yaml | ready | 0 | 0
+outputs | splice/drafts/outputs.draft.yaml | ready | 0 | 0
+components | splice/drafts/components.draft.yaml | ready | 0 | 0
+execution-profiles | splice/drafts/execution-profiles.draft.yaml | ready | 0 | 0
+provenance | splice/drafts/ro-crate-metadata.draft.yaml | ready | 0 | 2
+<button Reload from disk>
+<button Open selected in $EDITOR>
+
+No issues: this layer is ready to promote.

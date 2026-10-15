@@ -1,0 +1,18 @@
+#main { height: 1fr; }
+#rail { width: 28; border-right: solid $primary; }
+#content { width: 1fr; padding: 0 1; }
+#step-title { height: auto; padding: 1 0 0 0; }
+#step-explanation { height: auto; color: $text-muted; padding-bottom: 1; }
+#body { height: 1fr; }
+#nav { height: auto; dock: bottom; }
+#nav Button { margin-right: 1; }
+#status { height: auto; padding: 0 1; background: $boost; }
+#status.error { background: $error 30%; }
+#help-dialog { width: 80%; height: 80%; border: thick $primary; background: $surface; padding: 1; }
+.section { margin-bottom: 1; height: auto; }
+.heading { text-style: bold; color: $accent; }
+.row { height: auto; }
+.row Input { width: 1fr; }
+DataTable { height: auto; max-height: 14; margin-bottom: 1; }
+Input { margin-bottom: 1; }
+.issues { color: $warning; height: auto; }

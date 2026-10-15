@@ -1,0 +1,35 @@
+  ✓ Welcome
+▶ ✓ Repository
+  ✓ Migration
+  ! Identity
+  · Inputs
+  · Outputs
+  · Components
+  · Execution profiles
+  · Provenance
+  · Drafts
+  ○ Readiness
+  · Build
+  · Done
+== repository
+Revision: not detected
+splice/ tree: recognized
+Evidence items: 13
+  container: 1
+  included_config: 1
+  input_schema: 1
+  module: 2
+  module_index: 1
+  module_metadata: 1
+  nextflow_source: 2
+  pipeline_config: 1
+  published_output: 1
+  ro_crate: 1
+  workflow: 1
+Layers:
+  bundle: incomplete
+  inputs: incomplete
+  outputs: incomplete
+  components: incomplete
+  execution-profiles: incomplete
+  provenance: incomplete
