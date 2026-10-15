@@ -23,8 +23,10 @@ from typing import Any
 import yaml  # type: ignore[import-untyped]
 
 from nf_splice.contracts import families, release, validate_contract_document
+from nf_splice.domain import PathClassification
 from nf_splice.domain.identity import PipelineMetadata
 from nf_splice.drafts import DRAFT_MARKER, sha256, text_diff
+from nf_splice.inspectors.splice_tree import inspect_splice_tree
 from nf_splice.layers.base import (
     LAYERS,
     ChangeContext,
@@ -172,6 +174,11 @@ def _final_state(
     if recorded is not None and current != recorded:
         return FinalState.DRIFTED
     if recorded is None:
+        classification = {
+            item.path: item.classification for item in inspect_splice_tree(root).paths
+        }.get(relative)
+        if classification is PathClassification.RECOGNIZED:
+            return FinalState.OUTDATED
         return FinalState.UNKNOWN
     return FinalState.OUTDATED
 

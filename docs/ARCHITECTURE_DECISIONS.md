@@ -67,6 +67,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Proposed | — |
 | ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Proposed | — |
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Proposed | — |
+| ADR-0037 | Migrate 0.1.0 authoring state into drafts explicitly and non-destructively | Proposed | — |
 
 ---
 
@@ -1653,3 +1654,60 @@ build could leave a mixed bundle that looked complete.
 ### Consequences
 
 - Repeated publication with unchanged reviewed state writes nothing.
+
+---
+
+## ADR-0037: Migrate 0.1.0 authoring state into drafts explicitly and non-destructively
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 14 |
+| Scope | Legacy compatibility and migration |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0021, ADR-0027, ADR-0030, ADR-0032, ADR-0033 |
+| Implementation | `src/nf_splice/services/migration.py`, `src/nf_splice/services/lifecycle.py` |
+| Tests | `tests/test_migration.py`, `tests/test_legacy_fixtures.py` |
+
+### Context
+
+Existing integrations store reviewed decisions in `splice/nf-splice.yaml`
+(authoring schema 1.0) with 0.1.0 output-scope and classification meanings.
+
+### Decision
+
+- `splice/nf-splice.yaml` is read-only migration input. A read-only preview
+  lists the drafts that would be created and every transformed, defaulted,
+  unmapped, permission-changing or blocking value. Applying requires
+  approval, creates only absent drafts and sidecars (recording the source
+  hash in `migrated_from`) and verifies the legacy file and published files
+  are unchanged. The legacy file is never edited, moved or treated as
+  current authority; `migrate-state` still relocates repository-root state.
+- Identity values become developer-authored draft values with the 0.1.0
+  name-derived `id`; new fields are seeded from evidence for review.
+- Input classifications map conservatively (ADR-0032) onto a fresh import
+  of `nextflow_schema.json`; reviewed type/description overrides are kept;
+  parameters without a legacy decision are blockers.
+- Output scopes migrate by source version: `run` → `job`, `sample` →
+  `sample`; `library` → `run` only with an explicit reviewed mapping
+  (`--map-library-to-run`, rewriting `{library}` to `{run}`), otherwise a
+  blocker. `run_report` becomes the suggested `job_report`; other categories
+  and stages migrate literally. Rejected candidates stay rejected.
+- Components keep their 0.1.0 container IDs; the heuristic type of each old
+  `container_uri` is reported for review and no distribution is assumed
+  verified. Profiles keep IDs and adopted sources; a default must be chosen.
+  Approved unchanged RO-Crate inclusion becomes strategy `include` and is
+  re-analysed against the reviewed identity.
+- Recognised 0.1.0 published files without recorded hashes are treated as
+  tool-owned and may be replaced by a reviewed publication; the previous
+  release stays usable until a new coherent release is published.
+
+### Alternatives rejected
+
+- Automatic in-place upgrade on first run: unreviewed reinterpretation.
+
+### Consequences
+
+- A migrated bundle needs the reported blockers resolved before publishing.
