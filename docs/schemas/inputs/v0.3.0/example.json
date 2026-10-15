@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/org/example-pipeline/splice/inputs.schema.json",
+  "title": "example-pipeline input parameters",
+  "description": "All runnable parameters of example-pipeline 1.2.3.",
+  "type": "object",
+  "x-splice-contract": {
+    "id": "https://schemas.splice-data.io/workflow-bundle/inputs",
+    "version": "0.3.0",
+    "generated_by": {
+      "name": "nf-splice",
+      "version": "0.3.0"
+    }
+  },
+  "x-splice-pipeline": {
+    "id": "example-pipeline",
+    "name": "example-pipeline",
+    "version": "1.2.3",
+    "engine": "nextflow"
+  },
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "required": [
+        "input"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "mimetype": "text/csv",
+          "schema": "assets/schema_input.json",
+          "pattern": "^\\S+\\.csv$",
+          "description": "Samplesheet.",
+          "x-splice-access": {
+            "editable_by": [
+              "user",
+              "agent"
+            ]
+          },
+          "x-splice-ui": {
+            "visibility": "standard"
+          },
+          "x-splice-data": {
+            "kind": "file",
+            "samplesheet": true
+          },
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.input",
+            "origin": "nextflow_schema.json#/$defs/input_output_options/properties/input"
+          }
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Output directory.",
+          "x-splice-access": {
+            "editable_by": [
+              "platform"
+            ]
+          },
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.outdir"
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output_options"
+    }
+  ]
+}

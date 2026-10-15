@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.splice-data.io/workflow-bundle/inputs/v0.3.0/schema.json",
+  "title": "SPLICE workflow input contract meta-validation (inputs.schema.json)",
+  "description": "Validates a workflow-bundle input contract document. The document is itself a JSON Schema 2020-12 schema of submitted runtime parameter values; this meta-schema checks its SPLICE extensions.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "$id",
+    "type",
+    "x-splice-contract",
+    "x-splice-pipeline"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft/2020-12/schema"
+    },
+    "$id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "const": "object"
+    },
+    "x-splice-contract": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "generated_by"
+      ],
+      "properties": {
+        "id": {
+          "const": "https://schemas.splice-data.io/workflow-bundle/inputs"
+        },
+        "version": {
+          "const": "0.3.0"
+        },
+        "generated_by": {
+          "$ref": "#/$defs/generated_by"
+        }
+      },
+      "additionalProperties": false
+    },
+    "x-splice-pipeline": {
+      "$ref": "#/$defs/pipeline"
+    },
+    "$defs": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/group"
+      }
+    },
+    "properties": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/parameter"
+      }
+    },
+    "x-splice-draft": false
+  },
+  "$defs": {
+    "generated_by": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "version",
+        "engine"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
+    },
+    "parameter": {
+      "type": "object",
+      "required": [
+        "x-splice-access"
+      ],
+      "properties": {
+        "x-splice-access": {
+          "type": "object",
+          "required": [
+            "editable_by"
+          ],
+          "properties": {
+            "editable_by": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "user",
+                  "platform",
+                  "agent"
+                ]
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "x-splice-ui": {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "enum": [
+                "standard",
+                "advanced",
+                "hidden"
+              ]
+            },
+            "help_text": {
+              "type": "string"
+            },
+            "icon": {
+              "type": "string"
+            },
+            "order": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "x-splice-data": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "file",
+                "directory",
+                "path",
+                "uri"
+              ]
+            },
+            "samplesheet": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "x-splice-source": {
+          "type": "object",
+          "required": [
+            "engine",
+            "binding"
+          ],
+          "properties": {
+            "engine": {
+              "type": "string",
+              "minLength": 1
+            },
+            "binding": {
+              "type": "string",
+              "minLength": 1
+            },
+            "origin": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/parameter"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

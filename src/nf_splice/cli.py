@@ -10,6 +10,15 @@ from typing import Annotated, Protocol
 import typer
 
 from nf_splice import __version__
+from nf_splice.contracts import (
+    ContractRegistryError,
+    breaking_changes,
+    families,
+    family,
+    meta_schema,
+    release,
+    validate_contract_document,
+)
 from nf_splice.domain import (
     InputCandidate,
     OutputCandidate,
@@ -54,6 +63,11 @@ analysis_output_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(analysis_output_app, name="analysis-output")
+schema_app = typer.Typer(
+    help="List, show and validate the five workflow-bundle contract families.",
+    no_args_is_help=True,
+)
+app.add_typer(schema_app, name="schema")
 
 _service = ApplicationService()
 RepositoryOption = Annotated[
@@ -1175,6 +1189,189 @@ def validate_analysis_output_command(
     typer.echo(
         f"Valid analysis_output.json with {report.record_count} output record(s)."
     )
+
+
+def _registry_document() -> dict[str, object]:
+    mapping = dict(release().contracts)
+    return {
+        "tool": "nf-splice",
+        "tool_version": __version__,
+        "families": [
+            {
+                "id": item.id,
+                "key": item.key,
+                "title": item.title,
+                "path": item.path,
+                "kind": item.kind,
+                "version": mapping[item.id],
+                "known_revisions": list(item.revisions),
+            }
+            for item in families()
+        ],
+    }
+
+
+@schema_app.command("list")
+def schema_list_command(
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the stable machine-readable registry view."
+    ),
+) -> None:
+    """List the contract families and revisions emitted by this release."""
+    document = _registry_document()
+    if json_output:
+        typer.echo(json.dumps(document, indent=2))
+        return
+    entries = document["families"]
+    assert isinstance(entries, list)
+    for item in entries:
+        typer.echo(f"{item['path']}: {item['id']} {item['version']}")
+
+
+@schema_app.command("show")
+def schema_show_command(
+    contract: str = typer.Argument(help="Family URI, key or final file name."),
+    revision: str | None = typer.Option(None, help="Contract revision to show."),
+) -> None:
+    """Print the packaged formal definition of one family revision."""
+    try:
+        typer.echo(json.dumps(meta_schema(family(contract).id, revision), indent=2))
+    except ContractRegistryError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+
+def _report_payload(path: Path, report: object) -> dict[str, object]:
+    issues = getattr(report, "issues", ())
+    return {
+        "path": path.as_posix(),
+        "family": getattr(report, "family_id", None),
+        "revision": getattr(report, "revision", None),
+        "valid": getattr(report, "valid", False),
+        "issues": [
+            {"pointer": item.json_pointer, "rule": item.rule, "message": item.message}
+            for item in issues
+        ],
+    }
+
+
+def _validate_contract_file(path: Path, contract: str | None) -> dict[str, object]:
+    try:
+        loaded: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        return {
+            "path": path.as_posix(),
+            "family": None,
+            "revision": None,
+            "valid": False,
+            "issues": [{"pointer": "", "rule": "json", "message": str(error)}],
+        }
+    report = validate_contract_document(
+        loaded, family(contract).id if contract else None, filename=path.name
+    )
+    return _report_payload(path, report)
+
+
+def _echo_contract_reports(reports: list[dict[str, object]], json_output: bool) -> None:
+    if json_output:
+        typer.echo(json.dumps({"reports": reports}, indent=2))
+    else:
+        for report in reports:
+            state = "valid" if report["valid"] else "invalid"
+            label = f"{report['family'] or 'unknown family'} {report['revision'] or ''}"
+            typer.echo(f"{report['path']}: {state} ({label.rstrip()})")
+            issues = report["issues"]
+            assert isinstance(issues, list)
+            for issue in issues:
+                typer.echo(
+                    f"  {issue['pointer'] or '/'} [{issue['rule']}]: "
+                    f"{issue['message']}",
+                    err=True,
+                )
+    if not all(report["valid"] for report in reports):
+        raise typer.Exit(code=2)
+
+
+@schema_app.command("validate")
+def schema_validate_command(
+    document: Annotated[
+        Path,
+        typer.Argument(
+            exists=True, dir_okay=False, resolve_path=True, help="JSON document."
+        ),
+    ],
+    contract: str | None = typer.Option(
+        None,
+        "--family",
+        help="Family URI, key or file name; detected from the document by default.",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit a JSON report."),
+) -> None:
+    """Validate one document offline against its packaged contract definition."""
+    try:
+        reports = [_validate_contract_file(document, contract)]
+    except ContractRegistryError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    _echo_contract_reports(reports, json_output)
+
+
+@schema_app.command("check")
+def schema_check_command(
+    repository: RepositoryOption = Path("."),
+    against: Annotated[
+        Path | None,
+        typer.Option(
+            exists=True,
+            dir_okay=False,
+            resolve_path=True,
+            help="Earlier formal definition to compare with --family for breaks.",
+        ),
+    ] = None,
+    contract: str | None = typer.Option(None, "--family", help="Family to compare."),
+    json_output: bool = typer.Option(False, "--json", help="Emit a JSON report."),
+) -> None:
+    """Check every published contract file in splice/, or compare revisions."""
+    if against is not None:
+        if contract is None:
+            typer.echo("--against requires --family", err=True)
+            raise typer.Exit(code=2)
+        old = json.loads(against.read_text(encoding="utf-8"))
+        findings = breaking_changes(old, meta_schema(family(contract).id))
+        payload = {
+            "family": family(contract).id,
+            "breaking": [
+                {
+                    "pointer": item.json_pointer,
+                    "kind": item.kind,
+                    "message": item.message,
+                }
+                for item in findings
+            ],
+        }
+        if json_output:
+            typer.echo(json.dumps(payload, indent=2))
+        else:
+            for item in findings:
+                typer.echo(f"{item.json_pointer or '/'} [{item.kind}]: {item.message}")
+            typer.echo(f"{len(findings)} breaking change(s).")
+        if findings:
+            raise typer.Exit(code=2)
+        return
+    splice = repository / "splice"
+    reports: list[dict[str, object]] = [
+        _validate_contract_file(splice / item.path, item.id)
+        if (splice / item.path).is_file()
+        else {
+            "path": (splice / item.path).as_posix(),
+            "family": item.id,
+            "revision": None,
+            "valid": False,
+            "issues": [{"pointer": "", "rule": "missing", "message": "not published"}],
+        }
+        for item in families()
+    ]
+    _echo_contract_reports(reports, json_output)
 
 
 @app.command("tui")

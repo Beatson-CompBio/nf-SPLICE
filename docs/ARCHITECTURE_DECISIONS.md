@@ -46,7 +46,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0013 | Require explicit, previewed, atomic, collision-safe writes | Current | — |
 | ADR-0014 | Put CLI and TUI over one application core | Current | — |
 | ADR-0015 | Separate static integration authoring from per-run analysis output | Current | — |
-| ADR-0016 | Version authoring, bundle, pipeline, and generator independently | Current | — |
+| ADR-0016 | Version authoring, bundle, pipeline, and generator independently | Superseded | ADR-0024 |
 | ADR-0017 | Support the nf-core environment without depending on nf-core internals | Current | — |
 | ADR-0018 | Support Python 3.10 through 3.14 | Current | — |
 | ADR-0019 | Use compatible runtime framework release families | Current | — |
@@ -54,6 +54,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0021 | Keep all static integration-harness state inside `splice/` | Current | — |
 | ADR-0022 | Include developer-supplied provenance and execution configs unchanged | Current | — |
 | ADR-0023 | Record v0.3.0 decisions incrementally with a traceability ledger | Current | — |
+| ADR-0024 | Publish five engine-neutral workflow-bundle contract families with a release registry | Current | — |
 
 ---
 
@@ -449,12 +450,12 @@ the operation boundary itself is unchanged.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | Versioning |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0024 |
 | Related | ADR-0004, ADR-0007, ADR-0008, ADR-0012 |
 
 ### Decision
@@ -762,3 +763,96 @@ depends on that workspace existing.
 - Reviewers can audit each feature commit together with its decision.
 - The ledger and register are machine-checked in CI, so missing traceability
   is a test failure rather than a review omission.
+
+---
+
+## ADR-0024: Publish five engine-neutral workflow-bundle contract families with a release registry
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, sections 2 and 0.4 (invariant 8) |
+| Scope | Public contract identity and versioning |
+| Supersedes | ADR-0016 |
+| Superseded by | — |
+| Related | ADR-0012, ADR-0015, ADR-0020, ADR-0023 |
+| Implementation | `src/nf_splice/contracts/`, `src/nf_splice/cli.py`, `docs/schemas/`, `pyproject.toml` |
+| Tests | `tests/test_contracts.py` |
+
+### Context
+
+ADR-0016 kept authoring-state, bundle-contract, pipeline and generator
+versions apart, but nf-splice emitted five machine-readable JSON contracts
+whose only versioning was an ad hoc `schema_version` in three of them. The
+two JSON Schema documents carried no contract identity at all, consumers had
+no formal definitions to validate against, and nothing mapped a tool release
+to the contract revisions it emits.
+
+### Decision
+
+nf-splice publishes exactly five public **workflow-bundle contract families**,
+identified by engine-neutral URIs in an owned namespace:
+
+| Final artefact | Family identifier |
+|---|---|
+| `bundle.json` | `https://schemas.splice-data.io/workflow-bundle/bundle` |
+| `inputs.schema.json` | `https://schemas.splice-data.io/workflow-bundle/inputs` |
+| `outputs.schema.json` | `https://schemas.splice-data.io/workflow-bundle/outputs` |
+| `components.json` | `https://schemas.splice-data.io/workflow-bundle/components` |
+| `execution-profiles.json` | `https://schemas.splice-data.io/workflow-bundle/execution-profiles` |
+
+The URIs are identifiers and planned documentation locations, not deployed
+URLs; validation never performs a network request. No family identifier
+contains a workflow-engine or tool name, so an independent generator for
+another engine can emit the same revision.
+
+Each family has its own revision, starting at `0.3.0`, and a packaged formal
+definition (`src/nf_splice/contracts/data/schemas/<family>/<revision>.schema.json`,
+mirrored byte-for-byte in `docs/schemas/<family>/v<revision>/schema.json`,
+`$id` = `<family>/v<revision>/schema.json`). A family revision changes only
+when that family's contract changes, never merely because the tool version
+changes.
+
+The two JSON Schema documents keep their standard `$schema` dialect and their
+own pipeline-specific `$id` for instance validation; the family URI and
+revision are carried separately in the `x-splice-contract` extension
+(`id`, `version`, `generated_by`). The three data documents carry
+`schema_id`, `schema_version` and `generated_by`.
+
+A wheel-packaged, version-controlled registry
+(`src/nf_splice/contracts/data/registry.json`) records every nf-splice release
+explicitly: 0.1.0 emitted no family revisions (its legacy formats are listed
+as companion formats), 0.3.0 emits revision 0.3.0 of all five. A later
+release must add its own row even when no family changed. Other version
+concepts stay distinct: pipeline version, the per-pipeline
+`analysis_output_schema_version`, the lock format and the generator version
+are never substitutes for a family revision.
+
+`nf-splice schema list|show|validate|check` (all with `--json`) exposes the
+registry offline. Data documents are validated against their family
+definition; JSON Schema documents are first checked as schemas of their
+declared dialect and then against the family definition of their SPLICE
+extensions. A document without a declared family revision is reported as a
+legacy document needing a version-aware migration, and an unknown revision
+fails explicitly. `schema check --against OLD --family F` and
+`nf_splice.contracts.breaking_changes` report removals, type/enum narrowing,
+changed constants, closed objects and new requiredness.
+
+### Alternatives rejected
+
+- Generic identifiers such as `splice.inputs` or tool/engine-specific ones
+  such as `nf-splice.inputs`: ambiguous and not engine-neutral.
+- Putting the family URI in `$schema` or `$id` of the JSON Schema documents:
+  that would corrupt standard JSON Schema dialect and instance identity.
+- Tying every family revision to the tool version: forces consumer upgrades
+  without a contract change.
+
+### Consequences
+
+- Consumers can validate every published contract offline with packaged or
+  documented definitions and examples.
+- Old consumers that require bundle `schema_version` `1.0` cannot read 0.3.0
+  bundles without an adapter; the migration guide documents a staged rollout.
+- Every future release must extend the registry, and contract definition
+  changes require an explicit new revision with migration notes.

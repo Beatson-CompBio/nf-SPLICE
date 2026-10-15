@@ -53,6 +53,9 @@ version = { attr = "nf_splice.__version__" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"nf_splice.contracts" = ["data/*.json", "data/schemas/*/*.json"]
+
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-config", "--strict-markers"]
 testpaths = ["tests"]

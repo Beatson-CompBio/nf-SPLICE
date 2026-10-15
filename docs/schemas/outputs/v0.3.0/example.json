@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/org/example-pipeline/schema/analysis-output/v1.0.0",
+  "title": "SPLICE example-pipeline analysis output",
+  "type": "object",
+  "required": [
+    "files"
+  ],
+  "properties": {
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/file_record"
+      }
+    }
+  },
+  "definitions": {
+    "file_record": {
+      "type": "object",
+      "required": [
+        "path",
+        "scope"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "job",
+            "sample",
+            "run"
+          ]
+        }
+      }
+    }
+  },
+  "x-splice-contract": {
+    "id": "https://schemas.splice-data.io/workflow-bundle/outputs",
+    "version": "0.3.0",
+    "generated_by": {
+      "name": "nf-splice",
+      "version": "0.3.0"
+    }
+  },
+  "x-output-catalog": {
+    "catalog_version": "0.3.0",
+    "schema_semantics": "Every reviewed output type; each completed job may contain any produced subset.",
+    "analysis_output_schema_version": "1.0.0",
+    "pipeline": {
+      "id": "example-pipeline",
+      "name": "example-pipeline",
+      "version": "1.2.3",
+      "engine": "nextflow"
+    },
+    "scopes": {
+      "job": "Produced once for the whole workflow job.",
+      "sample": "Produced per biological sample.",
+      "run": "Produced per platform file-level run belonging to a sample."
+    },
+    "categories": {
+      "job_report": {
+        "title": "Job reports"
+      }
+    },
+    "output_types": [
+      {
+        "key": "multiqc_report",
+        "title": "MultiQC report",
+        "description": "Job-wide MultiQC report.",
+        "category": "job_report",
+        "scope": [
+          "job"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "html"
+        ],
+        "path_patterns": [
+          "^multiqc/multiqc_report\\.html$"
+        ]
+      }
+    ]
+  }
+}

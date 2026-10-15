@@ -1,0 +1,84 @@
+{
+  "registry_format": "workflow-bundle-contract-registry",
+  "registry_version": "1",
+  "namespace": "https://schemas.splice-data.io/workflow-bundle/",
+  "families": {
+    "https://schemas.splice-data.io/workflow-bundle/bundle": {
+      "key": "bundle",
+      "title": "Workflow bundle index",
+      "path": "bundle.json",
+      "kind": "data-document",
+      "revisions": {
+        "0.3.0": "schemas/bundle/0.3.0.schema.json"
+      }
+    },
+    "https://schemas.splice-data.io/workflow-bundle/inputs": {
+      "key": "inputs",
+      "title": "Workflow input parameter contract",
+      "path": "inputs.schema.json",
+      "kind": "json-schema-document",
+      "revisions": {
+        "0.3.0": "schemas/inputs/0.3.0.schema.json"
+      }
+    },
+    "https://schemas.splice-data.io/workflow-bundle/outputs": {
+      "key": "outputs",
+      "title": "Workflow job output contract",
+      "path": "outputs.schema.json",
+      "kind": "json-schema-document",
+      "revisions": {
+        "0.3.0": "schemas/outputs/0.3.0.schema.json"
+      }
+    },
+    "https://schemas.splice-data.io/workflow-bundle/components": {
+      "key": "components",
+      "title": "Workflow component and container inventory",
+      "path": "components.json",
+      "kind": "data-document",
+      "revisions": {
+        "0.3.0": "schemas/components/0.3.0.schema.json"
+      }
+    },
+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": {
+      "key": "execution-profiles",
+      "title": "Workflow execution profile catalogue",
+      "path": "execution-profiles.json",
+      "kind": "data-document",
+      "revisions": {
+        "0.3.0": "schemas/execution-profiles/0.3.0.schema.json"
+      }
+    }
+  },
+  "releases": [
+    {
+      "tool": "nf-splice",
+      "tool_version": "0.1.0",
+      "contracts": {},
+      "companion_formats": {
+        "bundle.json": "1.0",
+        "components.json": "1.0",
+        "execution-profiles.json": "1.0",
+        "inputs.schema.json": "unversioned",
+        "outputs.schema.json": "unversioned",
+        "outputs.yaml": "1.0.0",
+        "nf-splice.lock.json": "1.0",
+        "nf-splice.yaml": "1.0"
+      }
+    },
+    {
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "contracts": {
+        "https://schemas.splice-data.io/workflow-bundle/bundle": "0.3.0",
+        "https://schemas.splice-data.io/workflow-bundle/inputs": "0.3.0",
+        "https://schemas.splice-data.io/workflow-bundle/outputs": "0.3.0",
+        "https://schemas.splice-data.io/workflow-bundle/components": "0.3.0",
+        "https://schemas.splice-data.io/workflow-bundle/execution-profiles": "0.3.0"
+      },
+      "companion_formats": {
+        "outputs.yaml": "0.3.0",
+        "nf-splice.lock.json": "2.0"
+      }
+    }
+  ]
+}
