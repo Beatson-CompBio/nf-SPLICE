@@ -62,6 +62,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0029 | Attribute review events publicly by label and keep contact details in a private local audit | Current | — |
 | ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Proposed | — |
 | ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Proposed | — |
+| ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Proposed | — |
 
 ---
 
@@ -1309,3 +1310,82 @@ derived the bundle id from the name on every render.
 
 - Detached contracts receive the identity envelope from this one reviewed
   draft at compilation time.
+
+---
+
+## ADR-0032: Own an engine-neutral input contract with one access policy per parameter
+
+| Metadata | Value |
+|---|---|
+| Status | Proposed |
+| Date | 2026-10-15 |
+| Source | nf-SPLICE 0.3.0 implementation specification, section 4 (requirement 5) |
+| Scope | Input contract semantics, permissions and engine bindings |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0024, ADR-0026, ADR-0030 |
+| Implementation | `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py`, `src/nf_splice/domain/access.py` |
+| Tests | `tests/test_layer_inputs.py` |
+
+### Context
+
+0.1.0 rendered a filtered copy of `nextflow_schema.json` containing only
+user-configurable parameters, dropped `hidden`, rebuilt groups without their
+`required` lists and assumed a single-string `type`.
+
+### Decision
+
+- `inputs.schema.draft.yaml` / `inputs.schema.json` is a SPLICE-owned JSON
+  Schema 2020-12 document of submitted runtime parameter values, keeping
+  nf-schema's virtual groups (`$defs.<group>` with group `required`,
+  referenced from top-level `allOf`), nested objects, unions, conditional and
+  all other standard keywords. Every runnable parameter appears exactly once;
+  duplicate definitions across groups are blocking collisions.
+- Nextflow `nextflow_schema.json` is imported as evidence by an adapter that
+  copies every keyword verbatim (including `help_text`, `fa_icon`, `hidden`,
+  `errorMessage`, `exists`, `mimetype`, `schema`, custom formats and unknown
+  extensions). Documented mapping decisions: the dialect becomes 2020-12,
+  draft-07 `definitions` become `$defs` with `$ref`s rewritten, array-form
+  `items` becomes `prefixItems`, and missing `allOf` group references are
+  generated. Lossless round-trip is tested on an nf-core-style fixture.
+- SPLICE extensions: `x-splice-contract` and `x-splice-pipeline` (identity
+  envelope, synchronised explicitly from `bundle.draft.yaml`),
+  per-parameter `x-splice-access.editable_by` ⊆ {`user`, `platform`,
+  `agent`}, presentation-only `x-splice-ui.visibility`, `x-splice-data.kind`
+  for data references and `x-splice-source` engine bindings
+  (`params.<name>` for Nextflow). Engine-specific names live only in
+  `x-splice-source`.
+- A parameter without a reviewed access policy blocks promotion; platform-
+  and nobody-editable parameters remain in the contract. Legacy 0.1.0
+  classifications migrate conservatively (user → `[user]`, platform and
+  execution-environment → `[platform]`, hidden/unsupported → `[]` hidden).
+- Enforcement is deterministic and service-side
+  (`nf_splice.services.input_policy`): the principal comes from the calling
+  platform, visibility never authorises a write, unchanged defaults are not
+  changes, submissions are validated against the schema with format
+  checking, data references are checked syntactically (allowed schemes, no
+  embedded credentials, no filesystem or network probing; `exists`/MIME are
+  annotations for the execution environment) and views are filtered per
+  principal. Only the Nextflow binding adapter is implemented.
+- Agents may propose access policies but cannot write them without a
+  separate human approver. Secret-like parameters must not carry defaults.
+- Upstream re-import is planned as the difference between the previous and
+  current upstream projections and applied as a three-way merge onto the
+  draft, so manual edits are never reset; overlaps block the import. The
+  previous upstream document is retained in the review sidecar as evidence
+  for that comparison.
+
+### Alternatives rejected
+
+- Separate schemas per principal: duplicates parameters and diverges.
+- Trusting a role asserted inside the schema or request: privilege
+  escalation.
+
+### Consequences
+
+- Platform UIs must filter fields at view time and keep validating advanced
+  constructs on the backend.
+
+### Security and privacy
+
+- Permission checks cannot be bypassed by low-level service calls.
