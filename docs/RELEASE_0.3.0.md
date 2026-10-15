@@ -1,14 +1,40 @@
 # nf-SPLICE 0.3.0 release record
 
-**Status:** local work-in-progress branch `wip/nf-splice-v0.3.0`; not released.
-Nothing has been pushed, merged, tagged or published.
+**Status:** ready for review on branch `wip/nf-splice-v0.3.0`; not released.
+When this record was written nothing had been merged, tagged or published.
 
 | Item | Value |
 | --- | --- |
-| Branch | `wip/nf-splice-v0.3.0` (local only, no upstream) |
-| Base commit | `9ad15c1` (`main` at branch creation) |
+| Branch | `wip/nf-splice-v0.3.0` |
+| Base commit | `9ad15c1` (`main` when the branch was created) |
 | Package version | 0.3.0 |
-| Contract revision | 0.3.0 for all five workflow-bundle families |
+| Contract revision | 0.3.0 for all five workflow-bundle families (the first supported revision) |
+| Python | 3.10 to 3.14 |
+| Install | From GitHub; nf-splice is not on PyPI |
+
+## For reviewers and testers
+
+Install the branch into a virtual environment:
+
+```bash
+python -m venv ~/.venvs/nf-splice
+. ~/.venvs/nf-splice/bin/activate
+python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git@wip/nf-splice-v0.3.0"
+nf-splice --version
+```
+
+Then follow the [user guide](USAGE.md), starting with
+[Getting started](guide/getting-started.md), on one of your own Nextflow
+pipelines. A small pipeline for trying the tool is in the repository at
+`tests/fixtures/incomplete-drafts-0.3.0/repository/`; copy it without its
+`splice/` directory to start from scratch.
+
+Please look first at:
+
+1. The [decisions flagged for review](#decisions-flagged-for-review).
+2. ADR-0041, which removes all 0.1.0 compatibility because 0.1.0 was a
+   pre-release test version.
+3. The [schema reference](schemas/README.md), if you build tools on bundles.
 
 ## Feature ledger
 
@@ -48,70 +74,70 @@ checks that every ADR exists, every path exists and every test file exists.
 | Reference validated bundle and incomplete draft fixtures | ADR-0030, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
 | CI matrix 3.10-3.14, packaging and hygiene gates | ADR-0040 | `.github/workflows/ci.yml`, `pyproject.toml` | `tests/test_packaging.py` | Current |
 
-## Changelog
+## What 0.3.0 provides
 
-### Breaking
+nf-splice 0.1.0 was a pre-release test version; 0.3.0 is the first supported
+release and the baseline for schema compatibility (ADR-0041).
 
-- New integrations no longer have an authoritative `nf-splice.yaml`. Each
-  layer has one YAML draft under `splice/drafts/` (plus native `.config`
-  drafts for generated execution profiles). The draft is the source of truth
-  and you can edit it directly (ADR-0030).
-- The public output contract is `outputs.schema.json` with `x-output-catalog`
-  as the runtime's only catalogue. There is no `outputs.json` (ADR-0028).
-- Output scopes are `job`, `sample` and `run`. Legacy `run` means `job`,
-  legacy `sample` stays `sample`, and legacy `library` becomes `run` only after
-  an explicit, versioned mapping (ADR-0027).
-- `--run-metadata` is a deprecated alias of `--job-metadata`.
-- The Textual dashboard is replaced by a guided wizard (ADR-0038).
-- Lock format 2.0 records the contract URIs, per-file hashes and layer owners.
+- **File-first authoring.** One YAML draft per layer under `splice/drafts/`
+  (plus native `.config` drafts for generated profiles) is the source of
+  truth. Edit drafts with commands, the wizard or any editor; nf-splice applies
+  targeted, comment-preserving patches and reports conflicts instead of
+  overwriting (ADR-0026, ADR-0030).
+- **Five versioned contracts** with a packaged registry and the offline
+  `nf-splice schema list|show|validate|check` commands (ADR-0024). There is
+  no `outputs.json`; `outputs.schema.json` carries the output catalogue in
+  `x-output-catalog` (ADR-0028).
+- **Job, sample and run** output scopes with free-text categories and
+  stages, and one `analysis_output.json` per completed job (ADR-0027).
+- **Layer reviews:** rich identity (ADR-0031), an engine-neutral input
+  contract with per-parameter access (ADR-0032), container sources and
+  verified image files (ADR-0033), one reviewed default execution profile
+  (ADR-0034) and RO-Crate review, enrichment or generation (ADR-0035).
+- **Safe publishing:** per-layer promotion and transactional bundle
+  publication with recovery; lock format 2.0 (ADR-0036).
+- **Attribution and privacy:** public actor labels, a private local audit
+  store for contact details, opt-in public maintainers (ADR-0029).
+- **Guided wizard** over the same services as the CLI (ADR-0038).
+- **Optional AI assistance** that can only propose; a person approves every
+  change (ADR-0039).
+- **Documentation:** a task-based user guide, a generated command reference
+  and key-by-key schema references for integrators.
+- **CI** on Python 3.10 to 3.14, nf-core 4.0.2 coexistence, packaging and
+  repository-hygiene checks, run on pushes to `main` and to `wip/**`
+  branches (ADR-0040).
 
-### Added
+### Fixed during review
 
-- Five independently versioned contract families with a packaged registry
-  and the offline `nf-splice schema list|show|validate|check` commands
-  (ADR-0024).
-- Rich identity in `bundle.draft.yaml` (ADR-0031), an engine-neutral input
-  contract with per-parameter access (ADR-0032), container sources, variants
-  and verified distributions (ADR-0033), one reviewed default execution
-  profile with adopted or generated configs (ADR-0034), and RO-Crate review,
-  enrichment and generation (ADR-0035).
-- Per-layer promotion and transactional bundle publication with journal,
-  backup and `recover` (ADR-0036). Non-destructive 0.1.0 migration
-  (ADR-0037).
-- Public review events with actor labels, plus a private local audit store
-  for contact details (ADR-0029).
-- Optional, approval-gated agents: an offline scripted provider and a
-  least-privilege Claude Agent SDK provider behind the `[claude]` extra
-  (ADR-0039).
-- CI matrix for Python 3.10-3.14, nf-core 4.0.2 coexistence, packaging
-  checks and staged-path hygiene gates (ADR-0040).
-
-### Fixed during this release
-
-- `558a18d`: assignments inside a single-line Nextflow metadata block
-  (`{ name = 'x'; version = 'y' }`) are now read, with correct evidence line
-  numbers.
+- Single-line Nextflow metadata blocks (`{ name = 'x'; version = 'y' }`) are
+  read, with correct evidence line numbers.
+- `--overwrite-edited` accepts the `splice/`-prefixed path that the blocking
+  message prints.
+- The `identity_mismatch` message suggests a command that exists
+  (`nf-splice draft sync-identity`); a test now checks every command quoted in
+  messages.
+- `scripts/run-checks.sh` works in uv environments without pip.
 
 ## Functional acceptance checklist (specification section 17)
 
-Each "Done" item is backed by the ledger tests above and by the scenario
-tests listed in the next section. "Partial" items are complete offline and
-are only waiting on an external dependency, named in the Notes column.
+"Done" items are backed by the ledger tests above and the scenario tests
+below. "Partial" items are complete offline and wait only on the external
+dependency named. "Not applicable" items were withdrawn by ADR-0041.
 
 | Area | Requirement | State | Evidence / notes |
 | --- | --- | --- | --- |
-| Contract | Package reports 0.3.0 consistently | Done | `test_cli.py`, `nf-splice --version` on 3.10, 3.11 and 3.14 |
+| Contract | Package reports 0.3.0 consistently | Done | `test_cli.py`; `nf-splice --version` on 3.10, 3.11 and 3.14 |
 | Contract | Exactly five families, including `/workflow-bundle/bundle`, versioned, registered, documented key by key | Done | `test_contracts.py`, `test_scenarios.py::test_s10_*`, `docs/schemas/` |
-| Contract | Compatibility checks, old fixtures, migration adapters | Done | `test_contracts.py`, `test_legacy_fixtures.py`, `test_migration.py` |
+| Contract | Compatibility checks for future revisions | Done | `test_contracts.py` (`schema check --against`) |
+| Contract | Old fixtures and 0.1.0 migration adapters | Not applicable | Withdrawn by ADR-0041: 0.1.0 was a test version |
 | Contract | Rich `bundle.json` identity | Done | `test_layer_bundle.py` |
 | Contract | Consistent pipeline/generator/version provenance in every contract | Done | `test_lifecycle.py`, `test_scenarios.py::test_s10_*` |
-| Contract | No `outputs.json`; `x-output-catalog` drives runtime | Done | `test_output_contracts.py`, `test_s10_*` |
+| Contract | No `outputs.json`; `x-output-catalog` drives the runtime | Done | `test_output_contracts.py`, `test_s10_*` |
 | Contract | Free-text output categories and stages | Done | `test_output_discovery.py` |
 | Contract | Engine-neutral 2020-12 input contract, lossless nf-schema import, no duplicated parameters | Done | `test_layer_inputs.py` |
 | Contract | Service-level input permissions, presentation and engine mapping | Done | `test_layer_inputs.py` |
 | Components | OCI source, Apptainer/Singularity source and downloadable image kept distinct | Done | `test_containers.py` |
-| Components | HTTPS image validation, SHA-256, local conversion, cache naming, opt-in upload | Partial | Offline behaviour is tested. Live Nextflow cache naming and the real object store are not verified (decisions 3 and 4) |
-| Components | IDs survive migration or have explicit mappings | Done | `test_migration.py` |
+| Components | HTTPS image validation, SHA-256, local conversion, cache naming, opt-in upload | Partial | Offline behaviour tested. Live Nextflow cache naming and the real object store are not verified (decisions 3 and 4) |
 | Execution | At most one reviewed default; safe Slurm candidate | Done | `test_layer_execution.py` |
 | Execution | Adopted and generated `.config` routes with required section headings | Done | `test_layer_execution.py` |
 | Provenance | RO-Crate validation, reviewed enrichment/generation, root preserved | Done | `test_layer_provenance.py` |
@@ -126,20 +152,19 @@ are only waiting on an external dependency, named in the Notes column.
 | AI | Claude SDK behind a provider-neutral, approval-gated, least-privilege interface | Done | `test_agents.py` |
 | AI | Manual and AI suggestions interchangeable; only services apply changes | Done | `test_s03_*`, `test_agents.py` |
 | AI | Provider code isolated for future adapters | Done | `src/nf_splice/agents/providers/` |
-| Release | Existing regression tests pass | Done | 190 passed, 2 skipped |
-| Release | Scenarios S01-S15 pass offline | Done | See the scenario table below |
-| Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Partial | 3.10, 3.11 and 3.14 run locally. 3.12 and 3.13 run only in the CI matrix, which has not been run (nothing pushed) |
+| Release | Regression tests pass | Done | 177 passed, 2 opt-in skipped |
+| Release | Scenarios S01-S15 pass offline | Done | S05 and S14 migration parts not applicable; see below |
+| Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Partial | 3.10, 3.11 and 3.14 run locally; 3.12 and 3.13 run in CI, which has not yet run |
 | Release | Golden files and snapshots committed | Done | `tests/snapshots/tui/`, `docs/schemas/*/v0.3.0/` |
 | Release | Bundle family URI exact; reserved word only in the upstream parser | Done | `test_vocabulary.py`, `test_s13_*`, `test_docs.py` |
-| Release | Scopes exactly job/sample/run with mixed granularity and versioned migration | Done | `test_output_scopes.py` |
+| Release | Scopes exactly job/sample/run with mixed granularity | Done | `test_output_scopes.py` |
 | Release | ADR register, statuses, supersession and ledger complete | Done | `test_adr_governance.py` |
-| Release | Docs complete; every documented command exists | Done | `test_docs.py` |
+| Release | Docs complete; every documented command, option, link and anchor exists | Done | `test_docs.py`; fresh-install walkthrough below |
 | Release | No private data, credentials, local paths or drafts in published files | Done | `test_audit.py`, `test_lifecycle.py` |
-| Hygiene | Single in-place clone; local-only branch; no external worktrees | Done | `git worktree list` shows only this clone |
-| Hygiene | Anchored `/.nf-splice-local/` rule confirmed by `git check-ignore` | Done | `.gitignore:225:/.nf-splice-local/` |
+| Hygiene | Single in-place clone; no external worktrees | Done | `git worktree list` shows only this clone |
+| Hygiene | Anchored `/.nf-splice-local/` rule confirmed by `git check-ignore` | Done | `.gitignore` |
 | Hygiene | All temporary, cache, report and session files inside `.nf-splice-local/` | Done | `scripts/dev-env.sh`, `test_dev_workspace.py` |
 | Hygiene | Staged-path guard rejects ignored paths, even forcibly staged | Done | `scripts/check_staged_paths.py`, `scripts/pre-commit`, CI `guard` job |
-| Hygiene | No push, merge, tag or publication | Done | No upstream, no remote branch contains `HEAD`, no tags |
 
 ## Scenario coverage (specification section 15.2)
 
@@ -149,122 +174,118 @@ are only waiting on an external dependency, named in the Notes column.
 | S02 Textual, identical to CLI | `test_tui.py::test_cli_and_tui_produce_identical_drafts_and_bundles` |
 | S03 manual + AI + external edit | `test_scenarios.py::test_s03_manual_and_ai_work_are_interchangeable`, `test_agents.py` |
 | S04 resume and external mutation | `test_scenarios.py::test_s04_*`, `test_tui.py`, `test_drafts_infra.py`, `test_lifecycle.py` (drift) |
-| S05 legacy migration | `test_migration.py`, `test_legacy_fixtures.py` |
+| S05 legacy bundle migration | Not applicable (ADR-0041) |
 | S06 container hazard | `test_containers.py` (offline HTTPS fixture, SSRF and integrity guards) |
 | S07 RO-Crate drift | `test_layer_provenance.py::test_stale_crate_blocks_inclusion_and_reviewed_enrichment_is_stable` |
 | S08 no AI, no network | `test_scenarios.py::test_s08_full_workflow_without_ai_or_network` |
 | S09 failure injection | `test_scenarios.py::test_s09_*`, `test_lifecycle.py::test_interrupted_publication_is_recovered_explicitly`, `test_drafts_infra.py` |
 | S10 five-contract JSON consumer | `test_scenarios.py::test_s10_json_consumers_need_only_the_five_contracts` |
-| S11 Python and packaging | `test_packaging.py`, local 3.10/3.11/3.14 wheel runs, CI matrix |
+| S11 Python and packaging | `test_packaging.py`, local 3.10/3.11/3.14 runs, CI matrix |
 | S12 multi-job separation | `test_output_scopes.py::test_two_jobs_produce_separate_documents_without_static_mutation` |
 | S13 terminology | `test_scenarios.py::test_s13_*`, `test_vocabulary.py`, `test_docs.py` |
-| S14 scope migration | `test_output_scopes.py` (versioned legacy scopes, unmapped `library` blocks) |
+| S14 mixed granularity | `test_output_scopes.py::test_one_job_with_samples_and_runs_classifies_each_granularity`; the migration part is not applicable (ADR-0041) |
 | S15 ADR traceability | `test_adr_governance.py` |
 
-S09 does not simulate a full disk. Instead it injects a write failure through
-a read-only target, and `test_lifecycle.py` tests interrupted publication
-through the `replace_file` hook. Both paths use the same staging and recovery
-code.
+S09 does not simulate a full disk. It injects a write failure through a
+read-only target, and `test_lifecycle.py` tests interrupted publication
+through the `replace_file` hook; both use the same staging and recovery code.
 
-## Tests and commands run
+## Tests and checks run
 
-All commands ran inside the clone with `. scripts/dev-env.sh`, which sends
+All commands ran inside the clone with `. scripts/dev-env.sh`, which keeps
 every cache, temporary file, report and session under `.nf-splice-local/`.
 
-| Command | Result |
+| Check | Result |
 | --- | --- |
-| `scripts/run-checks.sh` (uv pip check, pytest, ruff check, ruff format --check, mypy, `nf-splice --version`, staged-path guard) | exit 0: 190 passed, 2 skipped; ruff clean; 127 files formatted; mypy clean on 120 files; `nf-splice 0.3.0` |
-| `python -m build --outdir .nf-splice-local/reports/dist` | sdist and wheel built |
-| `python scripts/generate_schema_docs.py --check` | exit 0 |
-| Wheel `[dev]` installed into new Python 3.11.16 and 3.14.7 venvs; suite run against the installed package | 190 passed, 2 skipped on each; `uv pip check` compatible |
-| Wheel plus `nf-core==4.0.2` in a new Python 3.10.21 venv | `uv pip check` compatible; `nf-splice 0.3.0` and `nf-core 4.0.2` both run |
+| `scripts/run-checks.sh` (dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard) | exit 0: 177 passed, 2 skipped; ruff clean; 117 files formatted; mypy clean on 111 files; `nf-splice 0.3.0` |
+| `python -m build` | sdist and wheel built |
+| Generated references (`generate_schema_docs.py --check`, `generate_cli_docs.py --check`) | current |
+| Wheel with `[dev]` in fresh Python 3.11.16 and 3.14.7 environments, suite run against the installed package | 177 passed, 2 skipped on each |
+| Wheel plus `nf-core==4.0.2` in a fresh Python 3.10.21 environment | dependencies compatible; `nf-splice 0.3.0` and `nf-core 4.0.2` both run |
+| Install from Git (`pip install "git+…@wip/nf-splice-v0.3.0"`) into a fresh Python 3.14 environment, then the user guide followed step by step on a new pipeline | Every layer reviewed, bundle published and validated, a job's `analysis_output.json` generated and validated, a new version released, a hand-edited file overwritten explicitly |
 
-The two skipped tests are opt-in by design:
+The walkthrough found two documentation gaps and one wrong command in a
+message; all three are fixed. The two skipped tests are opt-in: `nextflow`
+needs a Nextflow installation and `live_agent` needs approved Claude
+credentials.
 
-- The `nextflow` marker test needs a Nextflow install. None is installed on
-  this machine.
-- The `live_agent` marker test needs `NF_SPLICE_LIVE_AGENT=1` and approved
-  Claude credentials.
+## Known dependencies and limitations
 
-## Known platform dependencies and blockers
+- **Nextflow** is not installed on the development machine. The
+  Singularity/Apptainer cache-name rule follows the published Nextflow rule
+  and has unit tests; the opt-in check against a real Nextflow has not run.
+- **Docker, Apptainer and Singularity** are not installed there either;
+  image conversion is tested with fakes only.
+- **SPLICE object store:** uploads use the operator's own authenticated
+  backend and were not tested against the real bucket.
+- **Ingestion code** is not in this repository. The components shape is
+  published as a schema, an example and fixtures; ingestion needs to read it.
+- **CI** has not run yet. It runs on the first push of this branch and again
+  when it is merged into `main`. Python 3.12 and 3.13 are covered only there.
+- **Claude Agent SDK:** tested offline against a fake SDK; live use needs an
+  approved organisation setup.
+- **Exit codes:** `configure` commands save the draft and then exit with
+  status 2 while blocking issues remain. Scripts should read the message or
+  use `nf-splice plan` rather than treat the status as a failed save.
 
-- **Nextflow** is not installed here. The Singularity/Apptainer cache file
-  name rule is implemented from the published Nextflow rule and covered by
-  unit tests. The opt-in `nextflow` test that checks it against a real
-  runtime has not run.
-- **Docker, Apptainer and Singularity** are not installed here. Local image
-  conversion is implemented and tested with fakes only.
-- **SPLICE object store**: uploads use the operator's own authenticated
-  backend. They were not tested against the real bucket, because that needs
-  credentials and explicit authorisation.
-- **Ingestion/DEX code** is not in this repository. The components shape and
-  the migration order are published as schemas, examples and fixtures, and the
-  downstream adapter work is listed in the migration guide.
-- **CI** has never run, because nothing has been pushed. Python 3.12 and 3.13
-  are covered only by the CI matrix.
-- **Claude Agent SDK**: the provider is tested offline against a fake SDK.
-  Live use needs an organisation-approved setup.
+## Decisions flagged for review
 
-## Decisions to flag for review (specification section 18)
+From specification section 18.
 
-1. **Schema family histories.** All five families start at revision 0.3.0 for
-   tool 0.3.0. Legacy `1.0`/`1.0.0` documents are recognised as unregistered
-   legacy inputs, and the migration adapters handle them. The release
-   registry maps each tool release to all five family revisions separately,
-   so a future release must add a mapping row even when no family changes.
-   The runtime `analysis_output.json` schema keeps its own semantics and is
-   not a sixth bundle family.
-2. **Components JSON shape.** `id`, `type` and `uri` are kept. Containers
-   gain `source_images` per runtime, runtime variants and verified
-   distributions (URL, SHA-256, cache file name). The ingestion code is not
-   available here, so this needs an ingestion-side adapter, as described in
-   the migration guide.
+1. **Schema family histories.** All five families start at revision 0.3.0,
+   the first supported revision; 0.1.0 documents are not supported
+   (ADR-0041). The release registry maps each tool release to all five
+   family revisions, so every future release adds a row even when no family
+   changes. The per-job `analysis_output.json` schema is versioned per
+   workflow and is not a sixth family.
+2. **Components JSON shape.** `id`, `type` and `uri` are kept for simple
+   readers. Containers add per-runtime `source_images` and an optional
+   verified `distribution` (URL, SHA-256, size, cache file name). The
+   unpublished `legacy_ids` field was dropped. Ingestion must be updated to
+   read this shape.
 3. **Nextflow cache name rule.** Strip the URI scheme, map `:` and `/` to
-   `-`, then append `.img` (or keep `.sif`). A configured registry prefix is
-   applied first. This has not been verified against a live Nextflow.
-4. **Object store.** Upload is opt-in and uses operator configuration, with
-   no built-in URL, account or credential. It is untested against the real
-   bucket.
-5. **RO-Crate profile.** RO-Crate 1.1 with Workflow RO-Crate conventions. The
-   strategy is `include`, `enriched` or `generated`. The root crate is never
-   modified, and enriched or generated crates are byte-stable. A
+   `-`, then append `.img` (or keep `.sif`); a configured registry prefix is
+   applied first. Not yet verified against a live Nextflow.
+4. **Object store.** Upload is opt-in, uses operator configuration and has
+   no built-in URL, account or credential. Untested against the real bucket.
+5. **RO-Crate profile.** RO-Crate 1.1 with Workflow RO-Crate conventions.
+   Strategies `include`, `enriched` or `generated`; the root crate is never
+   modified and enriched or generated crates are byte-stable. A
    `CreateAction` and the `#nf-splice` `SoftwareApplication` are always
    added; identity corrections and author credit are reviewed choices.
 6. **Private actor storage.** Published review events carry actor labels
-   only. Contact details are kept only in an owner-only local audit store
-   (`NF_SPLICE_AUDIT_DIR`) outside the repository, and nothing is public
-   unless the user opts in.
+   only. Contact details stay in an owner-only local audit store
+   (`NF_SPLICE_AUDIT_DIR`) outside the repository; public contacts are
+   opt-in.
 7. **Slurm default.** `nf-splice configure execution-profiles --slurm-default`
-   adds a generated, reviewable candidate. It has no site literals: queue,
-   account and similar values are operator configuration. Nothing is the
-   default until a reviewer chooses it.
-8. **Claude Team vs SDK billing.** The docs state that a Team subscription
-   does not automatically authorise or pay for Agent SDK usage. Live use is
-   opt-in (`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`) and has not been
-   verified.
+   adds a generated, reviewable candidate without site values; queue and
+   account options are operator configuration. Nothing is the default until
+   a reviewer chooses it.
+8. **Claude Team and SDK billing.** A Team subscription does not by itself
+   authorise or pay for Agent SDK usage. Live use is opt-in
+   (`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`) and unverified.
 
 ## Review points
 
-- `services/__init__.py` exports lazily through `__getattr__` to break a
-  services/layers import cycle. Review this if the package layout changes.
+- `services/__init__.py` exports lazily through `__getattr__` to avoid a
+  services/layers import cycle.
 - Review sidecars are named `*.review.json`, so no review file looks like a
   public output contract.
-- The legacy authoring document model is kept only so migration can read
-  0.1.0 state.
-- `.gitattributes` marks fixtures binary and lets `*.config` keep its
+- Shared domain base types live in `src/nf_splice/domain/base.py`.
+- `.gitattributes` keeps fixture bytes exact and lets `*.config` keep its
   intentional CRLF fixtures.
+- Superseded ADRs are exempt from the governance test's path checks, because
+  their code is history.
 
 ## Commits on this branch (base `9ad15c1`)
 
-| Commit | Summary |
-| --- | --- |
 | `4abc414` | chore(gitignore): ignore in-repository local development workspace |
 | `2cfea1f` | build(dev): add in-repository workspace setup and staged-path guard |
 | `6464f0c` | style(outputs): document intentional character-wise suffix comparison |
 | `46b6239` | test(fixtures): freeze nf-splice 0.1.0 legacy bundle and job output |
 | `460e55a` | docs(adr): ADR-0023 incremental decisions with a checked release ledger |
 | `73d2ad9` | feat(contracts): five workflow-bundle contract families and registry |
-| `fe5fc40` | feat(vocabulary): reserve the upstream Nextflow metadata word and define bundle/job/sample/run terms (subject paraphrased; the reserved word is kept out of these docs) |
+| `fe5fc40` | feat(vocabulary): reserve the upstream Nextflow metadata word and define bundle/job/sample/run terms |
 | `c7e2ae9` | feat(drafts): restricted YAML 1.2 drafts with three-way patches |
 | `aece560` | feat(outputs): SPLICE job/sample/run scopes and catalogue-backed runtime |
 | `4cb67e0` | feat(audit): public review events and private local audit store |
@@ -290,40 +311,46 @@ The two skipped tests are opt-in by design:
 | `6bf17c4` | chore(gitignore): ignore personal Claude Code local settings |
 | `035f7c1` | chore(gitignore): anchor build directories and ignore secrets and local files |
 | `375b5d4` | test: use a reserved example domain for the fictional maintainer address |
+| `8ca2743` | docs(release): record rewritten commit IDs and the identity rewrite |
+| `544c0b5` | docs(cli): generated command reference and help for every option |
+| `927857c` | docs(schemas): integrator-focused contract references |
+| `a17d3ca` | docs(schemas): present 0.3.0 as the first supported contract revision |
+| `dd3f041` | fix(lifecycle): accept splice/-prefixed paths for --overwrite-edited |
+| `0db902f` | docs(migration): mark 0.1.0 as a pre-release test version |
+| `5e04f0c` | docs: task-based user guide, shorter README and contributor guide |
+| `08139cb` | refactor!: remove pre-release 0.1.0 compatibility (ADR-0041) |
+| `ff6fe62` | ci: run on review-branch pushes and on demand |
+| `e974c2d` | fix(inputs): suggest a sync-identity command that exists |
+| `a947583` | docs: install from GitHub and fixes from a fresh-user walkthrough |
 
-The commit that updates this list follows these. Run `git log 9ad15c1..`
-to see the full list.
-
-### Commit identity rewrite
-
-Before anything was pushed, every commit after `9ad15c1` was rewritten
-locally with `git filter-branch`. The rewrite replaced an author and
-committer email that Git had derived from the machine's hostname with the
-maintainer's own identity, and removed AI co-author trailers. File content
-(the final tree), commit order, subjects and dates did not change. The IDs
-above are the rewritten ones. A repository-local `user.name` and
-`user.email` are now set, so Git no longer derives an identity from the host.
+The commit that adds this record follows these; `git log 9ad15c1..` lists
+everything. All commits are authored and committed by the maintainer's own
+identity. Before the branch was first pushed, its history was rewritten
+locally once to replace an author address Git had derived from the machine
+name and to remove AI co-author trailers; content, order, subjects and dates
+were unchanged.
 
 ## Clean staging evidence
 
-Before every commit, `git diff --cached --name-only` was checked against the
-intended paths and `python scripts/check_staged_paths.py` passed. After the
-final commit:
+Before every commit, the staged paths were checked against the intended
+change and `python scripts/check_staged_paths.py` passed. After the final
+commit, `git status --short` lists nothing and `git diff --cached --name-only`
+is empty; the only ignored local folders are `.nf-splice-local/` and the
+personal `.claude/` settings.
 
-- `git status --short` lists only the untracked host-application folder
-  `.claude/`, which was deliberately never staged.
-- `git diff --cached --name-only` is empty.
-- `git check-ignore -v .nf-splice-local/x` matches `.gitignore:225:/.nf-splice-local/`.
+## Release procedure
 
-## Release procedure (documentation only; not executed)
+The maintainer merges without pull requests; reviewers have read access.
 
-1. Push the branch and open a pull request against `main`. Let the CI
-   `guard`, matrix, nf-core coexistence and package jobs pass.
-2. Run the two opt-in tests where their dependencies exist: with Nextflow
-   (`pytest -m nextflow`) and with approved Claude credentials
-   (`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`).
-3. Confirm the section 18 decisions with ingestion/DEX and platform owners.
-4. Merge, tag `v0.3.0`, then build and publish the sdist and wheel through
-   the project's normal release process.
-5. Publish the five schema families at their `schemas.splice-data.io`
+1. Push `wip/nf-splice-v0.3.0`. CI runs on the push; make sure every job
+   passes, including Python 3.12 and 3.13.
+2. Reviewers install the branch (see [above](#for-reviewers-and-testers)),
+   follow the user guide and report problems.
+3. Run the opt-in tests where their dependencies exist:
+   `NF_SPLICE_NEXTFLOW_TESTS=1 pytest -m nextflow` and, with approved
+   credentials, `NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`.
+4. Confirm the flagged decisions with ingestion and platform owners.
+5. Merge into `main` and push; CI runs again on `main`.
+6. Tag `v0.3.0`.
+7. Publish the five schema families at their `schemas.splice-data.io`
    identifiers before ingestion switches to 0.3.0.
