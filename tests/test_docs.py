@@ -22,6 +22,8 @@ DOCUMENTS = [
     ROOT / "AGENTS.md",
     *sorted((ROOT / "skills").glob("*/SKILL.md")),
     *sorted((ROOT / "docs").rglob("*.md")),
+    *sorted((ROOT / "bundle-consumer-kit").glob("*.md")),
+    *sorted((ROOT / "bundle-consumer-kit" / "skills").glob("*/SKILL.md")),
 ]
 _FENCE = re.compile(r"```bash\n(.*?)```", re.DOTALL)
 

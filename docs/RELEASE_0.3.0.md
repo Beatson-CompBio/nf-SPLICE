@@ -95,6 +95,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | OpenAI provider: Sign in with ChatGPT and the Responses API | ADR-0051 | `src/nf_splice/agents/providers/openai_auth.py`, `src/nf_splice/agents/providers/openai.py` | `tests/test_openai_provider.py` | Current |
 | Codex provider through a locked-down app-server | ADR-0052 | `src/nf_splice/agents/providers/codex.py` | `tests/test_codex_provider.py` | Current |
 | OpenCode provider with deny-all permissions and a loopback tool bridge | ADR-0053 | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` | `tests/test_opencode_provider.py` | Current |
+| Bundle consumer kit: agent and role skill files, offline definitions and real examples for developers building on bundles | ADR-0054 | `bundle-consumer-kit/`, `scripts/build_consumer_kit.py` | `tests/test_consumer_kit.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
@@ -160,6 +161,11 @@ release and the baseline for schema compatibility (ADR-0041).
   (ADR-0043).
 - **Documentation:** a task-based user guide, a generated command reference
   and key-by-key schema references for integrators.
+- **Bundle consumer kit** for developers who build on bundles without
+  nf-splice: a drop-in `AGENTS.md`, five role skills (contracts, ingestion,
+  `analysis_output.json`, web interfaces, job launch), offline definitions
+  and a real example bundle and job inventory, all checked against the
+  contracts (ADR-0054).
 - **CI** on Python 3.10 to 3.14, nf-core 4.0.2 coexistence, packaging and
   repository-hygiene checks, run on pushes to `main` and to `wip/**`
   branches (ADR-0040).

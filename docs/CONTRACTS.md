@@ -5,6 +5,34 @@ that read SPLICE workflow bundles. It explains what a bundle contains, how
 to read it and how its formats are versioned. Each file has a key-by-key
 reference in [`schemas/`](schemas/README.md).
 
+You do not need nf-splice to build on bundles. If you work with a coding
+agent, start with the [agent and skill files](#agent-and-skill-files-for-your-coding-agent)
+below.
+
+## Agent and skill files for your coding agent
+
+The [bundle consumer kit](../bundle-consumer-kit/README.md) gives your coding
+agent (Claude Code, Codex, Cursor, GitHub Copilot or any agent that reads
+`AGENTS.md` or skill files) the structure of a bundle, the meaning of every
+key and value, and how to validate against the versioned schemas. Copy it
+into your own repository; it contains:
+
+- [`AGENTS.md`](../bundle-consumer-kit/AGENTS.md): drop-in rules for any
+  repository that consumes bundles;
+- the formal definitions of every contract revision, offline, in
+  [`schemas/`](../bundle-consumer-kit/schemas/);
+- a complete validated example bundle and a real `analysis_output.json` of
+  one of its jobs, in [`examples/`](../bundle-consumer-kit/examples/);
+- one skill per kind of work:
+
+| Skill | For developers who build | What it covers |
+| --- | --- | --- |
+| [`splice-bundle-contracts`](../bundle-consumer-kit/skills/splice-bundle-contracts/SKILL.md) | Anything that reads a bundle (always) | Files, families, the five version numbers, identity, validation, compatibility, terms |
+| [`splice-bundle-ingestion`](../bundle-consumer-kit/skills/splice-bundle-ingestion/SKILL.md) | Ingestion into the SPLICE database or any store | What to store from each file and each job, and which component needs it; keys and relations; re-ingestion; integrity; personal data |
+| [`splice-analysis-output`](../bundle-consumer-kit/skills/splice-analysis-output/SKILL.md) | Data explorers, results views, result ingestion | Every key of `analysis_output.json`, job/sample/run scopes, linking records to the catalogue, path classification (including from JavaScript) |
+| [`splice-web-ui`](../bundle-consumer-kit/skills/splice-web-ui/SKILL.md) | Web interfaces | Which keys and labels to show on catalogue, detail, launch and results pages; access and visibility in forms; what the server must enforce |
+| [`splice-job-launch`](../bundle-consumer-kit/skills/splice-job-launch/SKILL.md) | Job runners and launch APIs | Authorising and validating parameters, engine binding, profiles and operator settings, verified container images, recording the job |
+
 ## What a bundle contains
 
 A bundle is the `splice/` directory of a workflow repository:
@@ -88,11 +116,13 @@ Several independent version numbers appear in a bundle. Do not mix them up:
 The family URIs are identifiers, not live web addresses. Validation is fully
 offline:
 
-- The definitions are packaged with nf-splice. Print one with
-  `nf-splice schema show <family>`.
 - The same files are in this repository at
   `docs/schemas/<family>/v<revision>/schema.json`, each with an
-  `example.json`.
+  `example.json`, and in the
+  [bundle consumer kit](../bundle-consumer-kit/README.md) at
+  `schemas/<family>/v<revision>/`.
+- They are also packaged with nf-splice. Print one with
+  `nf-splice schema show <family>`.
 
 ## Validating
 

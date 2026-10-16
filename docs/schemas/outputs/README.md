@@ -124,7 +124,7 @@ Kinds of output. No other keys are allowed.
 | `scope` | array of `job`, `sample`, `run` (at least 1, no duplicates) | yes | Granularities that can own this output: `job`, `sample` and/or `run`. |
 | `entity_type` | array of `file`, `directory` (at least 1, no duplicates) | yes | Whether the output is a `file` or a `directory`. |
 | `format` | array of non-empty strings (at least 1, no duplicates) | yes | Permitted formats, for example `html` or `bam`. |
-| `path_patterns` | array of strings: regular expression anchored with `^` and `$` (at least 1, no duplicates) | yes | Regular expressions anchored with `^` and `$` that match the output's path relative to the job's publish directory. `{sample}` captures the `sample_id` and `{run}` captures the `run_id`. |
+| `path_patterns` | array of strings: regular expression anchored with `^` and `$` (at least 1, no duplicates) | yes | Python `re` regular expressions anchored with `^` and `$` that match the output's path relative to the job's publish directory. Named groups such as `(?P<sample_id>...)` capture identifiers; patterns may also use placeholders, expanded before matching: `{sample}` captures `sample_id`, `{run}` captures `run_id`, `{library}`, `{aligner}`, `{stage}` and `{read}` capture those fields, `{any}` matches one path segment and `{anypath}` any path. See [analysis_output.json](../analysis-output.md#how-records-are-classified). |
 | `labels` | object keyed by name | no | Reviewed descriptive labels, as name-value pairs. |
 | `optional` | boolean | no | Reserved. Any output may be absent from a particular job. |
 

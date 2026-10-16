@@ -90,7 +90,13 @@ After changing commands or contracts, regenerate the references:
 ```bash
 python scripts/generate_cli_docs.py
 python scripts/generate_schema_docs.py
+python scripts/build_consumer_kit.py
 ```
+
+`bundle-consumer-kit/` is for developers who build on bundles without
+nf-splice (ingestion, web interfaces, data explorers, job launchers). When a
+contract changes, regenerate it and update any of its skills whose keys
+changed; `tests/test_consumer_kit.py` checks both.
 
 After changing a skill in `skills/`, copy it to
 `src/nf_splice/agents/skills/`; `tests/test_skills.py` fails on drift.

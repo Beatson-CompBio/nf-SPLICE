@@ -1,0 +1,263 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.splice-data.io/workflow-bundle/outputs/v0.3.0/schema.json",
+  "title": "SPLICE workflow job output contract meta-validation (outputs.schema.json)",
+  "description": "Validates a workflow-bundle output contract document: a JSON Schema (draft-07 dialect) of one completed job's analysis_output.json plus the embedded x-output-catalog used by ingestion, DEX and runtime classification.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "$id",
+    "type",
+    "properties",
+    "definitions",
+    "x-splice-contract",
+    "x-output-catalog"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "https://json-schema.org/draft-07/schema#"
+    },
+    "$id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "type": {
+      "const": "object"
+    },
+    "x-splice-contract": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "generated_by"
+      ],
+      "properties": {
+        "id": {
+          "const": "https://schemas.splice-data.io/workflow-bundle/outputs"
+        },
+        "version": {
+          "const": "0.3.0"
+        },
+        "generated_by": {
+          "$ref": "#/$defs/generated_by"
+        }
+      },
+      "additionalProperties": false
+    },
+    "x-output-catalog": {
+      "type": "object",
+      "required": [
+        "catalog_version",
+        "analysis_output_schema_version",
+        "pipeline",
+        "scopes",
+        "categories",
+        "output_types"
+      ],
+      "properties": {
+        "catalog_version": {
+          "const": "0.3.0"
+        },
+        "schema_semantics": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_output_schema_version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "pipeline": {
+          "$ref": "#/$defs/pipeline"
+        },
+        "scopes": {
+          "type": "object",
+          "required": [
+            "job",
+            "sample",
+            "run"
+          ],
+          "properties": {
+            "job": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sample": {
+              "type": "string",
+              "minLength": 1
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "categories": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "output_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/output_type"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "x-splice-draft": false
+  },
+  "$defs": {
+    "generated_by": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "pipeline": {
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "version",
+        "engine"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repository_url": {
+          "type": "string",
+          "format": "uri"
+        }
+      },
+      "additionalProperties": false
+    },
+    "output_type": {
+      "type": "object",
+      "required": [
+        "key",
+        "title",
+        "description",
+        "category",
+        "scope",
+        "entity_type",
+        "format",
+        "path_patterns"
+      ],
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "job",
+              "sample",
+              "run"
+            ]
+          }
+        },
+        "entity_type": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "file",
+              "directory"
+            ]
+          }
+        },
+        "format": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "path_patterns": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^\\^.*\\$$"
+          }
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "optional": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

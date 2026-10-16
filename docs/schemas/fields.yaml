@@ -207,7 +207,7 @@ outputs:
   x-output-catalog.output_types[].scope: "Granularities that can own this output: `job`, `sample` and/or `run`."
   x-output-catalog.output_types[].entity_type: "Whether the output is a `file` or a `directory`."
   x-output-catalog.output_types[].format: "Permitted formats, for example `html` or `bam`."
-  x-output-catalog.output_types[].path_patterns: "Regular expressions anchored with `^` and `$` that match the output's path relative to the job's publish directory. `{sample}` captures the `sample_id` and `{run}` captures the `run_id`."
+  x-output-catalog.output_types[].path_patterns: "Python `re` regular expressions anchored with `^` and `$` that match the output's path relative to the job's publish directory. Named groups such as `(?P<sample_id>...)` capture identifiers; patterns may also use placeholders, expanded before matching: `{sample}` captures `sample_id`, `{run}` captures `run_id`, `{library}`, `{aligner}`, `{stage}` and `{read}` capture those fields, `{any}` matches one path segment and `{anypath}` any path. See [analysis_output.json](../analysis-output.md#how-records-are-classified)."
   x-output-catalog.output_types[].labels: "Reviewed descriptive labels, as name-value pairs."
   x-output-catalog.output_types[].optional: "Reserved. Any output may be absent from a particular job."
 

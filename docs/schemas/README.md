@@ -3,6 +3,8 @@
 Key-by-key references for every format in a SPLICE workflow bundle. Start
 with [Building on SPLICE bundles](../CONTRACTS.md) for how the files fit
 together, how to read them and how they are versioned.
+To give a coding agent the same knowledge, use the
+[bundle consumer kit](../../bundle-consumer-kit/README.md).
 
 ## Contract files
 

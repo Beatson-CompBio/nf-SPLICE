@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/org/multiroute/splice/inputs.schema.json",
+  "type": "object",
+  "x-splice-contract": {
+    "id": "https://schemas.splice-data.io/workflow-bundle/inputs",
+    "version": "0.3.0",
+    "generated_by": {
+      "name": "nf-splice",
+      "version": "0.3.0"
+    }
+  },
+  "x-splice-pipeline": {
+    "id": "multiroute",
+    "name": "multiroute",
+    "version": "1.0.0",
+    "engine": "nextflow"
+  },
+  "$defs": {
+    "input_output": {
+      "title": "Input and output",
+      "type": "object",
+      "required": [
+        "input",
+        "outdir"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "description": "Samplesheet of paired-end reads.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.input",
+            "origin": "nextflow_schema.json#/$defs/input_output/properties/input"
+          },
+          "x-splice-data": {
+            "kind": "file"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "user"
+            ]
+          }
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Results directory.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.outdir",
+            "origin": "nextflow_schema.json#/$defs/input_output/properties/outdir"
+          },
+          "x-splice-data": {
+            "kind": "directory"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "platform"
+            ]
+          }
+        }
+      }
+    },
+    "routes": {
+      "title": "Routes",
+      "type": "object",
+      "properties": {
+        "aligner": {
+          "type": "string",
+          "enum": [
+            "star",
+            "hisat2"
+          ],
+          "default": "star",
+          "description": "Read aligner.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.aligner",
+            "origin": "nextflow_schema.json#/$defs/routes/properties/aligner"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "user"
+            ]
+          }
+        },
+        "skip_qc": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip read quality control.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.skip_qc",
+            "origin": "nextflow_schema.json#/$defs/routes/properties/skip_qc"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "user"
+            ]
+          }
+        },
+        "run_salmon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also quantify with Salmon.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.run_salmon",
+            "origin": "nextflow_schema.json#/$defs/routes/properties/run_salmon"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "user"
+            ]
+          }
+        },
+        "publish_dir_mode": {
+          "type": "string",
+          "default": "copy",
+          "description": "How results are published.",
+          "x-splice-source": {
+            "engine": "nextflow",
+            "binding": "params.publish_dir_mode",
+            "origin": "nextflow_schema.json#/$defs/routes/properties/publish_dir_mode"
+          },
+          "x-splice-access": {
+            "editable_by": [
+              "platform"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output"
+    },
+    {
+      "$ref": "#/$defs/routes"
+    }
+  ]
+}

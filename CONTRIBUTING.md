@@ -39,16 +39,20 @@ staged-file guard. Two kinds of test are opt-in and skipped by default:
 
 ## Generated documentation
 
-Two references are generated and checked by the test suite. Regenerate them
-after changing commands or contract definitions:
+Two references and the bundle consumer kit's definitions and examples are
+generated and checked by the test suite. Regenerate them after changing
+commands or contract definitions:
 
 ```bash
 python scripts/generate_cli_docs.py
 python scripts/generate_schema_docs.py
+python scripts/build_consumer_kit.py
 ```
 
 Field descriptions for the schema reference live in
-`docs/schemas/fields.yaml`.
+`docs/schemas/fields.yaml`. The consumer kit's skills
+(`bundle-consumer-kit/skills/`) are written by hand; `tests/test_consumer_kit.py`
+fails when one names a key the contracts do not define.
 
 ## Wizard snapshots
 

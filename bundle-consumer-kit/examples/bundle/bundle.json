@@ -1,0 +1,48 @@
+{
+  "bundle_format": "splice-pipeline-bundle",
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/bundle",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "multiroute",
+    "name": "multiroute",
+    "version": "1.0.0",
+    "engine": "nextflow",
+    "description": "Aligns RNA-seq reads with STAR or HISAT2.",
+    "repository_url": "https://github.com/org/multiroute"
+  },
+  "schemas": {
+    "https://schemas.splice-data.io/workflow-bundle/bundle": {
+      "version": "0.3.0",
+      "path": "bundle.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/inputs": {
+      "version": "0.3.0",
+      "path": "inputs.schema.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/outputs": {
+      "version": "0.3.0",
+      "path": "outputs.schema.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/components": {
+      "version": "0.3.0",
+      "path": "components.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": {
+      "version": "0.3.0",
+      "path": "execution-profiles.json"
+    }
+  },
+  "files": {
+    "inputs_schema": "inputs.schema.json",
+    "outputs_catalogue": "outputs.yaml",
+    "outputs_schema": "outputs.schema.json",
+    "ro_crate": "ro-crate-metadata.json",
+    "components": "components.json",
+    "execution_profiles": "execution-profiles.json"
+  },
+  "default_execution_profile": "profile-local-6c6f63616c"
+}

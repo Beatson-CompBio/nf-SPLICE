@@ -155,15 +155,38 @@ per-sample file and one per-run file:
 
 ## How records are classified
 
-`nf-splice analysis-output generate` matches each published path against the
-`path_patterns` of every output type in the catalogue:
+Each published path, relative to the publish directory, is matched against
+the `path_patterns` of every output type in the catalogue. Patterns are
+Python `re` regular expressions anchored with `^` and `$`:
 
-- `{sample}` in a pattern captures `sample_id`; `{run}` captures `run_id`.
-- A run record needs its parent sample. It comes from `{sample}` in the
-  pattern or from the sample sheet passed with `--sample-metadata`, a CSV
+- Named groups capture record fields: `(?P<sample_id>...)`,
+  `(?P<run_id>...)`, and optionally `library_id`, `aligner`, `stage` and
+  `read`.
+- Patterns may instead use placeholders, expanded before matching:
+
+  | Placeholder | Expands to |
+  | --- | --- |
+  | `{sample}` | `(?P<sample_id>[^/]+)` |
+  | `{run}` | `(?P<run_id>[^/]+)` |
+  | `{library}` | `(?P<library_id>[^/]+)` |
+  | `{aligner}` | `(?P<aligner>[^/]+)` |
+  | `{stage}` | `(?P<stage>[^/]+)` |
+  | `{read}` | `(?P<read>[^/]+)` |
+  | `{any}` | `[^/]+` |
+  | `{anypath}` | `.+` |
+
+- The record's scope is `run` when a `run_id` was captured and the output
+  type allows `run`, otherwise `sample` when a `sample_id` was captured and
+  allowed, otherwise `job`.
+- A run record needs its parent sample. It comes from the `sample_id`
+  capture or from the sample sheet passed with `--sample-metadata`, a CSV
   with a sample column (`sample` or `sample_id`) and a `run_id` column.
 - A path that matches no output type stops generation, unless
   `--allow-unclassified` is given, in which case it is left out.
+
+To match patterns in JavaScript, expand the placeholders, write each
+`(?P<name>` as `(?<name>`, and compile without the `u` or `v` flag: Python
+escapes characters such as `-` (`\-`), which those flags reject.
 
 ## Consuming it
 

@@ -99,6 +99,7 @@ full walkthrough.
 | [Agentic AI](docs/guide/agentic-ai.md) | Ask AI, AI-assisted sessions and autonomous integration |
 | [Command reference](docs/reference/cli.md) | Every command and option |
 | [Building on SPLICE bundles](docs/CONTRACTS.md) | File formats for platform and tool developers |
+| [Bundle consumer kit](bundle-consumer-kit/README.md) | Agent and skill files for developers building on bundles (ingestion, web UI, data explorers, job launchers), without nf-splice |
 | [Schema reference](docs/schemas/README.md) | Every key of every file |
 | [Glossary](docs/GLOSSARY.md) | Precise terms: bundle, job, sample, run |
 
