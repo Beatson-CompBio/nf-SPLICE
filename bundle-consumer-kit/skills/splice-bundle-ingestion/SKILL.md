@@ -35,7 +35,8 @@ downstream component needs; you choose tables, documents or columns.
 | --- | --- | --- |
 | Workflow: `pipeline.id`, `name`, `engine`, `repository_url` | `bundle.json` → `pipeline` | Everything; `id` is the workflow's primary key |
 | Workflow version: `pipeline.version`, `release_url`, `released_at`, plus the ingestion time | `bundle.json` → `pipeline` | Catalogue, launcher, results |
-| Display metadata: `title`, `description`, `long_description`, `keywords`, `pipeline_type`, `modality`, `documentation_url`, `project_url`, `support_url`, `readme` | `bundle.json` → `pipeline` | Web catalogue and search |
+| Display metadata: `title`, `description`, `long_description`, `keywords`, `pipeline_type`, `documentation_url`, `project_url`, `support_url`, `readme` | `bundle.json` → `pipeline` | Web catalogue and search |
+| Assay capabilities (below) and the vocabulary snapshot: `assay_vocabulary.snapshot`, `assay_vocabulary.digest` | `bundle.json` → `pipeline.assay_capabilities`, `assay_vocabulary` | Pipeline finder, catalogue filters, routing data to pipelines |
 | Credits: `authors[]` (in order), `funders[]`, `citation`, `licence`, `licence_url` | `bundle.json` → `pipeline` | Web detail pages, citation export |
 | Engine requirements: `engine_version_min`, `engine_versions_tested` | `bundle.json` → `pipeline` | Launcher compatibility checks |
 | Maintainers: `maintainers[]` | `bundle.json` | Web contact section. **Personal data**: store under your privacy policy |
@@ -71,6 +72,27 @@ each name appears once, and a submitted parameter object is always flat.
 
 Keep the whole definition as well: validation needs it, and parameters may
 use any JSON Schema keyword.
+
+### Assay capabilities
+
+One record per `pipeline.assay_capabilities[]` entry, keyed by workflow
+version and `registered_code` (registered assays) or `assay.entity_id`
+(`vocabulary_assay` entries, which have no registration).
+
+| Field | Notes |
+| --- | --- |
+| `kind` | `registered_assay` or `vocabulary_assay` |
+| `registered_code` | The platform registration's `modality_name`; resolve it to your deployment's registration and check its entity id equals `assay.entity_id` |
+| `assay.entity_id`, `assay.entity_type`, `assay.label` | The assay: an `ASSAY_METHOD` or an `ASSAY_TYPE`, never a modality |
+| `assay_types[]`, `modality_subtypes[]`, `modalities[]` | Entities above the assay, each `entity_id` and `label` |
+| `paths[]` | Every path from the assay to a modality, as entity ids |
+
+- Store one pipeline–assay link per capability: a pipeline usually has
+  several. A single "modality" column per pipeline cannot hold them.
+- A capability your deployment does not register, or does not ingest yet,
+  is stored and reported as unsupported here; never drop it.
+- Store `assay_vocabulary` with the bundle and compare its `digest` with
+  your vocabulary before trusting the entity ids.
 
 ### Output types
 

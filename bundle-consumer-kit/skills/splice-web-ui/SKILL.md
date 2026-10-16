@@ -36,7 +36,8 @@ From `bundle.json` → `pipeline` (one workflow version):
 | Version | `version` | Always present. Link to `release_url` when present |
 | Summary (cards, search results) | `description` | One or two sentences |
 | Long description (detail page) | `long_description` | `description` |
-| Tags and filters | `keywords`, `pipeline_type`, `modality` | Free text, no fixed vocabulary; build filters from the values present |
+| Tags and filters | `keywords`, `pipeline_type` | Free text, no fixed vocabulary; build filters from the values present |
+| Assays supported | `assay_capabilities[]`: `assay.label`, `assay.entity_type`, `modalities[].label` | Group under each `modalities[].label`; an assay may appear under several modalities. Filter by modality, then assay |
 | Authors | `authors[]`: `name`, `affiliation`, `orcid`, `role` | Keep the given order (citation order); link `orcid` |
 | Funding | `funders[]`: `name`, `award_title`, `award_id`, `url` | |
 | How to cite | `citation`: `text`, else a DOI link (`https://doi.org/` + `doi`), else `url` | Offer `cff_path` as "CITATION.cff in the repository" |
@@ -45,6 +46,15 @@ From `bundle.json` → `pipeline` (one workflow version):
 | Released | `released_at` | |
 | Contacts | `bundle.json` → `maintainers[]`: `name`, `role`, `affiliation`, `contact_url`, `email` | Personal data published with consent; show only where your privacy policy allows |
 | Engine | `engine`, `engine_version_min` | For technical details sections |
+
+**Assays and modalities.** Show "Supported assays" grouped by modality:
+under each `modalities[].label`, list the assays (`assay.label`) that belong
+to it, with `modality_subtypes` and `assay_types` as secondary text (for
+example "Bulk RNA-seq › Short-read RNA-seq"). An assay with two modalities
+(Xenium RNA: Imaging and Transcriptomics) appears under both. Never label an
+assay such as poly(A) RNA-seq as a modality, and never invent a level the
+data does not have (ATAC-seq has no method). Use `registered_code` only as an
+identifier, not as display text.
 
 Also useful on a detail page: tools used, from `components.json` →
 `components[]` (`tool.name`, `tool.version`), and the output catalogue

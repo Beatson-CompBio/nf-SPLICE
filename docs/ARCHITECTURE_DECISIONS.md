@@ -85,6 +85,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0052 | Run Codex only through a locked-down app-server whose restrictions are tested | Current | — |
 | ADR-0053 | Run OpenCode as a loopback server with deny-all permissions and a token-protected tool bridge | Current | — |
 | ADR-0054 | Publish a consumer kit of agent and skill files for developers who build on bundles | Current | — |
+| ADR-0055 | Declare typed assay capabilities from a pinned SPLICE modality vocabulary | Current | — |
 
 ---
 
@@ -1321,7 +1322,8 @@ derived the bundle id from the name on every render.
   award id/title, URL), structured `citation` (DOI, URL, text, CFF path),
   `licence`, `licence_url`, `documentation_url`, `support_url`,
   `engine_version_min`, `engine_versions_tested`, free-text `keywords`,
-  `pipeline_type`, `modality` and `released_at`. Required for ingestion:
+  `pipeline_type`, `modality` and `released_at` (amended by ADR-0055:
+  `modality` is replaced by typed `assay_capabilities`). Required for ingestion:
   `id`, `name`, `version`, `engine`, `repository_url`; a description is
   recommended. No ambiguous `github` alias exists.
 - The `id` is derived once from the name when the draft is seeded and is
@@ -2780,4 +2782,91 @@ which is a different audience.
   changed; the tests fail until it does.
 - Each nf-SPLICE release's kit covers the contract revisions that release
   writes; new revisions add folders under `schemas/` beside the old ones.
+
+## ADR-0055: Declare typed assay capabilities from a pinned SPLICE modality vocabulary
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-16 |
+| Source | Maintainer's assay and modality vocabulary task for 0.3.0 (16 October 2026); SPLICE platform seed data `modality_entities.csv`, `modality_relationships.csv`, `Modalities.csv` |
+| Scope | Bundle identity contract, vocabulary catalogue, authoring in all three modes |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0024, ADR-0031, ADR-0044, ADR-0045, ADR-0054 |
+| Implementation | `src/nf_splice/catalogue/`, `scripts/build_assay_catalogue.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/interfaces/tui/screens/assays.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_assay_capabilities.py`, `tests/test_tui.py`, `tests/test_consumer_kit.py` |
+
+### Context
+
+A pipeline can process several assays, and the SPLICE platform classifies
+assays in a vocabulary DAG: modality, modality subtype, assay type and assay
+method, below a root. The platform's registrations (its `Modalities` table,
+such as `polya_rnaseq`) name assay entities, not top-level modalities, and
+their `current` flag describes one deployment. A single free-text
+`pipeline.modality` could not express several assays, invited calling an
+assay a modality, and could not be checked.
+
+### Decision
+
+- **Catalogue.** nf-splice packages a snapshot of the vocabulary
+  (`src/nf_splice/catalogue/data/assay-vocabulary.json`), compiled by
+  `scripts/build_assay_catalogue.py` from the platform's seed files with
+  every identifier, label, type, alias, status, edge and registration exactly
+  as the source states it, pinned by a content digest and the source files'
+  SHA-256. The raw sources are not committed. Its version is independent of
+  the package, the contracts and the pipeline.
+- **One resolver** (`Catalogue`) serves the CLI, the wizard, the agents and
+  the bundle compiler. It validates the graph (broken edges, cycles, assays
+  that reach no modality), keeps every path from an assay to every modality,
+  never invents a level, and rejects unknown codes, non-assay entities,
+  duplicates, mismatched labels or types, ambiguous names and caller-supplied
+  accession identifiers with stable error codes.
+- **Sources.** The packaged snapshot is the default. An API-backed source
+  (the platform's `/modality-entities`, `/modality-relationships`,
+  `/modalities`) checks every field, refuses conflicts with the pinned
+  snapshot unless explicitly reconciled, reports additions as a stale
+  snapshot, keeps accession identifiers only when the API supplies them, and
+  falls back to the snapshot only when asked, saying so in its provenance.
+- **Contract.** Revision 0.3.0 is unreleased, so it is changed in place:
+  `pipeline.modality` is removed; `pipeline.assay_capabilities` lists typed
+  capabilities (`kind`, `registered_code` for registered assays, `assay` with
+  its exact `entity_type`, `assay_types`, `modality_subtypes`, `modalities`,
+  `paths`); top-level `assay_vocabulary` names the snapshot and is required
+  with capabilities. Bundles carry no accession, `modality_id` or `current`.
+- **Authoring.** `bundle.draft.yaml` keeps only reviewed references
+  (registered code or `entity:<id>`) with `evidence` (`asserted`,
+  `documented`, `detected`), a rationale and sources. Labels, hierarchy and
+  paths are derived on build and re-verified by `nf-splice validate`. Only a
+  person may assert a capability without evidence. Generic `patch_draft` and
+  `set_identity` cannot write capabilities.
+- **Evidence.** Candidates are proposed only from explicit mentions of an
+  assay's label, alias or code, with locations. File types and tools never
+  establish an assay.
+- **Legacy.** A free-text `modality` in a draft or bundle is reported, never
+  converted.
+- **Modes.** The identity stage offers the assay tools and a dedicated skill
+  to every provider. In autonomous mode, a stage where the agent records a
+  blocker stays open even when validation passes, so an undecided optional
+  field becomes a resumable decision rather than a silent gap.
+
+### Alternatives rejected
+
+- A list of modality names: loses the assay, its type and the multi-parent
+  structure, and repeats the poly(A)-as-modality error.
+- Storing labels and paths in the draft: lets a person or model publish
+  mismatched combinations; they are derived instead.
+- Deriving accession identifiers from `modality_id` or `entity_id`: not
+  authoritative.
+- Filtering declarable assays by the deployment's `current` flag: confuses a
+  pipeline's capability with one deployment's support.
+
+### Consequences
+
+- The platform's `Pipelines` model links one registration per pipeline;
+  ingestion needs a many-to-many association
+  (`docs/integration/splice-platform-assay-capabilities.md`).
+- A new vocabulary snapshot is a new packaged file and digest; bundles built
+  with another snapshot validate structurally and are reported as
+  unverifiable rather than wrong.
 

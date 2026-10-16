@@ -90,7 +90,8 @@ routes write the same files and can be mixed freely. The layer guides
 describe each step:
 
 1. [Identity](identity.md): name, version, description, authors. When it
-   is ready, run `nf-splice draft sync-identity`.
+   is ready, run `nf-splice draft sync-identity`. Then declare the
+   [assay capabilities](assays.md): which assays the pipeline can process.
 2. [Inputs](inputs.md): who may change each parameter
 3. [Outputs](outputs.md): what the pipeline produces
 4. [Components](components.md): modules and container images

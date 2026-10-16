@@ -90,6 +90,26 @@ There is no `outputs.json`. Output metadata lives only in
 6. Run jobs with `default_execution_profile` unless an operator chooses
    another profile.
 
+## Assay capabilities
+
+`bundle.json` → `pipeline.assay_capabilities` lists every assay the workflow
+can process, classified by the SPLICE modality vocabulary: the assay itself
+(an `ASSAY_METHOD` or `ASSAY_TYPE`), the assay types and modality subtypes
+above it, every top-level modality it belongs to, and every path between
+them. A registered assay carries its platform `registered_code` (such as
+`polya_rnaseq`). `assay_vocabulary` identifies the vocabulary snapshot.
+
+- An assay is not a modality: group and filter by `modalities`.
+- An assay can belong to several modalities; keep every path.
+- Capabilities describe the workflow, not one job, and not what a particular
+  deployment ingests. Resolve each `registered_code` to your deployment's
+  registration and report the ones it does not support rather than dropping
+  them.
+- Bundles carry no platform accession identifiers.
+
+The proposed platform-side model is in
+[Platform integration: pipelines with several assay capabilities](integration/splice-platform-assay-capabilities.md).
+
 ## Identity and versions
 
 Each file states which contract it follows:
@@ -110,6 +130,7 @@ Several independent version numbers appear in a bundle. Do not mix them up:
 | Output schema version | `x-output-catalog.analysis_output_schema_version` | The workflow's `analysis_output.json` changes. |
 | Generator version | `generated_by.version` | A different nf-splice release writes the files. |
 | Lock format | `nf-splice.lock.json` → `schema_version` | The lock format changes. |
+| Assay vocabulary snapshot | `assay_vocabulary.snapshot` and `.digest` | The SPLICE modality vocabulary the assay capabilities were classified with changes. |
 
 ## Getting the definitions
 

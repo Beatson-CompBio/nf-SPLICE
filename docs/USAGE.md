@@ -19,6 +19,7 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | Layer | Page | You decide |
 | --- | --- | --- |
 | Identity | [Identity](guide/identity.md) | Name, version, description, authors |
+| Assay capabilities | [Assay capabilities](guide/assays.md) | Which assays the pipeline can process, by modality |
 | Inputs | [Inputs](guide/inputs.md) | Who may change each parameter |
 | Outputs | [Outputs](guide/outputs.md) | What the pipeline produces and who owns it |
 | Components | [Components](guide/components.md) | Modules and container images |

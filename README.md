@@ -98,6 +98,7 @@ full walkthrough.
 | [User guide](docs/USAGE.md) | Everything you need to publish and maintain a bundle |
 | [Agentic AI](docs/guide/agentic-ai.md) | Ask AI, AI-assisted sessions and autonomous integration |
 | [Command reference](docs/reference/cli.md) | Every command and option |
+| [Assay capabilities](docs/guide/assays.md) | Declare which assays a pipeline processes, classified by the SPLICE modality vocabulary |
 | [Building on SPLICE bundles](docs/CONTRACTS.md) | File formats for platform and tool developers |
 | [Bundle consumer kit](bundle-consumer-kit/README.md) | Agent and skill files for developers building on bundles (ingestion, web UI, data explorers, job launchers), without nf-splice |
 | [Schema reference](docs/schemas/README.md) | Every key of every file |

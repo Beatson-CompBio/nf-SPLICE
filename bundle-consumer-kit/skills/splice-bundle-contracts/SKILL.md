@@ -76,6 +76,7 @@ They identify a format; they are not web addresses.
 | Output schema version | `x-output-catalog.analysis_output_schema_version` | The workflow's job inventory changes | Match `analysis_output.json` to its schema |
 | Generator version | `generated_by.version` | Another nf-splice release wrote the file | Diagnostics only |
 | Lock format | `nf-splice.lock.json` → `schema_version` | The lock format changes | Read the lock |
+| Assay vocabulary snapshot | `assay_vocabulary.snapshot`, `assay_vocabulary.digest` | The SPLICE modality vocabulary changes | Check you interpret entity ids with the same vocabulary |
 
 ## Validation
 
@@ -130,6 +131,12 @@ Published files never contain `x-splice-draft`; the definitions reject it.
 | Run | A platform file-level or acquisition-level unit of one sample, with a platform `run_id` and a parent `sample_id` | A Nextflow execution |
 | Output type | One entry of `x-output-catalog.output_types`, identified by `key` | A file |
 | Output record | One entry of `files` in an `analysis_output.json` | — |
+
+Assay vocabulary (in `pipeline.assay_capabilities`): MODALITY (such as
+Transcriptomics) › MODALITY_SUBTYPE (Bulk RNA-seq) › ASSAY_TYPE (Short-read
+RNA-seq) › ASSAY_METHOD (poly(A) RNA-seq). A capability names an assay
+method or type; it is never a modality. An assay can belong to several
+modalities.
 
 Engine identifiers (`job_metadata.engine_execution_id`,
 `job_metadata.nextflow.session_id`, `job_metadata.nextflow.run_name`)

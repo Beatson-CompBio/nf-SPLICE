@@ -58,7 +58,11 @@ definitions are in `schemas/`; a complete real example is in `examples/`.
     execute it, and never build file paths from it without checking they stay
     inside the expected folder. Output `path` values are relative and never
     contain `..`; check anyway.
-11. **Do not invent keys or values.** Every object in the contracts is
+11. **An assay is not a modality.** `pipeline.assay_capabilities` lists the
+    assays a workflow can process; group them by `modalities`, keep every
+    path, and resolve `registered_code` against your deployment, reporting
+    the ones it does not support.
+12. **Do not invent keys or values.** Every object in the contracts is
     closed (no other keys allowed) unless the schema says otherwise. If you
     need a field that is not there, it is not part of the contract; ask.
 

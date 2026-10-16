@@ -174,3 +174,11 @@ def test_kit_needs_no_nf_splice_commands_except_result_generation() -> None:
                 document.name,
                 command,
             )
+
+
+def test_kit_never_names_the_retired_free_text_modality_key() -> None:
+    """``pipeline.modality`` was replaced by typed ``assay_capabilities``."""
+    for document in KIT_DOCUMENTS:
+        text = document.read_text(encoding="utf-8")
+        assert "`modality`" not in text, document.name
+        assert "pipeline.modality" not in text, document.name

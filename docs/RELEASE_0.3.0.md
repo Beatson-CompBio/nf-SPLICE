@@ -96,6 +96,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | Codex provider through a locked-down app-server | ADR-0052 | `src/nf_splice/agents/providers/codex.py` | `tests/test_codex_provider.py` | Current |
 | OpenCode provider with deny-all permissions and a loopback tool bridge | ADR-0053 | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` | `tests/test_opencode_provider.py` | Current |
 | Bundle consumer kit: agent and role skill files, offline definitions and real examples for developers building on bundles | ADR-0054 | `bundle-consumer-kit/`, `scripts/build_consumer_kit.py` | `tests/test_consumer_kit.py` | Current |
+| Typed assay capabilities from a pinned SPLICE modality vocabulary, in every mode | ADR-0055 | `src/nf_splice/catalogue/`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/interfaces/tui/screens/assays.py` | `tests/test_assay_capabilities.py`, `tests/test_tui.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
@@ -148,6 +149,12 @@ release and the baseline for schema compatibility (ADR-0041).
   `nf-splice provider list|doctor|models|select|auth|test`
   (ADR-0050 to ADR-0053). Dated account guidance in
   `docs/guide/providers.md`.
+- **Assay capabilities:** a pipeline declares every assay it can process,
+  classified by a packaged, pinned snapshot of the SPLICE modality
+  vocabulary (modality, subtype, assay type, assay method, with every path);
+  published as typed `pipeline.assay_capabilities` and re-verified on
+  validation; `nf-splice catalogue` commands, a wizard step and agent tools
+  share one resolver (ADR-0055).
 - **Private workspace and delivery:** private state in `.splice-local/`,
   published files only in `splice/`, with migration (ADR-0047); an isolated
   integration copy of the pipeline, local commits of the validated bundle
@@ -280,6 +287,8 @@ every cache, temporary file, report and session under `.nf-splice-local/`.
 | Real Codex 0.162.1 app-server against a local fake Responses endpoint (`NF_SPLICE_CODEX` set) | passed: only the nf-splice tool (and Codex's `request_user_input`, which nf-splice refuses) was offered; forged `exec_command`, `shell`, `apply_patch` and `web_search` calls did not run |
 | Real OpenCode 2.0.29 server against a local fake model through a recording proxy | passed: forged `bash`, `write`, `read` and `webfetch` failed, only `nfsplice_*` was offered, no outbound connection was attempted; the tool is available on the first step |
 | Installed-wheel end-to-end on a real RNA-seq pipeline copy | see [End-to-end on a real pipeline](#end-to-end-on-a-real-pipeline) |
+| Assay capabilities (`tests/test_assay_capabilities.py`, 26 tests): offline snapshot (34 entities, 34 edges, 14 registrations, exact ids and provenance; loads with sockets disabled and outside the clone), poly(A)/Total, ATAC-seq and multi-modality spatial classifications, draft-to-bundle round trip with byte-identical rebuild and a clean archive, rejected selections and broken vocabularies, legacy free text, assisted objection and revision, autonomous blocker resumed in assisted mode, generic FASTQ pipeline, mocked API sources | passed; also against the installed wheel (Python 3.12.14): 341 passed, 3 skipped |
+| Candidate detection on the real RNA-seq pipeline copy | no assay proposed: the repository names no assay (it documents FASTQ input and strandedness only); a person declares its assays |
 
 The walkthrough found two documentation gaps and one wrong command in a
 message; all three are fixed. Running the suite against the installed wheel
@@ -371,6 +380,12 @@ credentials.
   neither.
 - **Sign in with ChatGPT** needs a browser on the same computer; there is no
   browserless flow.
+- **Assay vocabulary:** the packaged snapshot is `splice-sprint-2026-10-14`,
+  compiled from the platform's seed files. No live SPLICE platform API was
+  contacted; the API source is tested with mocks only. The platform's
+  `Pipelines` model holds one registration per pipeline; many-to-many
+  ingestion needs the platform team
+  ([proposal](integration/splice-platform-assay-capabilities.md)).
 - **OpenCode readiness:** OpenCode has no API that reports the tools a
   session has, so the adapter waits for its reload to finish and retries
   once if the tools are not yet available.
@@ -518,6 +533,7 @@ From specification section 18.
 | `8067b24` | feat(providers): OpenCode server provider with deny-all permissions |
 | `07bf3fd` | fix: findings from the end-to-end run on a real RNA-seq pipeline |
 | `8f7ca26` | fix(opencode): wait until OpenCode has loaded the tool bridge |
+| `4888e05` | feat(assays): typed, multi-assay pipeline capabilities from the SPLICE vocabulary |
 
 `git log 9ad15c1..` lists everything, including later updates to this
 record.
