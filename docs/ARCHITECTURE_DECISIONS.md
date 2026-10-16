@@ -86,6 +86,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0053 | Run OpenCode as a loopback server with deny-all permissions and a token-protected tool bridge | Current | — |
 | ADR-0054 | Publish a consumer kit of agent and skill files for developers who build on bundles | Current | — |
 | ADR-0055 | Declare typed assay capabilities from a pinned SPLICE modality vocabulary | Current | — |
+| ADR-0056 | Discover assay capabilities from scientific evidence and require classification for ingestion readiness | Current | — |
 
 ---
 
@@ -2863,10 +2864,77 @@ assay a modality, and could not be checked.
 
 ### Consequences
 
-- The platform's `Pipelines` model links one registration per pipeline;
-  ingestion needs a many-to-many association
-  (`docs/integration/splice-platform-assay-capabilities.md`).
+- A pipeline usually has several capabilities; consumers store one link per
+  capability.
 - A new vocabulary snapshot is a new packaged file and digest; bundles built
   with another snapshot validate structurally and are reported as
   unverifiable rather than wrong.
+
+## ADR-0056: Discover assay capabilities from scientific evidence and require classification for ingestion readiness
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-16 |
+| Source | Maintainer's assay-discovery correction for 0.3.0 (16 October 2026) |
+| Scope | Assay discovery, identity readiness, bundle validation, session reports, all three modes |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0042, ADR-0044, ADR-0055 |
+| Implementation | `src/nf_splice/services/assay_discovery.py`, `src/nf_splice/catalogue/data/assay-evidence-rules.json`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/prompts.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/interfaces/tui/screens/assays.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_assay_discovery.py`, `tests/test_assay_capabilities.py`, `tests/test_tui.py` |
+
+### Context
+
+ADR-0055 made assay capabilities typed and verifiable, but discovery only
+looked for literal vocabulary labels. Most pipelines never name their assays:
+an RNA-seq pipeline runs STAR and Salmon without saying "poly(A) RNA-seq".
+A lookup table that a person must already know how to use left such
+pipelines unclassified, and an unclassified pipeline could still be reported
+complete.
+
+### Decision
+
+- **Scientific discovery.** A deterministic service reads the pipeline's
+  tools (modules, processes, containers, conda packages), parameters and
+  allowed values, sample sheet columns, published outputs and documentation,
+  and applies packaged, versioned evidence rules
+  (`assay-evidence-rules.json`). Each rule links evidence to a vocabulary
+  entity at the level the evidence supports, needs several independent
+  terms, and may need specific tools; a "suggests" rule only distinguishes a
+  more specific assay below an established one. Established entities are
+  expanded through the vocabulary DAG into candidates with ids, level,
+  status (`documented`, `supported`, `suggested`, `requires_verification`,
+  `rejected`), confidence, evidence, alternatives and the question that
+  would decide them. Explicit mentions remain evidence. No AI is involved.
+- **Decisions are reviewed and recorded.** Candidates are never
+  capabilities. People declare (`asserted`, or citing evidence) or reject
+  (with a reason, kept in the review sidecar); agents declare only with
+  cited evidence, or `confirmed` evidence for a person's answer that the
+  person approves in AI-assisted mode.
+- **Readiness levels.** A pipeline without a declared, verified assay is not
+  ready for ingestion: the identity draft reports
+  `missing_assay_classification` with the recommendations, so the bundle is
+  not built; `validate_bundle` reports it as an error and states structural
+  validity, scientific classification and ingestion readiness separately;
+  session reports never say complete without all three.
+- **Agents.** The identity-stage instruction carries the assessment for
+  every provider; `assess_assays` and `reject_assay_candidate` join the
+  assay tools. Assisted sessions ask a focused question where the evidence
+  cannot decide; autonomous runs record a blocker naming the alternatives,
+  which keeps the stage open until a person resolves it and the gate passes.
+
+### Alternatives rejected
+
+- Matching vocabulary labels only: empty results for most pipelines.
+- Choosing a default assay (for example poly(A) for any RNA-seq pipeline):
+  replaces uncertainty with an invented fact.
+- Leaving classification optional: a bundle the platform cannot route would
+  be reported as ready.
+
+### Consequences
+
+- Every fixture and flow that reaches readiness declares an assay.
+- The evidence rules are knowledge and need review as new pipeline types
+  appear; they cover the domains of the current vocabulary.
 

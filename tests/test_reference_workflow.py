@@ -35,6 +35,15 @@ def author_with_cli(root: Path) -> None:
     _ok(
         root,
         "configure",
+        "identity",
+        "--add-assay",
+        "polya_rnaseq",
+        "--assay-rationale",
+        "The reference pipeline quantifies poly(A)-selected RNA-seq libraries.",
+    )
+    _ok(
+        root,
+        "configure",
         "inputs",
         "--set",
         "threshold=user,agent",

@@ -177,8 +177,12 @@ def test_spatial_assays_keep_both_modality_paths(code: str, method: int) -> None
 
 
 def _repository(tmp_path: Path) -> Path:
+    """The reference fixture with its assay classification removed."""
+    from nf_splice.layers.bundle import remove_assay_capability
+
     root = tmp_path / "repo"
     shutil.copytree(REFERENCE, root)
+    remove_assay_capability(root, "polya_rnaseq", ADA)
     return root
 
 

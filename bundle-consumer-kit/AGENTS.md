@@ -61,7 +61,8 @@ definitions are in `schemas/`; a complete real example is in `examples/`.
 11. **An assay is not a modality.** `pipeline.assay_capabilities` lists the
     assays a workflow can process; group them by `modalities`, keep every
     path, and resolve `registered_code` against your deployment, reporting
-    the ones it does not support.
+    the ones it does not support. A bundle without assay capabilities is not
+    ready for ingestion.
 12. **Do not invent keys or values.** Every object in the contracts is
     closed (no other keys allowed) unless the schema says otherwise. If you
     need a field that is not there, it is not part of the contract; ask.

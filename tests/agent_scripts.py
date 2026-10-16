@@ -28,6 +28,26 @@ def _pending(tools: ToolInvoker, layer: str) -> list[dict[str, Any]]:
 
 def identity(tools: ToolInvoker) -> None:
     _call(tools, "set_identity", changes=dict(IDENTITY))
+    assessment = _call(tools, "assess_assays")["data"]
+    for candidate in assessment["candidates"]:
+        if candidate["status"] != "documented":
+            continue
+        sources = sorted(
+            {
+                location
+                for item in candidate["evidence"]
+                if item["kind"] == "text"
+                for location in item["locations"]
+            }
+        )
+        _call(
+            tools,
+            "add_assay_capability",
+            reference=candidate["reference"],
+            evidence="documented",
+            rationale=f"The documentation names {candidate['entity']['label']}.",
+            sources=sources,
+        )
 
 
 def inputs(tools: ToolInvoker) -> None:

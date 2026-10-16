@@ -72,6 +72,16 @@ def test_seeding_creates_a_real_incomplete_draft_with_unconfirmed_evidence(
 
     pending = sorted(issues["unconfirmed_detected_value"])
     confirm_values(tmp_path, "bundle", pending, ADA)
+    # Confirmed identity alone is not enough: the assays must be classified.
+    validation = validate_bundle_draft(tmp_path)
+    assert {
+        item.code for item in validation.issues if item.severity.value == "error"
+    } == {"missing_assay_classification"}
+    from nf_splice.layers.bundle import add_assay_capability
+
+    add_assay_capability(
+        tmp_path, "polya_rnaseq", ADA, evidence="asserted", rationale="Developer."
+    )
     validation = validate_bundle_draft(tmp_path)
     assert validation.ready, validation.issues
     metadata = require_identity(tmp_path)

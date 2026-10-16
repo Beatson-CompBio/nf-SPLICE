@@ -165,9 +165,10 @@ endpoints, so they cost nothing.
 
 ### Assay capabilities
 
-Assay operations (`search_assay_catalogue`, `show_assay`,
-`list_assay_candidates`, `add_assay_capability`,
-`remove_assay_capability`) use the one resolver in
+Assay operations (`assess_assays`, `search_assay_catalogue`, `show_assay`,
+`list_assay_candidates`, `add_assay_capability`, `remove_assay_capability`,
+`reject_assay_candidate`) use the deterministic discovery service in
+`src/nf_splice/services/assay_discovery.py`, the one resolver in
 `src/nf_splice/catalogue/` and the identity layer service, exactly as the
 CLI and wizard do. `patch_draft` and `set_identity` refuse to write
 capabilities. Only a person may assert a capability without evidence; an

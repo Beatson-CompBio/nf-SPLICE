@@ -106,9 +106,9 @@ them. A registered assay carries its platform `registered_code` (such as
   registration and report the ones it does not support rather than dropping
   them.
 - Bundles carry no platform accession identifiers.
-
-The proposed platform-side model is in
-[Platform integration: pipelines with several assay capabilities](integration/splice-platform-assay-capabilities.md).
+- A bundle without assay capabilities is not ready for ingestion: nf-splice
+  does not publish one, and `nf-splice validate` reports structural validity,
+  scientific classification and ingestion readiness separately.
 
 ## Identity and versions
 

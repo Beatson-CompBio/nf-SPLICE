@@ -47,6 +47,31 @@ def _git_state(root: Path, state: SessionState) -> dict[str, Any]:
     }
 
 
+def _readiness(root: Path) -> dict[str, Any]:
+    """Structurally valid, scientifically classified and ingestion-ready, apart."""
+    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
+    from nf_splice.services.assay_discovery import assess_assays
+    from nf_splice.services.lifecycle import validate_bundle
+
+    published = (root / "splice" / "bundle.json").is_file()
+    report = validate_bundle(root) if published else None
+    declared = [
+        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
+        for item in declared_capabilities(root)
+    ]
+    questions: list[str] = []
+    if not declared:
+        questions = list(assess_assays(root, rejected=rejected_assays(root)).questions)
+    return {
+        "bundle_published": published,
+        "structurally_valid": bool(report and report.structurally_valid),
+        "scientifically_classified": bool(report and report.classified and declared),
+        "ingestion_ready": bool(report and report.valid and declared),
+        "assay_capabilities": declared,
+        "open_assay_questions": questions,
+    }
+
+
 def build_report(
     root: Path,
     store: SessionStore,
@@ -55,6 +80,7 @@ def build_report(
 ) -> dict[str, Any]:
     """A truthful report: never "complete" unless the bundle is built and valid."""
     built = gate(Stage.BUILD, root)
+    readiness = _readiness(root)
     all_stages = all(
         state.stages[stage].status in {StageStatus.COMPLETED, StageStatus.SKIPPED}
         for stage in ORDER
@@ -67,7 +93,13 @@ def build_report(
         (assessment or {}).get("observed_output_compatibility", {}).get("status")
     )
     incompatible = observed_status == "incompatible"
-    complete = all_stages and built.passed and contract_valid and not incompatible
+    complete = (
+        all_stages
+        and built.passed
+        and contract_valid
+        and not incompatible
+        and readiness["ingestion_ready"]
+    )
     blockers = [
         item.model_dump(mode="json") for item in state.blockers if not item.resolved
     ]
@@ -102,6 +134,12 @@ def build_report(
         else "Partial: "
         + (f"{len(blockers)} unresolved blocker(s); " if blockers else "")
         + ("the bundle is not built and valid. " if not built.passed else "")
+        + (
+            "the pipeline's assays are not classified, so it is not ready for "
+            "ingestion. "
+            if not readiness["scientifically_classified"]
+            else ""
+        )
         + ("supplied example output is incompatible. " if incompatible else "")
         + "See the stages and blockers below."
     )
@@ -127,6 +165,7 @@ def build_report(
         "results": assessment or {},
         "blockers": blockers,
         "archive": state.export,
+        "readiness": readiness,
         "git": _git_state(root, state),
         "remote": "not pushed: nf-splice never pushes automatically; use "
         "`nf-splice git push --remote NAME --yes`",
@@ -169,8 +208,27 @@ def report_text(report: dict[str, Any]) -> str:
         f"Session {report['session']} ({report['mode']}): {report['completion']}",
         report["statement"],
         "",
-        "Stages:",
     ]
+    readiness = report.get("readiness") or {}
+    if readiness:
+        lines += [
+            "Structurally valid bundle: "
+            + ("yes" if readiness["structurally_valid"] else "no"),
+            "Scientifically classified pipeline: "
+            + ("yes" if readiness["scientifically_classified"] else "no")
+            + (
+                f" ({', '.join(readiness['assay_capabilities'])})"
+                if readiness["assay_capabilities"]
+                else ""
+            ),
+            "Ingestion-ready SPLICE bundle: "
+            + ("yes" if readiness["ingestion_ready"] else "no"),
+        ]
+        lines += [
+            f"  Open question: {item}" for item in readiness["open_assay_questions"]
+        ]
+        lines.append("")
+    lines += ["Stages:"]
     for item in report["stages"]:
         lines.append(
             f"  {item['title']}: {item['status']}"

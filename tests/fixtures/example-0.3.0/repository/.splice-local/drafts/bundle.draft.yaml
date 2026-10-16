@@ -28,7 +28,10 @@ pipeline:
   engine_versions_tested: null
   keywords: []
   pipeline_type: null
-  assay_capabilities: []
+  assay_capabilities:
+    - registered_code: polya_rnaseq
+      evidence: asserted
+      rationale: The reference pipeline processes poly(A)-selected RNA-seq libraries.
   released_at: null
 maintainers: []
 maintainers_publication_approved: false

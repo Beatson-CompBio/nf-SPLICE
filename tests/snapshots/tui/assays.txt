@@ -16,8 +16,11 @@ Declared capabilities, by modality
 Transcriptomics [MODALITY]
   poly(A) RNA-seq [ASSAY_METHOD] (polya_rnaseq; asserted)  via Bulk RNA-seq > Short-read RNA-seq
   Total RNA-seq [ASSAY_METHOD] (total_rnaseq; asserted)  via Bulk RNA-seq > Short-read RNA-seq
-Assays named in the repository
-No assay is named in the repository's documentation or schema.
+Scientific assessment (no AI needed)
+No scientific domain could be established from the tools, parameters, outputs or documentation. Declare the assays from the vocabulary below.
+
+<button Declare highlighted recommendation>
+<button Reject highlighted recommendation>
 Vocabulary
 (assays-all) False
 Include assay concepts without a platform registration

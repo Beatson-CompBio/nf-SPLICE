@@ -53,6 +53,7 @@ Funders: name|award id per line in the field below
 I approve publishing maintainer contacts in bundle.json
 <button Save identity>
 <button Confirm detected values>
+ERROR /pipeline/assay_capabilities  no assay capability is declared; a pipeline is not ready for SPLICE ingestion without one. Assay discovery: no scientific domain could be established from the repository; declare the assays the pipeline processes. Review with `nf-splice catalogue recommend`, then declare with `nf-splice configure identity --add-assay CODE`
 ERROR /pipeline/description  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/description)
 ERROR /pipeline/id  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/id)
 ERROR /pipeline/name  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/name)

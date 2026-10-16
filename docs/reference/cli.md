@@ -77,6 +77,7 @@ Global options go before the command name, for example
 | [`nf-splice git commit`](#nf-splice-git-commit) | Commit the validated splice/ and .gitignore with your Git identity. |
 | [`nf-splice git push`](#nf-splice-git-push) | Push the integration branch to a remote you choose (never automatic). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
+| [`nf-splice catalogue recommend`](#nf-splice-catalogue-recommend) | Investigate the pipeline and recommend assay capabilities (read-only, no AI). |
 | [`nf-splice catalogue info`](#nf-splice-catalogue-info) | Which vocabulary snapshot this nf-splice carries, and its provenance. |
 | [`nf-splice catalogue modalities`](#nf-splice-catalogue-modalities) | List the top-level modalities and their subtypes. |
 | [`nf-splice catalogue assays`](#nf-splice-catalogue-assays) | List assays a pipeline can declare, with type, modalities and paths. |
@@ -174,6 +175,7 @@ nf-splice configure [OPTIONS] LAYER
 | `--assay-evidence` | `<str>` | `asserted` | Identity: why the assays are declared: asserted (your statement), documented or detected (cite --assay-source). |
 | `--assay-rationale` | `<str>` |  | Identity: the reason the pipeline supports the added assays. |
 | `--assay-source` | `<str>` |  | Identity: evidence location path:line. Repeatable. |
+| `--reject-assay` | `<str>` |  | Identity: reject a recommended assay that does not apply (give the reason with --assay-rationale). Repeatable. |
 
 ### nf-splice plan
 
@@ -1013,6 +1015,19 @@ nf-splice preview outputs [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--format` | `<str>` | `json` | json or yaml. |
+
+### nf-splice catalogue recommend
+
+Investigate the pipeline and recommend assay capabilities (read-only, no AI).
+
+```text
+nf-splice catalogue recommend [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice catalogue info
 

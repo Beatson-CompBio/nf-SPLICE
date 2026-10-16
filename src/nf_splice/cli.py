@@ -434,16 +434,32 @@ def _configure_assays(
     repository: Path,
     add: list[str],
     remove: list[str],
+    reject: list[str],
     evidence: str,
     rationale: str | None,
     sources: tuple[str, ...],
 ) -> None:
-    from nf_splice.layers.bundle import add_assay_capability, remove_assay_capability
+    from nf_splice.layers.bundle import (
+        add_assay_capability,
+        declared_capabilities,
+        reject_assay_candidate,
+        remove_assay_capability,
+    )
 
-    if add and not rationale:
+    if (add or reject) and not rationale:
         raise typer.BadParameter(
-            "--assay-rationale is required with --add-assay: say why the pipeline "
-            "supports the assay"
+            "--assay-rationale is required with --add-assay or --reject-assay: say "
+            "why the assay does or does not apply"
+        )
+    for reference in reject:
+        _run(
+            partial(
+                reject_assay_candidate,
+                repository,
+                reference,
+                _context(),
+                reason=str(rationale),
+            )
         )
     for reference in remove:
         _run(partial(remove_assay_capability, repository, reference, _context()))
@@ -459,6 +475,8 @@ def _configure_assays(
                 sources=sources,
             )
         )
+    if not declared_capabilities(repository):
+        _print_recommendations(repository, err=True)
 
 
 def _access_for(value: str) -> list[str]:
@@ -764,6 +782,14 @@ def configure_command(
             "--assay-source", help="Identity: evidence location path:line. Repeatable."
         ),
     ] = None,
+    reject_assay: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--reject-assay",
+            help="Identity: reject a recommended assay that does not apply "
+            "(give the reason with --assay-rationale). Repeatable.",
+        ),
+    ] = None,
 ) -> None:
     """Review one layer by targeted, attributed edits to its draft."""
     name = _run(lambda: layer_spec("bundle" if layer == "identity" else layer).name)
@@ -773,6 +799,7 @@ def configure_command(
             repository,
             list(add_assay or []),
             list(remove_assay or []),
+            list(reject_assay or []),
             assay_evidence,
             assay_rationale,
             tuple(assay_source or []),
@@ -781,8 +808,8 @@ def configure_command(
             repository, assignments, accept_detected, approve_maintainer_publication
         )
         return
-    if add_assay or remove_assay:
-        raise typer.BadParameter("--add-assay and --remove-assay apply to identity")
+    if add_assay or remove_assay or reject_assay:
+        raise typer.BadParameter("assay options apply to identity")
     if name == "inputs":
         _configure_inputs(
             repository, assignments, _assignments(visibility), decision_file, reimport
@@ -1159,6 +1186,7 @@ def validate_command(
             dumps(
                 {
                     "valid": report.valid,
+                    **report.levels(),
                     "checked_files": report.checked_files,
                     "issues": [item.to_json() for item in report.issues],
                 }
@@ -1166,11 +1194,21 @@ def validate_command(
         )
     elif report.valid:
         typer.echo(
-            f"Valid SPLICE bundle ({report.checked_files} contract files checked)."
+            f"Valid SPLICE bundle ({report.checked_files} contract files checked): "
+            "structurally valid, scientifically classified, ready for ingestion."
         )
         for item in report.issues:
             typer.echo(f"warning: {item.path} [{item.rule}] {item.message}")
     else:
+        levels = report.levels()
+        typer.echo(
+            "Structurally valid: "
+            + ("yes" if levels["structurally_valid"] else "no")
+            + "; scientifically classified: "
+            + ("yes" if levels["scientifically_classified"] else "no")
+            + "; ready for ingestion: no.",
+            err=True,
+        )
         for item in report.issues:
             typer.echo(
                 f"{item.severity.value}: {item.path} [{item.rule}] {item.message}",
@@ -2784,6 +2822,85 @@ def _catalogue_run(action: Callable[[], T]) -> T:
     except CatalogueError as error:
         typer.echo(f"{error.code}: {error}", err=True)
         raise typer.Exit(code=2) from error
+
+
+def _print_recommendations(repository: Path, *, err: bool = False) -> None:
+    """The deterministic assay assessment, as plain text."""
+    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
+    from nf_splice.services.assay_discovery import assess_assays
+
+    declared = tuple(
+        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
+        for item in declared_capabilities(repository)
+    )
+    assessment = assess_assays(
+        repository, declared=declared, rejected=rejected_assays(repository)
+    )
+
+    def say(text: str) -> None:
+        typer.echo(text, err=err)
+
+    if not assessment.candidates:
+        say(
+            "Assay discovery: no scientific domain could be established from the "
+            "repository's tools, parameters, outputs or documentation. Declare the "
+            "assays it processes: `nf-splice catalogue assays` lists them."
+        )
+    else:
+        domains = ", ".join(
+            f"{item.label} [{item.entity_type.value}]" for item in assessment.domains
+        )
+        say(f"Detected scientific domain: {domains}")
+        for finding in assessment.findings:
+            terms = ", ".join(sorted({item.term for item in finding.evidence})[:8])
+            say(
+                f"  established {finding.entity.label} "
+                f"[{finding.entity.entity_type.value}] from: {terms}"
+            )
+        say("Assay capabilities to review:")
+        for item in assessment.candidates:
+            mark = "declared" if item.reference in declared else item.status
+            say(
+                f"  {item.reference:<16} {item.entity.label} "
+                f"[{item.entity.entity_type.value}]  {mark} "
+                f"(confidence {item.to_json()['confidence']})"
+            )
+            if item.uncertainty and item.reference not in declared:
+                say(f"      {item.uncertainty}")
+        for question in assessment.questions:
+            say(f"Question: {question}")
+    for discounted in assessment.discounted:
+        label, reason = discounted["entity"]["label"], discounted["reason"]
+        say(f"Considered and not established: {label} ({reason})")
+    say(
+        "Recommendations are not capabilities: declare with "
+        "`nf-splice configure identity --add-assay CODE` or reject with "
+        "`nf-splice configure identity --reject-assay CODE`."
+    )
+
+
+@catalogue_app.command("recommend")
+def catalogue_recommend_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Investigate the pipeline and recommend assay capabilities (read-only, no AI)."""
+    if json_output:
+        from nf_splice.layers.bundle import declared_capabilities, rejected_assays
+        from nf_splice.services.assay_discovery import assess_assays
+
+        declared = tuple(
+            str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
+            for item in declared_capabilities(repository)
+        )
+        typer.echo(
+            dumps(
+                assess_assays(
+                    repository, declared=declared, rejected=rejected_assays(repository)
+                ).to_json()
+            )
+        )
+        return
+    _print_recommendations(repository)
 
 
 @catalogue_app.command("info")

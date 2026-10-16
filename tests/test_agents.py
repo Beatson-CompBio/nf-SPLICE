@@ -419,9 +419,9 @@ def test_validators_decide_and_repairs_are_bounded(tmp_path: Path) -> None:
         if len(calls) == 1:
             tools.call("set_identity", {"changes": {"version": "not a version!"}})
             return ["Done."]
-        from multi_route import IDENTITY
+        from agent_scripts import identity
 
-        tools.call("set_identity", {"changes": dict(IDENTITY)})
+        identity(tools)  # the identity, and the documented assays
         return ["Fixed the version."]
 
     engine = _engine(
@@ -448,6 +448,15 @@ def test_every_mode_transition_preserves_drafts_and_history(tmp_path: Path) -> N
 
     initialise(root, ChangeContext(actor=ADA))
     set_identity_fields(root, dict(IDENTITY), ChangeContext(actor=ADA))
+    from nf_splice.layers.bundle import add_assay_capability
+
+    add_assay_capability(
+        root,
+        "polya_rnaseq",
+        ChangeContext(actor=ADA),
+        evidence="asserted",
+        rationale="The developer processes poly(A) libraries.",
+    )
     engine = _engine(root, RouteAgent())
     asyncio.run(engine.advance())
     assert engine.state.stages[Stage.IDENTITY].status is StageStatus.COMPLETED

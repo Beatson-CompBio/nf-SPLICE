@@ -368,6 +368,15 @@ def test_claude_adapter_is_least_privilege_and_resumes(
         ("workspace_status", {}),
         ("set_identity", {"changes": dict(IDENTITY)}),
         ("build_bundle", {}),
+        (
+            "add_assay_capability",
+            {
+                "reference": "polya_rnaseq",
+                "evidence": "documented",
+                "rationale": "docs/usage.md documents poly(A) libraries.",
+                "sources": ["docs/usage.md:3"],
+            },
+        ),
         ("submit_stage_proposal", {"summary": "Complete the identity."}),
     ]
     asyncio.run(engine.advance())

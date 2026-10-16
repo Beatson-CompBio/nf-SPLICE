@@ -97,6 +97,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | OpenCode provider with deny-all permissions and a loopback tool bridge | ADR-0053 | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` | `tests/test_opencode_provider.py` | Current |
 | Bundle consumer kit: agent and role skill files, offline definitions and real examples for developers building on bundles | ADR-0054 | `bundle-consumer-kit/`, `scripts/build_consumer_kit.py` | `tests/test_consumer_kit.py` | Current |
 | Typed assay capabilities from a pinned SPLICE modality vocabulary, in every mode | ADR-0055 | `src/nf_splice/catalogue/`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/interfaces/tui/screens/assays.py` | `tests/test_assay_capabilities.py`, `tests/test_tui.py` | Current |
+| Scientific assay discovery without AI, and classification-gated ingestion readiness | ADR-0056 | `src/nf_splice/services/assay_discovery.py`, `src/nf_splice/catalogue/data/assay-evidence-rules.json` | `tests/test_assay_discovery.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
@@ -154,7 +155,11 @@ release and the baseline for schema compatibility (ADR-0041).
   vocabulary (modality, subtype, assay type, assay method, with every path);
   published as typed `pipeline.assay_capabilities` and re-verified on
   validation; `nf-splice catalogue` commands, a wizard step and agent tools
-  share one resolver (ADR-0055).
+  share one resolver (ADR-0055). nf-splice investigates a pipeline's tools,
+  parameters, outputs and documentation to recommend assays even when none
+  is named, asks or records a blocker where the evidence cannot decide, and
+  a pipeline is ready for ingestion only once its assays are classified
+  (ADR-0056).
 - **Private workspace and delivery:** private state in `.splice-local/`,
   published files only in `splice/`, with migration (ADR-0047); an isolated
   integration copy of the pipeline, local commits of the validated bundle
@@ -288,7 +293,8 @@ every cache, temporary file, report and session under `.nf-splice-local/`.
 | Real OpenCode 2.0.29 server against a local fake model through a recording proxy | passed: forged `bash`, `write`, `read` and `webfetch` failed, only `nfsplice_*` was offered, no outbound connection was attempted; the tool is available on the first step |
 | Installed-wheel end-to-end on a real RNA-seq pipeline copy | see [End-to-end on a real pipeline](#end-to-end-on-a-real-pipeline) |
 | Assay capabilities (`tests/test_assay_capabilities.py`, 26 tests): offline snapshot (34 entities, 34 edges, 14 registrations, exact ids and provenance; loads with sockets disabled and outside the clone), poly(A)/Total, ATAC-seq and multi-modality spatial classifications, draft-to-bundle round trip with byte-identical rebuild and a clean archive, rejected selections and broken vocabularies, legacy free text, assisted objection and revision, autonomous blocker resumed in assisted mode, generic FASTQ pipeline, mocked API sources | passed; also against the installed wheel (Python 3.12.14): 341 passed, 3 skipped |
-| Candidate detection on the real RNA-seq pipeline copy | no assay proposed: the repository names no assay (it documents FASTQ input and strandedness only); a person declares its assays |
+| Assay discovery (`tests/test_assay_discovery.py`, 11 tests, scenarios A to H on realistic fixtures) | passed: documented poly(A) found; an unlabelled RNA-seq pipeline gets Transcriptomics with poly(A) and total RNA-seq to verify and the deciding question; other domains (ATAC-seq, DNA methylation) classified at the level the evidence supports; Kraken2 alone discounted; assisted question and answer; autonomous blocker resumed in assisted mode; readiness levels enforced |
+| Assay discovery on the real RNA-seq pipeline copy | Transcriptomics via Short-read RNA-seq (STAR, RSEM, Salmon, featureCounts, DESeq2, dupRadar, Qualimap…); Total RNA-seq suggested by SortMeRNA and the rRNA-removal parameters, poly(A) RNA-seq to verify; metagenomics not established from Kraken2 and Bracken |
 
 The walkthrough found two documentation gaps and one wrong command in a
 message; all three are fixed. Running the suite against the installed wheel
@@ -380,12 +386,13 @@ credentials.
   neither.
 - **Sign in with ChatGPT** needs a browser on the same computer; there is no
   browserless flow.
+- **Assay discovery** is rule-based: it establishes what the evidence
+  supports and cannot prove a library preparation the repository never
+  states; those cases are asked or blocked, never guessed. The rules cover
+  the domains of the current vocabulary.
 - **Assay vocabulary:** the packaged snapshot is `splice-sprint-2026-10-14`,
   compiled from the platform's seed files. No live SPLICE platform API was
-  contacted; the API source is tested with mocks only. The platform's
-  `Pipelines` model holds one registration per pipeline; many-to-many
-  ingestion needs the platform team
-  ([proposal](integration/splice-platform-assay-capabilities.md)).
+  contacted; the API source is tested with mocks only.
 - **OpenCode readiness:** OpenCode has no API that reports the tools a
   session has, so the adapter waits for its reload to finish and retries
   once if the tools are not yet available.

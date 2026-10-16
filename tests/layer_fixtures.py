@@ -21,6 +21,15 @@ IDENTITY = {
 def ready_identity(root: Path) -> None:
     """Create an explicitly authored, ready bundle.draft.yaml."""
     seed_bundle_draft(root, explicit=IDENTITY)
+    from nf_splice.layers.bundle import add_assay_capability
+
+    add_assay_capability(
+        root,
+        "polya_rnaseq",
+        ADA,
+        evidence="asserted",
+        rationale="The rnaquant developers process poly(A)-selected libraries.",
+    )
     validation = validate_bundle_draft(root)
     assert validation.ready, validation.issues
 

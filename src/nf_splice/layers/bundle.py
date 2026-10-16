@@ -19,7 +19,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from nf_splice.catalogue import CatalogueError, ResolvedCapability, default_catalogue
-from nf_splice.domain.audit import ActorKind
+from nf_splice.domain.audit import ActorKind, ChangeOrigin
 from nf_splice.domain.identity import (
     PIPELINE_FIELD_ORDER,
     REQUIRED_PIPELINE_FIELDS,
@@ -45,6 +45,7 @@ from nf_splice.layers.base import (
     read_layer,
     seed_draft,
     strip_marker,
+    update_review_state,
 )
 
 LAYER = "bundle"
@@ -52,7 +53,9 @@ _LIST_FIELDS = {"authors", "funders", "keywords", "assay_capabilities"}
 CAPABILITIES = "assay_capabilities"
 #: Why a capability is declared. ``asserted`` is a person's scientific
 #: statement without repository evidence; the others cite where it is shown.
-EVIDENCE = ("asserted", "documented", "detected")
+EVIDENCE = ("asserted", "confirmed", "documented", "detected")
+#: Sidecar key for recommendations a reviewer rejected, with reasons.
+REJECTIONS = "assay_rejections"
 #: The obsolete free-text field replaced by ``assay_capabilities``.
 LEGACY_MODALITY = "modality"
 
@@ -244,6 +247,20 @@ def validate_bundle_draft(repository_root: str | Path) -> BundleValidation:
             )
     capabilities, capability_issues = _draft_capabilities(pipeline.get(CAPABILITIES))
     issues.extend(capability_issues)
+    if not capabilities and not any(
+        item.pointer.startswith(f"/pipeline/{CAPABILITIES}")
+        for item in capability_issues
+    ):
+        issues.append(
+            _issue(
+                f"/pipeline/{CAPABILITIES}",
+                "missing_assay_classification",
+                "no assay capability is declared; a pipeline is not ready for SPLICE "
+                f"ingestion without one. Assay discovery: {_recommendation(root)}. "
+                "Review with `nf-splice catalogue recommend`, then declare with "
+                "`nf-splice configure identity --add-assay CODE`",
+            )
+        )
     unknown = sorted(set(pipeline) - set(PIPELINE_FIELD_ORDER) - {LEGACY_MODALITY})
     for name in unknown:
         issues.append(
@@ -509,12 +526,13 @@ def _draft_capabilities(
                 )
             )
         sources = entry.get("sources") or []
-        if evidence in ("documented", "detected") and not sources:
+        if evidence in ("documented", "detected", "confirmed") and not sources:
             issues.append(
                 _issue(
                     f"{where}/sources",
                     "missing_required",
-                    f"{evidence} evidence cites where it is shown (path:line)",
+                    f"{evidence} evidence cites where it is shown (path:line, or "
+                    "the conversation for a person's confirmation)",
                 )
             )
         if item.registration is None and catalogue.registrations_for(
@@ -593,6 +611,15 @@ def add_assay_capability(
             "only a person may assert an assay capability without evidence; "
             "cite documented or detected evidence, or ask the person"
         )
+    if evidence == "confirmed" and not (
+        context.actor.kind is ActorKind.HUMAN
+        or context.origin is ChangeOrigin.AGENT_ASSISTED
+    ):
+        raise LayerError(
+            "confirmed evidence records a person's answer and is applied only "
+            "after the person approves it (AI-assisted mode); an autonomous run "
+            "records a blocker instead"
+        )
     if evidence != "asserted" and not sources:
         raise LayerError(f"{evidence} evidence cites where it is shown (path:line)")
     catalogue = default_catalogue()
@@ -616,9 +643,12 @@ def add_assay_capability(
     entry["rationale"] = rationale.strip()
     if sources:
         entry["sources"] = list(sources)
-    return _write_capabilities(
+    result = _write_capabilities(
         root, [*entries, entry], context, "add_assay_capability", write
     )
+    if write:
+        _forget_rejection(root, item.key)
+    return result
 
 
 def remove_assay_capability(
@@ -644,3 +674,81 @@ def remove_assay_capability(
     if len(kept) == len(entries):
         raise LayerError(f"{reference} is not declared")
     return _write_capabilities(root, kept, context, "remove_assay_capability", write)
+
+
+def _recommendation(root: Path) -> str:
+    from nf_splice.services.assay_discovery import assess_assays
+
+    try:
+        return assess_assays(root, rejected=rejected_assays(root)).summary()
+    except (CatalogueError, OSError):  # never let discovery hide the issue itself
+        return "could not run assay discovery"
+
+
+def rejected_assays(repository_root: str | Path) -> tuple[str, ...]:
+    """Recommendations a reviewer rejected (kept in the review sidecar)."""
+    state = load_review_state(Path(repository_root).resolve(), LAYER)
+    return tuple(
+        str(item.get("reference"))
+        for item in state.document.get(REJECTIONS) or []
+        if isinstance(item, dict)
+    )
+
+
+def reject_assay_candidate(
+    repository_root: str | Path,
+    reference: str,
+    context: ChangeContext,
+    *,
+    reason: str,
+) -> None:
+    """Record that a recommended assay does not apply, and why."""
+    from nf_splice.domain.audit import ActorKind as _Kind
+
+    root = Path(repository_root).resolve()
+    if not reason.strip():
+        raise LayerError("give the reason the assay does not apply")
+    try:
+        key = default_catalogue().resolve_reference(reference).key
+    except CatalogueError as error:
+        raise LayerError(f"{error.code}: {error}") from error
+    for entry in declared_capabilities(root):
+        try:
+            if default_catalogue().resolve_reference(entry).key == key:
+                raise LayerError(f"{key} is declared; remove it before rejecting it")
+        except CatalogueError:
+            continue
+
+    def mutate(state: ReviewState) -> None:
+        kept = [
+            item
+            for item in state.document.get(REJECTIONS) or []
+            if isinstance(item, dict) and item.get("reference") != key
+        ]
+        kept.append(
+            {
+                "reference": key,
+                "reason": reason.strip(),
+                "actor": context.actor.label,
+                "actor_kind": context.actor.kind.value
+                if isinstance(context.actor.kind, _Kind)
+                else str(context.actor.kind),
+                "origin": context.origin.value,
+            }
+        )
+        state.document[REJECTIONS] = sorted(kept, key=lambda item: item["reference"])
+
+    update_review_state(root, LAYER, mutate)
+
+
+def _forget_rejection(root: Path, key: str) -> None:
+    def mutate(state: ReviewState) -> None:
+        rows = state.document.get(REJECTIONS) or []
+        state.document[REJECTIONS] = [
+            item
+            for item in rows
+            if isinstance(item, dict) and item.get("reference") != key
+        ]
+
+    if key in rejected_assays(root):
+        update_review_state(root, LAYER, mutate)

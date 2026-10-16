@@ -496,6 +496,37 @@ def _assay_candidates(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str,
     )
 
 
+def _assess_assays(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
+    from nf_splice.services.assay_discovery import assess_assays
+
+    declared = tuple(
+        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
+        for item in declared_capabilities(ctx.root)
+    )
+    assessment = assess_assays(
+        ctx.root, declared=declared, rejected=rejected_assays(ctx.root)
+    )
+    return _untrusted(
+        assessment.to_json()
+        | {
+            "how_to_use": "Candidates with selectable_without_confirmation may be "
+            "declared citing their evidence. Where alternatives cannot be told "
+            "apart, ask the person (AI-assisted) or record_blocker (autonomous) "
+            "with the questions; never pick one by default."
+        }
+    )
+
+
+def _reject_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.layers.bundle import reject_assay_candidate
+
+    reject_assay_candidate(
+        ctx.root, str(a["reference"]), ctx.change, reason=str(a["reason"])
+    )
+    return {"success": True, "rejected": str(a["reference"])}
+
+
 def _add_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     from nf_splice.layers.bundle import add_assay_capability
 
@@ -997,6 +1028,33 @@ OPERATIONS: dict[str, Operation] = {
             _show_assay,
         ),
         Operation(
+            "assess_assays",
+            "Investigate the pipeline scientifically and recommend assay "
+            "capabilities: the domains its tools, parameters, outputs and "
+            "documentation establish, candidate assays from the SPLICE vocabulary "
+            "with status, confidence, evidence and alternatives, and the questions "
+            "that would decide between them. Read-only.",
+            _obj(),
+            _R,
+            "read",
+            _assess_assays,
+        ),
+        Operation(
+            "reject_assay_candidate",
+            "Record that a recommended assay does not apply to this pipeline, "
+            "with the reason.",
+            _obj(
+                {
+                    "reference": {"type": "string", "minLength": 1},
+                    "reason": {"type": "string", "minLength": 1},
+                },
+                ["reference", "reason"],
+            ),
+            _D,
+            "draft",
+            _reject_assay,
+        ),
+        Operation(
             "list_assay_candidates",
             "Assays the repository names explicitly, with locations, and the "
             "capabilities already declared. Mentions are candidates, not proof.",
@@ -1008,12 +1066,14 @@ OPERATIONS: dict[str, Operation] = {
         Operation(
             "add_assay_capability",
             "Declare an assay the pipeline can process, by registered code or "
-            "entity:<id>, citing documented or detected evidence (path:line). "
-            "Only a person may assert a capability without evidence.",
+            "entity:<id>, citing documented or detected evidence (path:line), or "
+            "'confirmed' with the person's answer as the source (AI-assisted only, "
+            "applied after their approval). Only a person may assert a capability "
+            "without evidence.",
             _obj(
                 {
                     "reference": {"type": "string", "minLength": 1},
-                    "evidence": {"enum": ["documented", "detected"]},
+                    "evidence": {"enum": ["documented", "detected", "confirmed"]},
                     "rationale": {"type": "string", "minLength": 1},
                     "sources": {**_STRINGS, "minItems": 1},
                 },

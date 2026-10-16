@@ -694,7 +694,37 @@ class BundleReport:
 
     @property
     def valid(self) -> bool:
+        """Ingestion-ready: structurally valid *and* scientifically classified."""
         return not any(item.severity is Severity.ERROR for item in self.issues)
+
+    @property
+    def structurally_valid(self) -> bool:
+        """Contracts, identity, file index and lock are valid."""
+        return not any(
+            item.severity is Severity.ERROR and item.rule not in CLASSIFICATION_RULES
+            for item in self.issues
+        )
+
+    @property
+    def classified(self) -> bool:
+        """At least one verified assay capability, and no classification error."""
+        return not any(
+            item.severity is Severity.ERROR and item.rule in CLASSIFICATION_RULES
+            for item in self.issues
+        )
+
+    def levels(self) -> dict[str, bool]:
+        return {
+            "structurally_valid": self.structurally_valid,
+            "scientifically_classified": self.classified,
+            "ingestion_ready": self.valid,
+        }
+
+
+#: Validation rules about scientific classification, not structure.
+CLASSIFICATION_RULES = frozenset(
+    {"missing_assay_classification", "assay_capability", "legacy_modality"}
+)
 
 
 def _load_json(path: Path, issues: list[BundleIssue], relative: str) -> Any:
@@ -733,6 +763,16 @@ def _capability_issues(bundle: Mapping[str, Any]) -> list[BundleIssue]:
         )
     capabilities = pipeline.get("assay_capabilities")
     if not isinstance(capabilities, list) or not capabilities:
+        found.append(
+            BundleIssue(
+                where,
+                "missing_assay_classification",
+                "the bundle declares no assay capability, so it is not ready for "
+                "SPLICE ingestion; see `nf-splice catalogue recommend` for the "
+                "assays the pipeline appears to process, declare them with "
+                "`nf-splice configure identity --add-assay CODE` and rebuild",
+            )
+        )
         return found
     catalogue = default_catalogue()
     vocabulary = bundle.get("assay_vocabulary")

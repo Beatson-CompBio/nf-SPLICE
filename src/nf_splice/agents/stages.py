@@ -204,6 +204,7 @@ SPECS: tuple[StageSpec, ...] = (
             "patch_draft",
             "add_assay_capability",
             "remove_assay_capability",
+            "reject_assay_candidate",
         ),
     ),
     StageSpec(

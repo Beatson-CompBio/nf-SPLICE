@@ -122,12 +122,41 @@ def stage_instruction(
             "No example output was supplied: rely on static evidence and mark "
             "what only a run could confirm as unresolved."
         )
+    if stage is Stage.IDENTITY:
+        lines.extend(_assay_brief(root))
     if remaining:
         lines.append("The stage's validation currently reports:")
         lines.extend(f"- {text}" for text in remaining[:40])
     else:
         lines.append("The stage's validation currently reports no errors.")
     return "\n".join(lines)
+
+
+def _assay_brief(root: Path) -> list[str]:
+    """The deterministic assay assessment, so every provider starts from it."""
+    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
+    from nf_splice.services.assay_discovery import assess_assays
+
+    declared = [
+        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
+        for item in declared_capabilities(root)
+    ]
+    assessment = assess_assays(root, rejected=rejected_assays(root))
+    lines = [
+        "Assay classification is required for ingestion. Declared: "
+        + (", ".join(declared) if declared else "none")
+        + ".",
+        f"Deterministic assessment: {assessment.summary()}.",
+    ]
+    lines.extend(f"Open question: {item}" for item in assessment.questions)
+    lines.append(
+        "Investigate with assess_assays and read_source; declare with "
+        "add_assay_capability citing evidence. Never pick between alternatives "
+        "the evidence cannot distinguish: ask the person (AI-assisted, then "
+        "'confirmed' evidence) or record_blocker naming the alternatives "
+        "(autonomous)."
+    )
+    return lines
 
 
 def proposal_text(proposal: Proposal) -> str:
