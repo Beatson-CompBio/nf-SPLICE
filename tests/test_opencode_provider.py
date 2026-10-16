@@ -371,3 +371,60 @@ def test_real_opencode_local_model_is_locked_and_offline(
     usage = [e.data for e in events if e.kind is EventKind.USAGE]
     assert usage and usage[0]["cost_usd"] is None
     assert proxy.attempts == [], proxy.attempts
+
+
+@pytest.mark.skipif(not _real(), reason="needs opencode 2.0.x (NF_SPLICE_OPENCODE)")
+def test_real_opencode_offers_tools_on_the_first_step(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Registering the bridge reloads OpenCode; the first step must see it."""
+    fake = FakeChat(
+        [
+            {"tool": "nfsplice_read_layer", "arguments": {"layer": "inputs"}},
+            {"text": "Ok."},
+        ]
+    )
+    config = tmp_path / "xdg" / "config" / "opencode"
+    config.mkdir(parents=True)
+    (config / "opencode.json").write_text(
+        json.dumps(
+            {
+                "provider": {
+                    "localfake": {
+                        "npm": "@ai-sdk/openai-compatible",
+                        "name": "Local fake",
+                        "options": {"baseURL": fake.url, "apiKey": "unused"},
+                        "models": {"fake-model": {"name": "Fake", "tool_call": True}},
+                    }
+                }
+            }
+        ),
+        "utf-8",
+    )
+    for part in ("config", "data", "state", "cache"):
+        (tmp_path / "xdg" / part).mkdir(exist_ok=True)
+        monkeypatch.setenv(f"XDG_{part.upper()}_HOME", str(tmp_path / "xdg" / part))
+    provider = opencode.OpenCodeProvider(model="localfake/fake-model")
+    tools = Tools()
+    request = TurnRequest(
+        purpose="plan",
+        instruction="Read the inputs layer.",
+        system_prompt="You are nf-splice.",
+        tools=tools,
+        max_turns=5,
+        timeout_seconds=60,
+    )
+
+    async def run() -> list[Any]:
+        session = provider.open(tmp_path)
+        return [event async for event in session.turn(request)]
+
+    try:
+        asyncio.run(run())
+    finally:
+        provider.close()
+        fake.close()
+    assert tools.calls == [("read_layer", {"layer": "inputs"})]
+    assert "nfsplice_read_layer" in {
+        tool["function"]["name"] for tool in fake.bodies[-1].get("tools", [])
+    }

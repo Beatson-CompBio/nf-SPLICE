@@ -447,6 +447,56 @@ class OpenCodeProvider:
             self._server = None
 
 
+class _ToolsNotReady(Exception):
+    """OpenCode reported an nf-splice tool as unavailable before any ran."""
+
+
+#: The last events OpenCode emits when it reloads after an MCP change.
+_RELOAD_DONE = {"plugin.updated", "command.updated"}
+
+
+def _await_reload(sink: queue.Queue[Any], timeout: float = 5.0) -> None:
+    """Let the instance reload triggered by registering the bridge finish."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            event = sink.get(timeout=0.2)
+        except queue.Empty:
+            continue
+        if event.get("type") in _RELOAD_DONE:
+            break
+    time.sleep(0.5)
+
+
+def _await_bridge(server: Server, bridge: ToolBridge, timeout: float = 30.0) -> None:
+    """Wait until OpenCode has connected to the bridge and listed its tools.
+
+    OpenCode connects to a newly registered MCP server in the background; a
+    prompt sent before that would run without the nf-splice tools.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        servers = server.call("GET", "/api/mcp").get("data") or []
+        status = next(
+            (
+                str((item.get("status") or {}).get("status"))
+                for item in servers
+                if isinstance(item, dict) and item.get("name") == BRIDGE
+            ),
+            "missing",
+        )
+        if status == "connected" and bridge.listed.wait(0.1):
+            return
+        if status in {"failed", "disabled", "needs_auth"}:
+            break
+        time.sleep(0.1)
+    raise ProviderError(
+        ProviderErrorKind.PROVIDER_UNAVAILABLE,
+        "OpenCode did not connect to nf-splice's tools",
+        "Check `nf-splice provider doctor opencode --online` and try again.",
+    )
+
+
 def _events(server: Server, stop: threading.Event, sink: queue.Queue[Any]) -> None:
     """Read the server's event stream into ``sink`` until ``stop``."""
     call = urllib.request.Request(
@@ -514,6 +564,13 @@ class OpenCodeSession:
             target=_events, args=(server, self._stop, sink), daemon=True
         )
         try:
+            reader.start()
+            first = await asyncio.to_thread(sink.get, True, 30)
+            if first.get("type") != "_connected":
+                raise ProviderError(
+                    ProviderErrorKind.CONNECTION_LOST,
+                    "could not follow the OpenCode event stream",
+                )
             await asyncio.to_thread(
                 server.call,
                 "PUT",
@@ -528,53 +585,75 @@ class OpenCodeSession:
                     }
                 },
             )
-            reader.start()
-            first = await asyncio.to_thread(sink.get, True, 30)
-            if first.get("type") != "_connected":
-                raise ProviderError(
-                    ProviderErrorKind.CONNECTION_LOST,
-                    "could not follow the OpenCode event stream",
-                )
-            created = await asyncio.to_thread(
-                server.call,
-                "POST",
-                "/api/session",
-                {
-                    "title": "nf-splice",
-                    "model": model_ref(chosen),
-                    "permissions": PERMISSIONS,
-                },
-            )
-            self._session = str(created["data"]["id"])
-            await asyncio.to_thread(
-                server.call,
-                "PUT",
-                f"/api/experimental/session/{self._session}/instructions/entries/"
-                "nf-splice",
-                {"value": request.system_prompt},
-            )
-            await asyncio.to_thread(
-                server.call,
-                "POST",
-                f"/api/session/{self._session}/prompt",
-                {"text": request.instruction},
-            )
-            async for event in self._follow(server, sink, bridge, request, info):
-                yield event
+            await asyncio.to_thread(_await_bridge, server, bridge)
+            await asyncio.to_thread(_await_reload, sink)
+            for attempt in range(2):
+                await self._start(server, chosen, request)
+                yielded = False
+                try:
+                    async for event in self._follow(
+                        server, sink, bridge, request, info
+                    ):
+                        yielded = yielded or event.kind is not EventKind.DENIED
+                        yield event
+                    break
+                except _ToolsNotReady:
+                    # OpenCode had not finished loading the tools; nothing
+                    # was changed, so a fresh session is safe to try once.
+                    await self._discard(server)
+                    if attempt or yielded:
+                        raise ProviderError(
+                            ProviderErrorKind.PROVIDER_UNAVAILABLE,
+                            "OpenCode did not make nf-splice's tools available",
+                            "Try again; if it persists, check "
+                            "`nf-splice provider doctor opencode --online`.",
+                        ) from None
+                    await asyncio.sleep(1.0)
         finally:
             self._stop.set()
-            session, self._session = self._session, None
+            await self._discard(server)
             with contextlib.suppress(Exception):
                 await asyncio.to_thread(
                     server.call, "DELETE", f"/api/experimental/mcp/{BRIDGE}"
                 )
-            if session is not None:
-                with contextlib.suppress(Exception):
-                    await asyncio.to_thread(
-                        server.call, "DELETE", f"/api/session/{session}"
-                    )
             bridge.close()
         yield AgentEvent(EventKind.DONE)
+
+    async def _start(self, server: Server, chosen: str, request: TurnRequest) -> None:
+        created = await asyncio.to_thread(
+            server.call,
+            "POST",
+            "/api/session",
+            {
+                "title": "nf-splice",
+                "model": model_ref(chosen),
+                "permissions": PERMISSIONS,
+            },
+        )
+        self._session = str(created["data"]["id"])
+        await asyncio.to_thread(
+            server.call,
+            "PUT",
+            f"/api/experimental/session/{self._session}/instructions/entries/nf-splice",
+            {"value": request.system_prompt},
+        )
+        await asyncio.to_thread(
+            server.call,
+            "POST",
+            f"/api/session/{self._session}/prompt",
+            {"text": request.instruction},
+        )
+
+    async def _discard(self, server: Server) -> None:
+        session, self._session = self._session, None
+        if session is None:
+            return
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(
+                server.call, "POST", f"/api/session/{session}/interrupt"
+            )
+        with contextlib.suppress(Exception):
+            await asyncio.to_thread(server.call, "DELETE", f"/api/session/{session}")
 
     async def _follow(
         self,
@@ -618,6 +697,13 @@ class OpenCodeSession:
                 yield AgentEvent(
                     EventKind.DENIED, name, {"reason": "native OpenCode tool"}
                 )
+            elif (
+                kind == "session.tool.failed"
+                and name.startswith(f"{BRIDGE}_")
+                and bridge.calls == 0
+                and "No tool named" in str((data.get("error") or {}).get("message"))
+            ):
+                raise _ToolsNotReady
             elif kind == "session.tool.success" and not name.startswith(f"{BRIDGE}_"):
                 # Fail closed: an unknown or native tool must never succeed.
                 await self.cancel()

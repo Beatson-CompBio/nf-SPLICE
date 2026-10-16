@@ -36,6 +36,8 @@ class ToolBridge:
         self.token = secrets.token_urlsafe(32)
         self.events: queue.Queue[AgentEvent] = queue.Queue()
         self.calls = 0
+        #: Set once a client has listed the tools.
+        self.listed = threading.Event()
         self._lock = threading.Lock()
         bridge = self
 
@@ -110,6 +112,7 @@ class ToolBridge:
         if method == "ping":
             return {"result": {}}
         if method == "tools/list":
+            self.listed.set()
             return {
                 "result": {
                     "tools": [
