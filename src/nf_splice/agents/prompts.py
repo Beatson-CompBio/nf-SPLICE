@@ -34,6 +34,9 @@ Rules you must follow:
   the routes it took, so never remove an output only because an example lacks it.
 - Never invent identifiers, checksums, URLs, people or licences. If a decision
   needs information you cannot establish, say so (record_blocker).
+- An assay is not a modality. Assay capabilities come only from the SPLICE
+  vocabulary through the assay tools, with cited evidence; a file type such as
+  FASTQ never establishes a library preparation.
 - Scientific meaning (titles, descriptions, categories) should be concise and
   grounded in the pipeline's own code and documentation.
 - Use British English.

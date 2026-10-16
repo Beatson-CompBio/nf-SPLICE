@@ -43,8 +43,22 @@ def _cli(root: Path, *arguments: str) -> None:
     assert result.exit_code == 0, result.output
 
 
+ASSAY_RATIONALE = "Documented library types: poly(A) and total RNA"
+
+
 def _author_with_cli(root: Path) -> None:
     _cli(root, "init", "--accept-detected", "--contract-version", "1.0.0")
+    _cli(
+        root,
+        "configure",
+        "identity",
+        "--add-assay",
+        "polya_rnaseq",
+        "--add-assay",
+        "total_rnaseq",
+        "--assay-rationale",
+        ASSAY_RATIONALE,
+    )
     _cli(
         root,
         "configure",
@@ -134,6 +148,16 @@ async def _author_with_tui(root: Path, snapshots: bool = False) -> None:
         if snapshots:
             check_snapshot("identity-detected", screen_text(app))
         await press(app, pilot, "#identity-confirm")
+
+        app.show_step("assays")
+        await settle(app, pilot)
+        app.query_one("#assays-rationale", Input).value = ASSAY_RATIONALE
+        table = app.query_one("#assays-table", DataTable)
+        for code in ("polya_rnaseq", "total_rnaseq"):
+            table.move_cursor(row=table.get_row_index(code))
+            await press(app, pilot, "#assays-add")
+        if snapshots:
+            check_snapshot("assays", screen_text(app))
 
         app.show_step("inputs")
         await settle(app, pilot)
@@ -286,7 +310,7 @@ async def test_navigation_locking_back_defer_and_help(tmp_path: Path) -> None:
         await settle(app, pilot)
         await pilot.press("ctrl+d")
         await settle(app, pilot)
-        assert "identity" in app.session.deferred and app.current == "inputs"
+        assert "identity" in app.session.deferred and app.current == "assays"
         labels = [str(label.render()) for label in app.query("#rail Label")]
         assert any("» Identity" in label for label in labels)
         await pilot.press("f1")

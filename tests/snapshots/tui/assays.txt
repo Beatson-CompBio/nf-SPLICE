@@ -1,0 +1,49 @@
+  ✓ Welcome
+  ✓ Repository
+  ✓ Identity
+▶ ✓ Assay capabilities
+  ! Inputs
+  ! Outputs
+  ! Components
+  ! Execution profiles
+  ! Provenance
+  ✓ Drafts
+  ○ Readiness
+  · Build
+  · Done
+== assays
+Declared capabilities, by modality
+Transcriptomics [MODALITY]
+  poly(A) RNA-seq [ASSAY_METHOD] (polya_rnaseq; asserted)  via Bulk RNA-seq > Short-read RNA-seq
+  Total RNA-seq [ASSAY_METHOD] (total_rnaseq; asserted)  via Bulk RNA-seq > Short-read RNA-seq
+Assays named in the repository
+No assay is named in the repository's documentation or schema.
+Vocabulary
+(assays-all) False
+Include assay concepts without a platform registration
+ | video_cage_mon | Video cage monitoring | ASSAY_TYPE | Behaviour | registered
+ | atacseq | ATAC-seq | ASSAY_TYPE | Epigenomics | registered
+ | rrbs | RRBS | ASSAY_TYPE | Epigenomics | registered
+ | targeted_bsseq | Targeted BS-seq | ASSAY_TYPE | Epigenomics | registered
+ | wgbs | WGBS | ASSAY_TYPE | Epigenomics | registered
+ | cosmx_rna | CosMx RNA | ASSAY_METHOD | Imaging, Transcriptomics | registered
+ | he_wsi | H&E WSI | ASSAY_METHOD | Imaging | registered
+ | xenium_rna | Xenium RNA | ASSAY_METHOD | Imaging, Transcriptomics | registered
+ | sr_shotgun_mgx | Short-read shotgun metagenomics | ASSAY_TYPE | Microbiome | registered
+ | scrna_10x_3p | 10x Chromium 3-prime GEX | ASSAY_METHOD | Transcriptomics | registered
+ | scrna_10x_5p | 10x Chromium 5-prime GEX | ASSAY_METHOD | Transcriptomics | registered
+ | smartseq | SMART-seq | ASSAY_METHOD | Transcriptomics | registered
+x | total_rnaseq | Total RNA-seq | ASSAY_METHOD | Transcriptomics | current
+x | polya_rnaseq | poly(A) RNA-seq | ASSAY_METHOD | Transcriptomics | current
+Total RNA-seq [ASSAY_METHOD] (entity 312)
+  path: Total RNA-seq [ASSAY_METHOD] > Short-read RNA-seq [ASSAY_TYPE] > Bulk RNA-seq [MODALITY_SUBTYPE] > Transcriptomics [MODALITY]
+  registered as total_rnaseq; deployment support (current) does not limit what a pipeline may declare
+<assays-evidence> asserted
+asserted
+▼
+▲
+[why the pipeline supports this assay (required)] Documented library types: poly(A) and total RNA
+[evidence locations path:line, comma separated]
+<button Declare highlighted assay>
+<button Remove highlighted assay>
+No issues: this layer is ready to promote.

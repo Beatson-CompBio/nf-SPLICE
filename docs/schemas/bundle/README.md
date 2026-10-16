@@ -35,6 +35,7 @@ No other top-level keys are allowed.
 | `schema_version` | always `"0.3.0"` | yes | Contract revision of this file. This is not the nf-splice version or the pipeline version. |
 | `generated_by` | object | yes | Tool that wrote the file. |
 | `pipeline` | object | yes | Identity of the workflow this file belongs to. It repeats the identity in `bundle.json` so a detached file can be matched to its bundle. |
+| `assay_vocabulary` | object | no | The SPLICE modality vocabulary snapshot the assay capabilities were classified with. Present whenever `pipeline.assay_capabilities` is. |
 | `maintainers` | array of objects | no | **Personal data. Published only with recorded consent.** Public maintainer contacts. |
 | `schemas` | object keyed by name | yes | Contract revision and path of each of the five files. |
 | `files` | object | yes | File index. There is no `outputs.json`: output metadata lives in `outputs.schema.json`. |
@@ -77,7 +78,7 @@ Workflow identity and descriptive metadata. Only `id`, `name`, `version`, `engin
 | `engine_versions_tested` | non-empty string | no | Engine version or range the workflow was tested with. |
 | `keywords` | array of non-empty strings (no duplicates) | no | Free-text keywords for search. There is no controlled vocabulary. |
 | `pipeline_type` | non-empty string | no | Free-text kind of workflow, for grouping in a catalogue. |
-| `modality` | non-empty string | no | Free-text data modality, for grouping in a catalogue. |
+| `assay_capabilities` | array of objects (at least 1) | no | Every assay the workflow can process across its supported routes, each classified by the SPLICE modality vocabulary. It is the workflow's capability, not what one job produced, and is independent of which assays a particular SPLICE deployment ingests. Group and filter by `modalities`; never treat an assay as a modality. |
 | `released_at` | date-time (RFC 3339) | no | Release date and time, when sourced. |
 
 ### `pipeline.authors[]` (each item)
@@ -113,6 +114,67 @@ How to cite the workflow. At least one of the keys below is present. No other ke
 | `url` | http or https URL | no | Citation web page. |
 | `text` | non-empty string | no | Formatted citation text. |
 | `cff_path` | non-empty string | no | Repository path of the workflow's `CITATION.cff` file. |
+
+### `pipeline.assay_capabilities[]` (each item)
+
+Every assay the workflow can process across its supported routes, each classified by the SPLICE modality vocabulary. It is the workflow's capability, not what one job produced, and is independent of which assays a particular SPLICE deployment ingests. Group and filter by `modalities`; never treat an assay as a modality. No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `kind` | one of `registered_assay`, `vocabulary_assay` | yes | `registered_assay`: a platform-registered assay, named by `registered_code`. `vocabulary_assay`: an assay concept of the vocabulary that has no platform registration. |
+| `registered_code` | string matching `^[a-z0-9][a-z0-9_]*$` | no | Platform registration code of the assay (the SPLICE `modality_name`, such as `polya_rnaseq`). Resolve it to your deployment's registration; it is not an accession identifier. |
+| `assay` | object | yes | The assay itself: the vocabulary entity the capability names. |
+| `assay_types` | array of objects | yes | `ASSAY_TYPE` entities above the assay, in entity-id order. Empty when the assay is itself the assay type. |
+| `modality_subtypes` | array of objects | yes | `MODALITY_SUBTYPE` entities above the assay, such as Bulk RNA-seq, in entity-id order. |
+| `modalities` | array of objects (at least 1) | yes | Every top-level `MODALITY` the assay belongs to, such as Transcriptomics. An assay can belong to several (Xenium RNA: Imaging and Transcriptomics). |
+| `paths` | array of array of integer ≥ 1 (at least 2) (at least 1) | yes | Every path from the assay up to a modality, as entity identifiers with the assay first. Several paths mean several valid classifications; keep them all. |
+
+### `pipeline.assay_capabilities[].assay`
+
+The assay itself: the vocabulary entity the capability names. No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `entity_id` | integer ≥ 1 | yes | SPLICE vocabulary entity identifier. |
+| `entity_type` | one of `ASSAY_METHOD`, `ASSAY_TYPE` | yes | `ASSAY_METHOD` (a specific method, such as poly(A) RNA-seq) or `ASSAY_TYPE` (a kind of assay, such as ATAC-seq, when no finer method applies). Levels the vocabulary does not have are never invented. |
+| `label` | non-empty string | yes | Exact vocabulary label of the assay. |
+
+### `pipeline.assay_capabilities[].assay_types[]` (each item)
+
+`ASSAY_TYPE` entities above the assay, in entity-id order. Empty when the assay is itself the assay type. No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `entity_id` | integer ≥ 1 | yes | SPLICE vocabulary entity identifier. |
+| `label` | non-empty string | yes | Exact vocabulary label. |
+
+### `pipeline.assay_capabilities[].modality_subtypes[]` (each item)
+
+`MODALITY_SUBTYPE` entities above the assay, such as Bulk RNA-seq, in entity-id order. No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `entity_id` | integer ≥ 1 | yes | SPLICE vocabulary entity identifier. |
+| `label` | non-empty string | yes | Exact vocabulary label. |
+
+### `pipeline.assay_capabilities[].modalities[]` (each item)
+
+Every top-level `MODALITY` the assay belongs to, such as Transcriptomics. An assay can belong to several (Xenium RNA: Imaging and Transcriptomics). No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `entity_id` | integer ≥ 1 | yes | SPLICE vocabulary entity identifier. |
+| `label` | non-empty string | yes | Exact vocabulary label. |
+
+### `assay_vocabulary`
+
+The SPLICE modality vocabulary snapshot the assay capabilities were classified with. Present whenever `pipeline.assay_capabilities` is. No other keys are allowed.
+
+| Key | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | non-empty string | yes | Vocabulary name. |
+| `snapshot` | non-empty string | yes | Snapshot identifier. It is independent of the contract revision, the workflow version and the nf-splice version. |
+| `digest` | `sha256:` followed by 64 hexadecimal characters | yes | SHA-256 of the snapshot's content, to check you hold the same vocabulary. |
 
 ### `maintainers[]` (each item)
 
@@ -202,7 +264,84 @@ Paths of the bundle's files, relative to the directory that holds `bundle.json`.
     "keywords": [
       "rna-seq",
       "quantification"
+    ],
+    "assay_capabilities": [
+      {
+        "kind": "registered_assay",
+        "registered_code": "polya_rnaseq",
+        "assay": {
+          "entity_id": 232,
+          "entity_type": "ASSAY_METHOD",
+          "label": "poly(A) RNA-seq"
+        },
+        "assay_types": [
+          {
+            "entity_id": 255,
+            "label": "Short-read RNA-seq"
+          }
+        ],
+        "modality_subtypes": [
+          {
+            "entity_id": 39,
+            "label": "Bulk RNA-seq"
+          }
+        ],
+        "modalities": [
+          {
+            "entity_id": 316,
+            "label": "Transcriptomics"
+          }
+        ],
+        "paths": [
+          [
+            232,
+            255,
+            39,
+            316
+          ]
+        ]
+      },
+      {
+        "kind": "registered_assay",
+        "registered_code": "total_rnaseq",
+        "assay": {
+          "entity_id": 312,
+          "entity_type": "ASSAY_METHOD",
+          "label": "Total RNA-seq"
+        },
+        "assay_types": [
+          {
+            "entity_id": 255,
+            "label": "Short-read RNA-seq"
+          }
+        ],
+        "modality_subtypes": [
+          {
+            "entity_id": 39,
+            "label": "Bulk RNA-seq"
+          }
+        ],
+        "modalities": [
+          {
+            "entity_id": 316,
+            "label": "Transcriptomics"
+          }
+        ],
+        "paths": [
+          [
+            312,
+            255,
+            39,
+            316
+          ]
+        ]
+      }
     ]
+  },
+  "assay_vocabulary": {
+    "name": "SPLICE modality vocabulary",
+    "snapshot": "splice-sprint-2026-10-14",
+    "digest": "sha256:011bdba0b29765d91b70ea5c0bf7912c8f704f14593157a16ff8d69d9f321e93"
   },
   "schemas": {
     "https://schemas.splice-data.io/workflow-bundle/bundle": {

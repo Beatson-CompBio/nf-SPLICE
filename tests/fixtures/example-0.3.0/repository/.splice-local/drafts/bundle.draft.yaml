@@ -28,7 +28,7 @@ pipeline:
   engine_versions_tested: null
   keywords: []
   pipeline_type: null
-  modality: null
+  assay_capabilities: []
   released_at: null
 maintainers: []
 maintainers_publication_approved: false

@@ -182,9 +182,12 @@
           "type": "string",
           "minLength": 1
         },
-        "modality": {
-          "type": "string",
-          "minLength": 1
+        "assay_capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/assay_capability"
+          },
+          "minItems": 1
         },
         "released_at": {
           "type": "string",
@@ -192,6 +195,9 @@
         }
       },
       "additionalProperties": false
+    },
+    "assay_vocabulary": {
+      "$ref": "#/$defs/assay_vocabulary"
     },
     "maintainers": {
       "type": "array",
@@ -354,6 +360,163 @@
       "type": "string",
       "minLength": 1,
       "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "vocabulary_reference": {
+      "type": "object",
+      "required": [
+        "entity_id",
+        "label"
+      ],
+      "properties": {
+        "entity_id": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "assay_capability": {
+      "type": "object",
+      "required": [
+        "kind",
+        "assay",
+        "assay_types",
+        "modality_subtypes",
+        "modalities",
+        "paths"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "registered_assay",
+            "vocabulary_assay"
+          ]
+        },
+        "registered_code": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_]*$"
+        },
+        "assay": {
+          "type": "object",
+          "required": [
+            "entity_id",
+            "entity_type",
+            "label"
+          ],
+          "properties": {
+            "entity_id": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "entity_type": {
+              "enum": [
+                "ASSAY_METHOD",
+                "ASSAY_TYPE"
+              ]
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "assay_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vocabulary_reference"
+          }
+        },
+        "modality_subtypes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/vocabulary_reference"
+          }
+        },
+        "modalities": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/vocabulary_reference"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "registered_assay"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "registered_code"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "registered_code"
+          ]
+        }
+      }
+    },
+    "assay_vocabulary": {
+      "type": "object",
+      "required": [
+        "name",
+        "snapshot",
+        "digest"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
     }
+  },
+  "if": {
+    "required": [
+      "pipeline"
+    ],
+    "properties": {
+      "pipeline": {
+        "required": [
+          "assay_capabilities"
+        ]
+      }
+    }
+  },
+  "then": {
+    "required": [
+      "assay_vocabulary"
+    ]
   }
 }

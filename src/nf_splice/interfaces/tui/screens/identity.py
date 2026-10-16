@@ -21,7 +21,7 @@ from nf_splice.layers.bundle import set_identity_fields, validate_bundle_draft
 SCALAR_FIELDS = tuple(
     name
     for name in PIPELINE_FIELD_ORDER
-    if name not in {"authors", "funders", "keywords", "citation"}
+    if name not in {"authors", "funders", "keywords", "citation", "assay_capabilities"}
 )
 
 

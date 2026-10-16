@@ -194,10 +194,17 @@ SPECS: tuple[StageSpec, ...] = (
     StageSpec(
         Stage.IDENTITY,
         "Identity",
-        "Complete and confirm the pipeline identity in bundle.draft.yaml.",
+        "Complete and confirm the pipeline identity in bundle.draft.yaml, and "
+        "declare the assays the pipeline can process with their evidence.",
         "bundle",
         (Stage.DISCOVER,),
-        ("set_identity", "confirm_values", "patch_draft"),
+        (
+            "set_identity",
+            "confirm_values",
+            "patch_draft",
+            "add_assay_capability",
+            "remove_assay_capability",
+        ),
     ),
     StageSpec(
         Stage.INPUTS,

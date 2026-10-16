@@ -124,6 +124,16 @@ def author_all(root: Path, context: ChangeContext = ADA) -> None:
 
     seed_bundle_draft(root, explicit=IDENTITY)
     set_identity_fields(root, {}, context)
+    from nf_splice.layers.bundle import add_assay_capability
+
+    for code in ("polya_rnaseq", "total_rnaseq"):
+        add_assay_capability(
+            root,
+            code,
+            context,
+            evidence="asserted",
+            rationale="The pipeline aligns poly(A)-selected and total RNA libraries.",
+        )
     import_inputs(root)
     for name, principals in ACCESS.items():
         set_access(root, [name], principals, context)

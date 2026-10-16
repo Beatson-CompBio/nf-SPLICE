@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import StringConstraints, model_validator
 
@@ -107,6 +107,54 @@ class Maintainer(DomainModel):
     ) = None
 
 
+class VocabularyReference(DomainModel):
+    """A SPLICE vocabulary entity, by id with its exact label."""
+
+    entity_id: int
+    label: NonEmptyString
+
+
+class AssayEntity(DomainModel):
+    """The assay a capability names: an ASSAY_METHOD or an ASSAY_TYPE."""
+
+    entity_id: int
+    entity_type: Literal["ASSAY_METHOD", "ASSAY_TYPE"]
+    label: NonEmptyString
+
+
+class AssayCapability(DomainModel):
+    """One assay the workflow can process, classified by the SPLICE vocabulary.
+
+    Built only by :mod:`nf_splice.catalogue` from a reviewed reference; never
+    from free text. ``paths`` lists every path from the assay to a modality
+    (entity ids, assay first), so multi-parent classifications are kept.
+    """
+
+    kind: Literal["registered_assay", "vocabulary_assay"]
+    registered_code: (
+        Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9_]*$")] | None
+    ) = None
+    assay: AssayEntity
+    assay_types: tuple[VocabularyReference, ...] = ()
+    modality_subtypes: tuple[VocabularyReference, ...] = ()
+    modalities: tuple[VocabularyReference, ...]
+    paths: tuple[tuple[int, ...], ...]
+
+    @model_validator(mode="after")
+    def validate_kind(self) -> AssayCapability:
+        if (self.kind == "registered_assay") != (self.registered_code is not None):
+            raise ValueError(
+                "a registered_assay has a registered_code; a vocabulary_assay has none"
+            )
+        if not self.modalities or not self.paths:
+            raise ValueError("an assay capability reaches at least one modality")
+        return self
+
+    @property
+    def key(self) -> str:
+        return self.registered_code or f"entity:{self.assay.entity_id}"
+
+
 #: Canonical, documented order of ``pipeline`` keys in drafts and bundle.json.
 PIPELINE_FIELD_ORDER = (
     "id",
@@ -131,7 +179,7 @@ PIPELINE_FIELD_ORDER = (
     "engine_versions_tested",
     "keywords",
     "pipeline_type",
-    "modality",
+    "assay_capabilities",
     "released_at",
 )
 #: Fields an ingestion-ready bundle must define.
@@ -163,7 +211,7 @@ class PipelineMetadata(DomainModel):
     engine_versions_tested: NonEmptyString | None = None
     keywords: tuple[NonEmptyString, ...] = ()
     pipeline_type: NonEmptyString | None = None
-    modality: NonEmptyString | None = None
+    assay_capabilities: tuple[AssayCapability, ...] = ()
     released_at: (
         Annotated[
             str,
@@ -184,6 +232,9 @@ class PipelineMetadata(DomainModel):
             raise ValueError("funders must not be duplicated")
         if len(self.keywords) != len(set(self.keywords)):
             raise ValueError("keywords must be unique")
+        keys = [item.key for item in self.assay_capabilities]
+        if len(keys) != len(set(keys)):
+            raise ValueError("assay capabilities must not be duplicated")
         return self
 
     def reference(self) -> dict[str, str]:

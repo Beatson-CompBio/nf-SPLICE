@@ -1,6 +1,7 @@
   ✓ Welcome
   ✓ Repository
 ▶ ! Identity
+  ! Assay capabilities
   ! Inputs
   ! Outputs
   ! Components
@@ -36,7 +37,6 @@ version: "1.0.0" (ro-crate-metadata.json#./version)
 [engine version min]
 [engine versions tested]
 [pipeline type]
-[modality]
 [released at]
 [keywords (comma separated)]
 [citation DOI]

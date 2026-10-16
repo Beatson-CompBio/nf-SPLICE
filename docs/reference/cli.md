@@ -77,6 +77,13 @@ Global options go before the command name, for example
 | [`nf-splice git commit`](#nf-splice-git-commit) | Commit the validated splice/ and .gitignore with your Git identity. |
 | [`nf-splice git push`](#nf-splice-git-push) | Push the integration branch to a remote you choose (never automatic). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
+| [`nf-splice catalogue info`](#nf-splice-catalogue-info) | Which vocabulary snapshot this nf-splice carries, and its provenance. |
+| [`nf-splice catalogue modalities`](#nf-splice-catalogue-modalities) | List the top-level modalities and their subtypes. |
+| [`nf-splice catalogue assays`](#nf-splice-catalogue-assays) | List assays a pipeline can declare, with type, modalities and paths. |
+| [`nf-splice catalogue show`](#nf-splice-catalogue-show) | Show one entity: type, description, registrations and every path. |
+| [`nf-splice catalogue search`](#nf-splice-catalogue-search) | Search labels, aliases, registered codes and ids. |
+| [`nf-splice catalogue candidates`](#nf-splice-catalogue-candidates) | Assays the repository names explicitly, with locations (read-only). |
+| [`nf-splice catalogue compare`](#nf-splice-catalogue-compare) | Compare a live platform vocabulary with this nf-splice's pinned snapshot. |
 | [`nf-splice provider list`](#nf-splice-provider-list) | List the providers, how each signs in, where it runs and who pays. |
 | [`nf-splice provider doctor`](#nf-splice-provider-doctor) | Diagnose providers: installed parts, sign-in, routing and billing. |
 | [`nf-splice provider models`](#nf-splice-provider-models) | List the models the signed-in account or configuration offers. |
@@ -162,6 +169,11 @@ nf-splice configure [OPTIONS] LAYER
 | `--slurm-default` |  |  | Execution profiles: add the generated SPLICE Slurm candidate. |
 | `--strategy` | `<str>` |  | Provenance: include, enriched or generated. |
 | `--reimport` |  |  | Inputs: apply a conflict-free nextflow_schema.json re-import. |
+| `--add-assay` | `<str>` |  | Identity: declare an assay the pipeline can process, by registered code (polya_rnaseq) or entity:<id>. Repeatable. |
+| `--remove-assay` | `<str>` |  | Identity: remove a declared assay. Repeatable. |
+| `--assay-evidence` | `<str>` | `asserted` | Identity: why the assays are declared: asserted (your statement), documented or detected (cite --assay-source). |
+| `--assay-rationale` | `<str>` |  | Identity: the reason the pipeline supports the added assays. |
+| `--assay-source` | `<str>` |  | Identity: evidence location path:line. Repeatable. |
 
 ### nf-splice plan
 
@@ -1001,6 +1013,102 @@ nf-splice preview outputs [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--format` | `<str>` | `json` | json or yaml. |
+
+### nf-splice catalogue info
+
+Which vocabulary snapshot this nf-splice carries, and its provenance.
+
+```text
+nf-splice catalogue info [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue modalities
+
+List the top-level modalities and their subtypes.
+
+```text
+nf-splice catalogue modalities [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue assays
+
+List assays a pipeline can declare, with type, modalities and paths.
+
+```text
+nf-splice catalogue assays [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--modality` | `<str>` |  | Only assays under this modality (label or entity id). |
+| `--all-vocabulary` |  |  | Include assay concepts that have no platform registration. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue show
+
+Show one entity: type, description, registrations and every path.
+
+```text
+nf-splice catalogue show [OPTIONS] REFERENCE
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `REFERENCE` | yes | Registered code, entity:<id>, or an exact name. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue search
+
+Search labels, aliases, registered codes and ids.
+
+```text
+nf-splice catalogue search [OPTIONS] TEXT
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `TEXT` | yes | Label, alias, code or entity id. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue candidates
+
+Assays the repository names explicitly, with locations (read-only).
+
+```text
+nf-splice catalogue candidates [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice catalogue compare
+
+Compare a live platform vocabulary with this nf-splice's pinned snapshot.
+
+```text
+nf-splice catalogue compare [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--api` | `<str>` |  | Base URL of a SPLICE platform API. |
+| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice provider list
 

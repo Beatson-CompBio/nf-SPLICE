@@ -120,6 +120,7 @@ After changing a skill in `skills/`, copy it to
 | [`skills/nf-splice-output-discovery/SKILL.md`](skills/nf-splice-output-discovery/SKILL.md) | Output catalogues across routes, examples, `analysis_output.json` |
 | [`skills/nf-splice-validation/SKILL.md`](skills/nf-splice-validation/SKILL.md) | Validation, assessment and optional nf-core checks |
 | [`skills/nf-splice-agent-operations/SKILL.md`](skills/nf-splice-agent-operations/SKILL.md) | Manual help, assisted sessions and autonomous runs |
+| [`skills/nf-splice-assay-capabilities/SKILL.md`](skills/nf-splice-assay-capabilities/SKILL.md) | Assay capabilities and the SPLICE modality vocabulary |
 
 nf-splice's embedded agents receive the relevant skills in every turn.
 External coding agents can load them from `skills/`, or after

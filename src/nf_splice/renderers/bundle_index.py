@@ -68,6 +68,10 @@ def bundle_document(
         **data_document_header(BUNDLE_FAMILY),
         "pipeline": metadata.ordered_document(),
     }
+    if metadata.assay_capabilities:
+        from nf_splice.catalogue import default_catalogue
+
+        document["assay_vocabulary"] = default_catalogue().provenance.reference()
     if maintainers:
         document["maintainers"] = [
             item.model_dump(mode="json", exclude_none=True) for item in maintainers

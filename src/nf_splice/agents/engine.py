@@ -1455,7 +1455,9 @@ class SessionEngine:
             self._record_outcome(stage, outcome)
             attempted.extend(outcome.executed)
             result = gate(stage, self.root)
-            if result.passed:
+            # A decision the agent says it cannot make keeps the stage open even
+            # when validation passes: an optional field may be what is undecided.
+            if result.passed and not outcome.blockers:
                 self._complete(stage, result)
                 self.store.save(self.state)
                 return

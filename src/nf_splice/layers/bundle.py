@@ -18,6 +18,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from nf_splice.catalogue import CatalogueError, ResolvedCapability, default_catalogue
+from nf_splice.domain.audit import ActorKind
 from nf_splice.domain.identity import (
     PIPELINE_FIELD_ORDER,
     REQUIRED_PIPELINE_FIELDS,
@@ -46,7 +48,13 @@ from nf_splice.layers.base import (
 )
 
 LAYER = "bundle"
-_LIST_FIELDS = {"authors", "funders", "keywords"}
+_LIST_FIELDS = {"authors", "funders", "keywords", "assay_capabilities"}
+CAPABILITIES = "assay_capabilities"
+#: Why a capability is declared. ``asserted`` is a person's scientific
+#: statement without repository evidence; the others cite where it is shown.
+EVIDENCE = ("asserted", "documented", "detected")
+#: The obsolete free-text field replaced by ``assay_capabilities``.
+LEGACY_MODALITY = "modality"
 
 
 def _canonical(value: Any) -> str:
@@ -212,7 +220,31 @@ def validate_bundle_draft(repository_root: str | Path) -> BundleValidation:
             (),
             (*issues, _issue("/pipeline", "missing_required", "pipeline is required")),
         )
-    unknown = sorted(set(pipeline) - set(PIPELINE_FIELD_ORDER))
+    if LEGACY_MODALITY in pipeline:
+        legacy = pipeline.get(LEGACY_MODALITY)
+        if legacy in (None, ""):
+            issues.append(
+                _issue(
+                    f"/pipeline/{LEGACY_MODALITY}",
+                    "obsolete_field",
+                    "modality was replaced by assay_capabilities; remove it",
+                    Severity.WARNING,
+                )
+            )
+        else:
+            issues.append(
+                _issue(
+                    f"/pipeline/{LEGACY_MODALITY}",
+                    "legacy_modality",
+                    f"free-text modality {legacy!r} is not converted to an assay; "
+                    "declare each supported assay with "
+                    "`nf-splice configure bundle --add-assay CODE`, "
+                    "then remove modality",
+                )
+            )
+    capabilities, capability_issues = _draft_capabilities(pipeline.get(CAPABILITIES))
+    issues.extend(capability_issues)
+    unknown = sorted(set(pipeline) - set(PIPELINE_FIELD_ORDER) - {LEGACY_MODALITY})
     for name in unknown:
         issues.append(
             _issue(f"/pipeline/{name}", "unknown_field", f"unknown field {name!r}")
@@ -347,6 +379,9 @@ def validate_bundle_draft(repository_root: str | Path) -> BundleValidation:
         )
     metadata = None
     present = {key: value for key, value in pipeline.items() if value not in (None, [])}
+    present.pop(CAPABILITIES, None)
+    if capabilities:
+        present[CAPABILITIES] = [item.to_json() for item in capabilities]
     try:
         metadata = PipelineMetadata.model_validate(
             {
@@ -401,6 +436,11 @@ def set_identity_fields(
     state = read_layer(root, LAYER)
     if state.draft is None:
         raise LayerError(f"{layer_spec(LAYER).draft} is missing or malformed")
+    if CAPABILITIES in changes or LEGACY_MODALITY in changes:
+        raise LayerError(
+            "assay capabilities are changed only with add_assay_capability and "
+            "remove_assay_capability, which resolve them against the SPLICE vocabulary"
+        )
     pointers = {
         (f"/{key}" if key.startswith("maintainers") else f"/pipeline/{key}"): value
         for key, value in changes.items()
@@ -413,3 +453,194 @@ def set_identity_fields(
         action="set_identity",
         write=write,
     )
+
+
+# ------------------------------------------------------------ assay capabilities
+
+
+def _draft_capabilities(
+    raw: Any,
+) -> tuple[tuple[ResolvedCapability, ...], list[DraftIssue]]:
+    """Resolve the reviewed draft entries; every problem becomes an issue."""
+    issues: list[DraftIssue] = []
+    if raw in (None, []):
+        return (), issues
+    pointer = f"/pipeline/{CAPABILITIES}"
+    if not isinstance(raw, list):
+        return (), [_issue(pointer, "invalid_value", "must be a list of capabilities")]
+    catalogue = default_catalogue()
+    resolved: list[ResolvedCapability] = []
+    seen: dict[str, int] = {}
+    for index, entry in enumerate(raw):
+        where = f"{pointer}/{index}"
+        if not isinstance(entry, dict):
+            issues.append(_issue(where, "invalid_value", "must be a mapping"))
+            continue
+        try:
+            item = catalogue.resolve_reference(entry)
+        except CatalogueError as error:
+            issues.append(_issue(where, error.code, str(error)))
+            continue
+        if item.key in seen:
+            issues.append(
+                _issue(
+                    where,
+                    "duplicate",
+                    f"{item.key} is already declared at entry {seen[item.key] + 1}",
+                )
+            )
+            continue
+        seen[item.key] = index
+        evidence = entry.get("evidence")
+        if evidence not in EVIDENCE:
+            issues.append(
+                _issue(
+                    f"{where}/evidence",
+                    "missing_required",
+                    f"evidence must be one of {', '.join(EVIDENCE)}",
+                )
+            )
+        if not str(entry.get("rationale") or "").strip():
+            issues.append(
+                _issue(
+                    f"{where}/rationale",
+                    "missing_required",
+                    "say why the pipeline supports this assay",
+                )
+            )
+        sources = entry.get("sources") or []
+        if evidence in ("documented", "detected") and not sources:
+            issues.append(
+                _issue(
+                    f"{where}/sources",
+                    "missing_required",
+                    f"{evidence} evidence cites where it is shown (path:line)",
+                )
+            )
+        if item.registration is None and catalogue.registrations_for(
+            item.assay.entity_id
+        ):
+            codes = ", ".join(
+                registration.code
+                for registration in catalogue.registrations_for(item.assay.entity_id)
+            )
+            issues.append(
+                _issue(
+                    where,
+                    "registered_alternative",
+                    f"{item.assay.label!r} is registered as {codes}; prefer the "
+                    "registered code",
+                    Severity.WARNING,
+                )
+            )
+        resolved.append(item)
+    return tuple(resolved), issues
+
+
+def declared_capabilities(repository_root: str | Path) -> list[dict[str, Any]]:
+    """The reviewed draft entries, as stored (read-only)."""
+    state = read_layer(Path(repository_root).resolve(), LAYER)
+    if state.draft is None or not isinstance(state.draft.data, dict):
+        return []
+    pipeline = state.draft.data.get("pipeline") or {}
+    entries = pipeline.get(CAPABILITIES) or []
+    return [dict(item) for item in entries if isinstance(item, dict)]
+
+
+def _write_capabilities(
+    root: Path,
+    entries: list[dict[str, Any]],
+    context: ChangeContext,
+    action: str,
+    write: bool,
+) -> EditResult:
+    state = read_layer(root, LAYER)
+    if state.draft is None:
+        raise LayerError(f"{layer_spec(LAYER).draft} is missing or malformed")
+    return edit_draft(
+        root,
+        LAYER,
+        ops_for(state.draft.data, {f"/pipeline/{CAPABILITIES}": entries}),
+        context,
+        action=action,
+        write=write,
+    )
+
+
+def add_assay_capability(
+    repository_root: str | Path,
+    reference: str | Mapping[str, Any],
+    context: ChangeContext,
+    *,
+    evidence: str,
+    rationale: str,
+    sources: tuple[str, ...] = (),
+    write: bool = True,
+) -> EditResult:
+    """Declare that the workflow can process one assay.
+
+    ``reference`` is a registered code (``polya_rnaseq``), ``entity:<id>`` for
+    an unregistered vocabulary assay, or a mapping checked field by field.
+    Only a person may assert a capability without citing evidence.
+    """
+    root = Path(repository_root).resolve()
+    if evidence not in EVIDENCE:
+        raise LayerError(f"evidence must be one of {', '.join(EVIDENCE)}")
+    if not rationale.strip():
+        raise LayerError("give the reason the pipeline supports this assay")
+    if evidence == "asserted" and context.actor.kind is not ActorKind.HUMAN:
+        raise LayerError(
+            "only a person may assert an assay capability without evidence; "
+            "cite documented or detected evidence, or ask the person"
+        )
+    if evidence != "asserted" and not sources:
+        raise LayerError(f"{evidence} evidence cites where it is shown (path:line)")
+    catalogue = default_catalogue()
+    try:
+        item = catalogue.resolve_reference(reference)
+    except CatalogueError as error:
+        raise LayerError(f"{error.code}: {error}") from error
+    entries = declared_capabilities(root)
+    for existing in entries:
+        try:
+            if catalogue.resolve_reference(existing).key == item.key:
+                raise LayerError(f"{item.key} is already declared")
+        except CatalogueError:
+            continue
+    entry: dict[str, Any] = (
+        {"registered_code": item.registration.code}
+        if item.registration is not None
+        else {"entity_id": item.assay.entity_id}
+    )
+    entry["evidence"] = evidence
+    entry["rationale"] = rationale.strip()
+    if sources:
+        entry["sources"] = list(sources)
+    return _write_capabilities(
+        root, [*entries, entry], context, "add_assay_capability", write
+    )
+
+
+def remove_assay_capability(
+    repository_root: str | Path,
+    reference: str,
+    context: ChangeContext,
+    *,
+    write: bool = True,
+) -> EditResult:
+    """Remove a declared capability by code or ``entity:<id>``."""
+    root = Path(repository_root).resolve()
+    catalogue = default_catalogue()
+    entries = declared_capabilities(root)
+    kept = []
+    for entry in entries:
+        key = entry.get("registered_code") or f"entity:{entry.get('entity_id')}"
+        try:
+            key = catalogue.resolve_reference(entry).key
+        except CatalogueError:
+            pass
+        if key != reference.strip():
+            kept.append(entry)
+    if len(kept) == len(entries):
+        raise LayerError(f"{reference} is not declared")
+    return _write_capabilities(root, kept, context, "remove_assay_capability", write)

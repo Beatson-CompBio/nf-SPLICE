@@ -1,6 +1,7 @@
   ✓ Welcome
   ✓ Repository
   ✓ Identity
+  ✓ Assay capabilities
   ✓ Inputs
   ✓ Outputs
   ✓ Components
@@ -48,7 +49,7 @@ create: splice/README.md
 create: splice/bundle.json
 --- /dev/null
 +++ splice/bundle.json
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,125 @@
 +{
 +  "bundle_format": "splice-pipeline-bundle",
 +  "schema_id": "https://schemas.splice-data.io/workflow-bundle/bundle",
@@ -63,37 +64,49 @@ create: splice/bundle.json
 +    "version": "1.0.0",
 +    "engine": "nextflow",
 +    "description": "Reference pipeline.",
-+    "repository_url": "https://github.com/org/reference"
-+  },
-+  "schemas": {
-+    "https://schemas.splice-data.io/workflow-bundle/bundle": {
-+      "version": "0.3.0",
-+      "path": "bundle.json"
-+    },
-+    "https://schemas.splice-data.io/workflow-bundle/inputs": {
-+      "version": "0.3.0",
-+      "path": "inputs.schema.json"
-+    },
-+    "https://schemas.splice-data.io/workflow-bundle/outputs": {
-+      "version": "0.3.0",
-+      "path": "outputs.schema.json"
-+    },
-+    "https://schemas.splice-data.io/workflow-bundle/components": {
-+      "version": "0.3.0",
-+      "path": "components.json"
-+    },
-+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": {
-+      "version": "0.3.0",
-+      "path": "execution-profiles.json"
-+    }
-+  },
-+  "files": {
-+    "inputs_schema": "inputs.schema.json",
-+    "outputs_catalogue": "outputs.yaml",
-+    "outputs_schema": "outputs.schema.json",
-+    "ro_crate": "ro-crate-metadata.json",
-+    "components": "components.json",
-+    "execution_profiles": "execution-profiles.json"
++    "repository_url": "https://github.com/org/reference",
++    "assay_capabilities": [
++      {
++        "kind": "registered_assay",
++        "registered_code": "polya_rnaseq",
++        "assay": {
++          "entity_id": 232,
++          "entity_type": "ASSAY_METHOD",
++          "label": "poly(A) RNA-seq"
++        },
++        "assay_types": [
++          {
++            "entity_id": 255,
++            "label": "Short-read RNA-seq"
++          }
++        ],
++        "modality_subtypes": [
++          {
++            "entity_id": 39,
++            "label": "Bulk RNA-seq"
++          }
++        ],
++        "modalities": [
++          {
++            "entity_id": 316,
++            "label": "Transcriptomics"
++          }
++        ],
++        "paths": [
++          [
++            232,
++            255,
++            39,
++            316
++          ]
++        ]
++      },
++      {
++        "kind": "registered_assay",
++        "registered_code": "total_rnaseq",
++        "assay": {
++          "entity_id": 312,
++          "entity_type": "ASSAY_METHOD",
 +
 create: splice/components.json
 --- /dev/null

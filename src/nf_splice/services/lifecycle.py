@@ -705,6 +705,82 @@ def _load_json(path: Path, issues: list[BundleIssue], relative: str) -> Any:
         return None
 
 
+def _capability_issues(bundle: Mapping[str, Any]) -> list[BundleIssue]:
+    """Published assay capabilities must be exactly what the vocabulary says.
+
+    Each capability is resolved again from its registered code or entity id
+    and must equal the published classification, so a hand edit or an
+    invented label, type, path or accession cannot pass. A bundle built from
+    another vocabulary snapshot is reported as unverifiable, not as wrong.
+    """
+    from nf_splice.catalogue import CatalogueError, default_catalogue
+
+    where = "splice/bundle.json"
+    pipeline = bundle.get("pipeline")
+    if not isinstance(pipeline, dict):
+        return []
+    found: list[BundleIssue] = []
+    if "modality" in pipeline:
+        found.append(
+            BundleIssue(
+                where,
+                "legacy_modality",
+                "pipeline.modality (free text) was replaced by typed "
+                "assay_capabilities and is not converted automatically; declare "
+                "the supported assays with "
+                "`nf-splice configure bundle --add-assay CODE` and rebuild",
+            )
+        )
+    capabilities = pipeline.get("assay_capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        return found
+    catalogue = default_catalogue()
+    vocabulary = bundle.get("assay_vocabulary")
+    if (
+        not isinstance(vocabulary, dict)
+        or vocabulary.get("digest") != catalogue.provenance.digest
+    ):
+        snapshot = (
+            (vocabulary or {}).get("snapshot") if isinstance(vocabulary, dict) else None
+        )
+        found.append(
+            BundleIssue(
+                where,
+                "unverified_vocabulary",
+                "assay capabilities were classified with vocabulary snapshot "
+                f"{snapshot!r}; this nf-splice has "
+                f"{catalogue.provenance.snapshot_id!r} and cannot verify them",
+                Severity.WARNING,
+            )
+        )
+        return found
+    for index, published in enumerate(capabilities):
+        if not isinstance(published, dict):
+            continue
+        reference = (
+            {"registered_code": published["registered_code"]}
+            if "registered_code" in published
+            else {"entity_id": (published.get("assay") or {}).get("entity_id")}
+        )
+        try:
+            expected = catalogue.resolve_reference(reference).to_json()
+        except CatalogueError as error:
+            found.append(
+                BundleIssue(where, "assay_capability", f"entry {index + 1}: {error}")
+            )
+            continue
+        if expected != published:
+            found.append(
+                BundleIssue(
+                    where,
+                    "assay_capability",
+                    f"entry {index + 1} differs from the vocabulary classification "
+                    "of its assay; rebuild the bundle",
+                )
+            )
+    return found
+
+
 def validate_bundle(repository_root: str | Path) -> BundleReport:
     """Validate published files, cross-file identity and the lock (read-only)."""
     root = Path(repository_root).resolve()
@@ -743,6 +819,7 @@ def validate_bundle(repository_root: str | Path) -> BundleReport:
             )
         )
     pipeline = bundle.get("pipeline") or {}
+    issues.extend(_capability_issues(bundle))
     reference = {key: pipeline.get(key) for key in ("id", "name", "version", "engine")}
     checked = 1
     files = bundle.get("files") or {}

@@ -21,6 +21,7 @@ from nf_splice.agents.stages import Stage
 
 NAMES = (
     "nf-splice-agent-operations",
+    "nf-splice-assay-capabilities",
     "nf-splice-authoring",
     "nf-splice-output-discovery",
     "nf-splice-validation",
@@ -72,6 +73,8 @@ def load(name: str) -> Skill:
 def skills_for(purpose: str, stage: Stage | None) -> tuple[Skill, ...]:
     """The skills a turn needs: operations and authoring always, plus specifics."""
     names = ["nf-splice-agent-operations", "nf-splice-authoring"]
+    if stage is Stage.IDENTITY or purpose == "help":
+        names.append("nf-splice-assay-capabilities")
     if stage is Stage.OUTPUTS or purpose == "help":
         names.append("nf-splice-output-discovery")
     if stage in {Stage.VALIDATE, Stage.BUILD, Stage.VERIFY} or purpose == "help":

@@ -120,6 +120,11 @@ preview_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(preview_app, name="preview")
+catalogue_app = typer.Typer(
+    help="Browse the SPLICE assay and modality vocabulary (offline snapshot).",
+    no_args_is_help=True,
+)
+app.add_typer(catalogue_app, name="catalogue")
 provider_app = typer.Typer(
     help="Choose, sign in to, diagnose and test AI providers.",
     no_args_is_help=True,
@@ -425,6 +430,37 @@ def _configure_identity(
     _finish(repository, "bundle", "Identity draft saved")
 
 
+def _configure_assays(
+    repository: Path,
+    add: list[str],
+    remove: list[str],
+    evidence: str,
+    rationale: str | None,
+    sources: tuple[str, ...],
+) -> None:
+    from nf_splice.layers.bundle import add_assay_capability, remove_assay_capability
+
+    if add and not rationale:
+        raise typer.BadParameter(
+            "--assay-rationale is required with --add-assay: say why the pipeline "
+            "supports the assay"
+        )
+    for reference in remove:
+        _run(partial(remove_assay_capability, repository, reference, _context()))
+    for reference in add:
+        _run(
+            partial(
+                add_assay_capability,
+                repository,
+                reference,
+                _context(),
+                evidence=evidence,
+                rationale=str(rationale),
+                sources=sources,
+            )
+        )
+
+
 def _access_for(value: str) -> list[str]:
     return [
         item.strip()
@@ -700,15 +736,53 @@ def configure_command(
     reimport: bool = typer.Option(
         False, help="Inputs: apply a conflict-free nextflow_schema.json re-import."
     ),
+    add_assay: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--add-assay",
+            help="Identity: declare an assay the pipeline can process, by "
+            "registered code (polya_rnaseq) or entity:<id>. Repeatable.",
+        ),
+    ] = None,
+    remove_assay: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--remove-assay", help="Identity: remove a declared assay. Repeatable."
+        ),
+    ] = None,
+    assay_evidence: str = typer.Option(
+        "asserted",
+        help="Identity: why the assays are declared: asserted (your statement), "
+        "documented or detected (cite --assay-source).",
+    ),
+    assay_rationale: str | None = typer.Option(
+        None, help="Identity: the reason the pipeline supports the added assays."
+    ),
+    assay_source: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--assay-source", help="Identity: evidence location path:line. Repeatable."
+        ),
+    ] = None,
 ) -> None:
     """Review one layer by targeted, attributed edits to its draft."""
     name = _run(lambda: layer_spec("bundle" if layer == "identity" else layer).name)
     assignments = _assignments(set_field)
     if name == "bundle":
+        _configure_assays(
+            repository,
+            list(add_assay or []),
+            list(remove_assay or []),
+            assay_evidence,
+            assay_rationale,
+            tuple(assay_source or []),
+        )
         _configure_identity(
             repository, assignments, accept_detected, approve_maintainer_publication
         )
         return
+    if add_assay or remove_assay:
+        raise typer.BadParameter("--add-assay and --remove-assay apply to identity")
     if name == "inputs":
         _configure_inputs(
             repository, assignments, _assignments(visibility), decision_file, reimport
@@ -2689,6 +2763,282 @@ def skills_export_command(
 
     for path in skills.export(destination):
         typer.echo(f"wrote: {path}")
+
+
+# ---------------------------------------------------------------- catalogue
+
+
+def _badge(entity_type: str) -> str:
+    return f"[{entity_type}]"
+
+
+def _path_text(path: Any) -> str:
+    return " > ".join(f"{item.label} {_badge(item.entity_type.value)}" for item in path)
+
+
+def _catalogue_run(action: Callable[[], T]) -> T:
+    from nf_splice.catalogue import CatalogueError
+
+    try:
+        return action()
+    except CatalogueError as error:
+        typer.echo(f"{error.code}: {error}", err=True)
+        raise typer.Exit(code=2) from error
+
+
+@catalogue_app.command("info")
+def catalogue_info_command(json_output: JsonOption = False) -> None:
+    """Which vocabulary snapshot this nf-splice carries, and its provenance."""
+    from nf_splice.catalogue import default_catalogue
+
+    catalogue = default_catalogue()
+    document = catalogue.provenance.to_json() | {
+        "counts": {
+            "entities": len(catalogue.entities()),
+            "relationships": len(catalogue.snapshot.relationships),
+            "registrations": len(catalogue.registrations()),
+        }
+    }
+    if json_output:
+        typer.echo(dumps(document))
+        return
+    typer.echo(f"{document['name']}, snapshot {document['snapshot']}")
+    typer.echo(f"  origin: {document['origin']}")
+    typer.echo(f"  digest: {document['digest']}")
+    counts = document["counts"]
+    typer.echo(
+        f"  {counts['entities']} entities, {counts['relationships']} relationships, "
+        f"{counts['registrations']} registered assays"
+    )
+
+
+@catalogue_app.command("modalities")
+def catalogue_modalities_command(json_output: JsonOption = False) -> None:
+    """List the top-level modalities and their subtypes."""
+    from nf_splice.catalogue import EntityType, default_catalogue
+
+    catalogue = default_catalogue()
+    rows = []
+    for modality in catalogue.entities(EntityType.MODALITY):
+        subtypes = [
+            item.reference()
+            for item in catalogue.children(modality.entity_id)
+            if item.entity_type is EntityType.MODALITY_SUBTYPE
+        ]
+        assays = [item.key for item in catalogue.assays(modality.entity_id)]
+        rows.append(
+            modality.reference(with_type=True)
+            | {"subtypes": subtypes, "registered_assays": assays}
+        )
+    if json_output:
+        typer.echo(dumps({"modalities": rows}))
+        return
+    for row in rows:
+        typer.echo(f"{row['label']} {_badge('MODALITY')} (entity {row['entity_id']})")
+        for subtype in row["subtypes"]:
+            typer.echo(f"  {subtype['label']} {_badge('MODALITY_SUBTYPE')}")
+        if row["registered_assays"]:
+            typer.echo(f"  registered assays: {', '.join(row['registered_assays'])}")
+
+
+@catalogue_app.command("assays")
+def catalogue_assays_command(
+    modality: str | None = typer.Option(
+        None, help="Only assays under this modality (label or entity id)."
+    ),
+    all_vocabulary: bool = typer.Option(
+        False,
+        "--all-vocabulary",
+        help="Include assay concepts that have no platform registration.",
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """List assays a pipeline can declare, with type, modalities and paths."""
+    from nf_splice.catalogue import default_catalogue
+
+    catalogue = default_catalogue()
+    found = _catalogue_run(
+        lambda: catalogue.assays(modality, registered_only=not all_vocabulary)
+    )
+    if json_output:
+        typer.echo(
+            dumps(
+                {
+                    "assays": [
+                        item.to_json()
+                        | (
+                            {"deployment_current": item.registration.current}
+                            if item.registration
+                            else {}
+                        )
+                        for item in found
+                    ],
+                    "note": "deployment_current is the snapshot's deployment flag; "
+                    "it does not limit what a pipeline may declare",
+                }
+            )
+        )
+        return
+    for item in found:
+        current = ""
+        if item.registration is not None:
+            current = (
+                "  (ingested by the snapshot's deployment)"
+                if item.registration.current
+                else ""
+            )
+        modalities = ", ".join(path[-1].label for path in item.paths)
+        typer.echo(
+            f"{item.key:<16} {item.assay.label} "
+            f"{_badge(item.assay.entity_type.value)} -> {modalities}{current}"
+        )
+
+
+@catalogue_app.command("show")
+def catalogue_show_command(
+    reference: Annotated[
+        str, typer.Argument(help="Registered code, entity:<id>, or an exact name.")
+    ],
+    json_output: JsonOption = False,
+) -> None:
+    """Show one entity: type, description, registrations and every path."""
+    from nf_splice.catalogue import CatalogueError, default_catalogue
+
+    catalogue = default_catalogue()
+
+    def find() -> Any:
+        try:
+            if reference.startswith("entity:"):
+                return catalogue.entity(int(reference.removeprefix("entity:")))
+            return catalogue.entity(
+                int(catalogue.registration(reference).entity_id or 0)
+            )
+        except (CatalogueError, ValueError):
+            return catalogue.by_name(reference)
+
+    entity = _catalogue_run(find)
+    registrations = catalogue.registrations_for(entity.entity_id)
+    paths = (
+        catalogue.paths(entity.entity_id) if entity.entity_type.value != "root" else ()
+    )
+    document = entity.reference(with_type=True) | {
+        "description": entity.description,
+        "aliases": list(entity.aliases),
+        "concept_status": entity.concept_status,
+        "implementation_status": entity.implementation_status,
+        "registrations": [
+            {
+                "registered_code": item.code,
+                "source_modality_id": item.modality_id,
+                "deployment_current": item.current,
+            }
+            for item in registrations
+        ],
+        "parents": [
+            item.reference(with_type=True)
+            for item in catalogue.parents(entity.entity_id)
+        ],
+        "paths": [[item.reference(with_type=True) for item in path] for path in paths],
+    }
+    if json_output:
+        typer.echo(dumps(document))
+        return
+    typer.echo(
+        f"{entity.label} {_badge(entity.entity_type.value)} (entity {entity.entity_id})"
+    )
+    if entity.description:
+        typer.echo(f"  {entity.description}")
+    if entity.aliases:
+        typer.echo(f"  aliases: {', '.join(entity.aliases)}")
+    for item in registrations:
+        typer.echo(
+            f"  registered as {item.code} (source modality_id {item.modality_id}; "
+            f"current in the snapshot's deployment: {'yes' if item.current else 'no'})"
+        )
+    for path in paths:
+        typer.echo(f"  path: {_path_text(path)}")
+
+
+@catalogue_app.command("search")
+def catalogue_search_command(
+    text: Annotated[str, typer.Argument(help="Label, alias, code or entity id.")],
+    json_output: JsonOption = False,
+) -> None:
+    """Search labels, aliases, registered codes and ids."""
+    from nf_splice.catalogue import default_catalogue
+
+    hits = default_catalogue().search(text)
+    if json_output:
+        typer.echo(dumps({"results": [item.to_json() for item in hits]}))
+        return
+    if not hits:
+        typer.echo(f"nothing matches {text!r}")
+    for hit in hits:
+        codes = ", ".join(item.code for item in hit.registrations)
+        typer.echo(
+            f"{hit.entity.label} {_badge(hit.entity.entity_type.value)} "
+            f"(entity {hit.entity.entity_id}"
+            + (f"; registered as {codes}" if codes else "")
+            + f"; matched {', '.join(hit.matched)})"
+        )
+
+
+@catalogue_app.command("candidates")
+def catalogue_candidates_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Assays the repository names explicitly, with locations (read-only)."""
+    from nf_splice.inspectors.assays import detect_assay_candidates
+
+    found = detect_assay_candidates(repository)
+    if json_output:
+        typer.echo(dumps({"candidates": [item.to_json() for item in found]}))
+        return
+    if not found:
+        typer.echo(
+            "No assay is named in the repository. Declare supported assays with "
+            "`nf-splice configure bundle --add-assay CODE`."
+        )
+    for item in found:
+        typer.echo(
+            f"{item.key}: {item.label} [{item.entity_type}] named as "
+            f"{item.term!r} at {', '.join(item.locations[:5])}"
+        )
+
+
+@catalogue_app.command("compare")
+def catalogue_compare_command(
+    api: str = typer.Option(..., help="Base URL of a SPLICE platform API."),
+    json_output: JsonOption = False,
+) -> None:
+    """Compare a live platform vocabulary with this nf-splice's pinned snapshot."""
+    from nf_splice.agents.providers.http import request_json
+    from nf_splice.catalogue import ApiVocabularySource, compare, packaged_snapshot
+
+    def fetch(url: str) -> Any:
+        found = request_json("GET", url, vendor="SPLICE platform API")
+        return found.get("data", found) if set(found) == {"data"} else found
+
+    live = _catalogue_run(lambda: ApiVocabularySource(api, fetch).load())
+    result = compare(packaged_snapshot(), live)
+    document = {
+        "pinned": packaged_snapshot().provenance.to_json(),
+        "live_digest": live.provenance.digest,
+        "conflicts": list(result.conflicts),
+        "additions": list(result.additions),
+    }
+    if json_output:
+        typer.echo(dumps(document))
+    else:
+        typer.echo(
+            f"{len(result.conflicts)} conflict(s), {len(result.additions)} addition(s)"
+        )
+        for line in result.conflicts:
+            typer.echo(f"  conflict: {line}")
+        for line in result.additions:
+            typer.echo(f"  new: {line}")
+    if result.conflicts:
+        raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------- providers

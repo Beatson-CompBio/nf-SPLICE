@@ -1,0 +1,679 @@
+{
+  "format": "nf-splice-assay-vocabulary/1",
+  "snapshot": {
+    "id": "splice-sprint-2026-10-14",
+    "name": "SPLICE modality vocabulary",
+    "origin": "SPLICE sprint archive SPLICE.zip: splice-lib/src/splice_lib/repositories/seed_data (files dated 14 October 2026)",
+    "digest": "sha256:011bdba0b29765d91b70ea5c0bf7912c8f704f14593157a16ff8d69d9f321e93",
+    "source_files": {
+      "modality_entities.csv": "b8e36349489c2f44463af7daa39894fe11823eb0fb741f75c633ec002860f76e",
+      "modality_relationships.csv": "83296c307e323b35e6827f8b5bee93c6e9cb503d7ebd4f9446ea55a581d1b8c0",
+      "Modalities.csv": "1e12318a89b7f89579dff871b4976b35a3cf9160f920f5abbc44058934ef14d4"
+    },
+    "counts": {
+      "entities": 34,
+      "relationships": 34,
+      "registrations": 14
+    }
+  },
+  "entities": [
+    {
+      "entity_id": 1,
+      "label": "10x Chromium 3-prime GEX",
+      "entity_type": "ASSAY_METHOD",
+      "description": "10x Genomics Chromium single-cell gene expression assay that captures and sequences transcript ends near the 3' poly(A) tail.",
+      "aliases": [
+        "10x Chromium 3' GEX"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 2,
+      "label": "10x Chromium 5-prime GEX",
+      "entity_type": "ASSAY_METHOD",
+      "description": "10x Genomics Chromium single-cell gene expression assay that captures transcript information from the 5' end of RNA molecules.",
+      "aliases": [
+        "10x Chromium 5' GEX"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 11,
+      "label": "Xenium RNA",
+      "entity_type": "ASSAY_METHOD",
+      "description": "10x Genomics Xenium assay for imaging-based, spatially resolved detection and quantification of targeted RNA transcripts in tissue.",
+      "aliases": [
+        "10x Xenium In Situ",
+        "Xenium RNA"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 29,
+      "label": "Behaviour",
+      "entity_type": "MODALITY",
+      "description": "Data describing observable behavioural traits or activities, typically captured through structured observation, sensors, or automated monitoring.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 37,
+      "label": "CosMx RNA",
+      "entity_type": "ASSAY_METHOD",
+      "description": "NanoString CosMx Spatial Molecular Imager assay for highly multiplexed, imaging-based spatial detection of RNA at cellular and subcellular resolution.",
+      "aliases": [
+        "Bruker CosMx SMI RNA",
+        "CosMx RNA"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 38,
+      "label": "ATAC-seq",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Assay for Transposase-Accessible Chromatin using sequencing, used to identify open and accessible regions of chromatin.",
+      "aliases": [
+        "ATAC-seq"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 39,
+      "label": "Bulk RNA-seq",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "RNA sequencing performed on a mixed population of cells, producing an aggregate transcriptomic profile for the sample.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 41,
+      "label": "Cage monitoring",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Continuous or repeated measurement of animal activity and behaviour within the home-cage environment.",
+      "aliases": [
+        "Cage monitoring"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 52,
+      "label": "Chromatin accessibility",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Measurements of how accessible genomic regions are to regulatory proteins, providing information about chromatin state and gene regulation.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 71,
+      "label": "Data modality",
+      "entity_type": "root",
+      "description": "Root of the primary SPLICE navigation hierarchy for biological, molecular, phenotypic and physiological data modalities.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 79,
+      "label": "DNA methylation",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Measurements of methyl groups attached to DNA, commonly used to study epigenetic regulation and cell-state-associated genomic patterns.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 100,
+      "label": "Epigenomics",
+      "entity_type": "MODALITY",
+      "description": "Data describing regulatory features of the genome that do not alter the DNA sequence, including chromatin accessibility and DNA methylation.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 123,
+      "label": "H&E WSI",
+      "entity_type": "ASSAY_METHOD",
+      "description": "Whole-slide imaging of tissue stained with haematoxylin and eosin, providing contrast between nuclei and surrounding tissue structures.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 129,
+      "label": "Histopathology imaging",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Imaging of stained tissue sections used to assess tissue morphology, architecture, and pathological features.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 136,
+      "label": "Imaging",
+      "entity_type": "MODALITY",
+      "description": "Data generated by visual imaging technologies that capture tissue, cellular, molecular, or anatomical structure and spatial organisation.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 138,
+      "label": "Imaging-based spatial transcriptomics",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Spatial transcriptomics methods that directly image RNA molecules or transcript-derived signals within intact cells or tissue.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 179,
+      "label": "Microbiome",
+      "entity_type": "MODALITY",
+      "description": "Data describing microbial communities, their composition, genetic content, and functional potential within a biological or environmental sample.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 232,
+      "label": "poly(A) RNA-seq",
+      "entity_type": "ASSAY_METHOD",
+      "description": "RNA sequencing in which polyadenylated RNA is enriched, primarily capturing mature messenger RNA transcripts.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 238,
+      "label": "RRBS",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Reduced-representation bisulfite sequencing enriches CpG-rich genomic regions to profile DNA methylation at lower sequencing cost than whole-genome approaches.",
+      "aliases": [
+        "RRBS"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 255,
+      "label": "Short-read RNA-seq",
+      "entity_type": "ASSAY_TYPE",
+      "description": "RNA sequencing using short sequencing reads to quantify transcripts and characterise gene expression in a sample.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 259,
+      "label": "Shotgun metagenomics",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Untargeted sequencing of total microbial DNA in a sample to characterise community composition, genes, and functional potential.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 262,
+      "label": "scRNA-seq",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Single-cell RNA sequencing measures transcript abundance independently across individual cells to characterise cellular composition and state.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 272,
+      "label": "SMART-seq",
+      "entity_type": "ASSAY_METHOD",
+      "description": "Full-length single-cell RNA sequencing approach based on template switching during reverse transcription to generate transcriptome-wide cDNA.",
+      "aliases": [
+        "SMART-seq",
+        "SMART-seq2",
+        "SMART-seq3"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 278,
+      "label": "Spatial molecular imaging",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Imaging approaches that measure molecular features while preserving their spatial location within cells or tissue.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 280,
+      "label": "Spatial transcriptomics",
+      "entity_type": "MODALITY_SUBTYPE",
+      "description": "Transcriptomic measurements in which RNA abundance is associated with spatial coordinates within a tissue or other biological structure.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 312,
+      "label": "Total RNA-seq",
+      "entity_type": "ASSAY_METHOD",
+      "description": "RNA sequencing designed to profile a broad range of RNA species rather than selectively enriching polyadenylated transcripts.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 316,
+      "label": "Transcriptomics",
+      "entity_type": "MODALITY",
+      "description": "Data describing RNA abundance, composition, and expression patterns across bulk tissue, single cells, or spatially resolved samples.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 327,
+      "label": "Video cage monitoring",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Home-cage behavioural monitoring using video to quantify movement, activity, interactions, or other observable behaviours.",
+      "aliases": [
+        "Video cage monitoring"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 335,
+      "label": "WGBS",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Whole-genome bisulfite sequencing measures DNA methylation at near single-base resolution across most of the genome.",
+      "aliases": [
+        "WGBS"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 340,
+      "label": "WSI",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Whole-slide imaging digitises an entire microscope slide at high resolution to produce a navigable digital pathology image.",
+      "aliases": [
+        "WSI"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 341,
+      "label": "Droplet-based scRNA-seq",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Single-cell RNA sequencing in which individual cells are partitioned into droplets with barcoded reagents for high-throughput transcript profiling.",
+      "aliases": [
+        "Droplet-based scRNA-seq"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 342,
+      "label": "Full-length / plate-based scRNA-seq",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Single-cell RNA sequencing methods that isolate cells individually, commonly in plates, and capture substantially more of each transcript sequence.",
+      "aliases": [
+        "Full-length / plate-based scRNA-seq"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 343,
+      "label": "Targeted BS-seq",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Targeted bisulfite sequencing measures DNA methylation within selected genomic regions of interest.",
+      "aliases": [
+        "Targeted BS-seq"
+      ],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    },
+    {
+      "entity_id": 345,
+      "label": "Short-read shotgun metagenomics",
+      "entity_type": "ASSAY_TYPE",
+      "description": "Untargeted shotgun metagenomic sequencing using short sequencing reads to characterise microbial community composition, genes, and functional potential.",
+      "aliases": [],
+      "concept_status": "active",
+      "implementation_status": "reserved"
+    }
+  ],
+  "relationships": [
+    {
+      "id": 1,
+      "child_entity_id": 136,
+      "ancestor_entity_id": 71,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 2,
+      "child_entity_id": 129,
+      "ancestor_entity_id": 136,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 6,
+      "child_entity_id": 278,
+      "ancestor_entity_id": 136,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 8,
+      "child_entity_id": 316,
+      "ancestor_entity_id": 71,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 9,
+      "child_entity_id": 39,
+      "ancestor_entity_id": 316,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 10,
+      "child_entity_id": 255,
+      "ancestor_entity_id": 39,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 12,
+      "child_entity_id": 312,
+      "ancestor_entity_id": 255,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 13,
+      "child_entity_id": 262,
+      "ancestor_entity_id": 316,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 15,
+      "child_entity_id": 1,
+      "ancestor_entity_id": 341,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 16,
+      "child_entity_id": 280,
+      "ancestor_entity_id": 316,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 18,
+      "child_entity_id": 138,
+      "ancestor_entity_id": 280,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 19,
+      "child_entity_id": 138,
+      "ancestor_entity_id": 278,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 20,
+      "child_entity_id": 11,
+      "ancestor_entity_id": 138,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 24,
+      "child_entity_id": 232,
+      "ancestor_entity_id": 255,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 25,
+      "child_entity_id": 179,
+      "ancestor_entity_id": 71,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 26,
+      "child_entity_id": 259,
+      "ancestor_entity_id": 179,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 39,
+      "child_entity_id": 2,
+      "ancestor_entity_id": 341,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 40,
+      "child_entity_id": 272,
+      "ancestor_entity_id": 342,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 58,
+      "child_entity_id": 37,
+      "ancestor_entity_id": 138,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 95,
+      "child_entity_id": 340,
+      "ancestor_entity_id": 129,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 96,
+      "child_entity_id": 123,
+      "ancestor_entity_id": 340,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 97,
+      "child_entity_id": 341,
+      "ancestor_entity_id": 262,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 98,
+      "child_entity_id": 342,
+      "ancestor_entity_id": 262,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 101,
+      "child_entity_id": 100,
+      "ancestor_entity_id": 71,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 102,
+      "child_entity_id": 52,
+      "ancestor_entity_id": 100,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 103,
+      "child_entity_id": 38,
+      "ancestor_entity_id": 52,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 105,
+      "child_entity_id": 79,
+      "ancestor_entity_id": 100,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 106,
+      "child_entity_id": 335,
+      "ancestor_entity_id": 79,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 107,
+      "child_entity_id": 238,
+      "ancestor_entity_id": 79,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 108,
+      "child_entity_id": 343,
+      "ancestor_entity_id": 79,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 111,
+      "child_entity_id": 29,
+      "ancestor_entity_id": 71,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 112,
+      "child_entity_id": 41,
+      "ancestor_entity_id": 29,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 113,
+      "child_entity_id": 327,
+      "ancestor_entity_id": 41,
+      "navigation": "modality_tree"
+    },
+    {
+      "id": 114,
+      "child_entity_id": 345,
+      "ancestor_entity_id": 259,
+      "navigation": "modality_tree"
+    }
+  ],
+  "registrations": [
+    {
+      "modality_id": 3,
+      "modality_name": "scrna_10x_3p",
+      "entity_id": 1,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 8,
+      "modality_name": "xenium_rna",
+      "entity_id": 11,
+      "current": false,
+      "schema_version_splice": "0",
+      "schema_version_ext": "0.0.1"
+    },
+    {
+      "modality_id": 9,
+      "modality_name": "polya_rnaseq",
+      "entity_id": 232,
+      "current": true,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 11,
+      "modality_name": "total_rnaseq",
+      "entity_id": 312,
+      "current": true,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 15,
+      "modality_name": "scrna_10x_5p",
+      "entity_id": 2,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 16,
+      "modality_name": "smartseq",
+      "entity_id": 272,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 23,
+      "modality_name": "cosmx_rna",
+      "entity_id": 37,
+      "current": false,
+      "schema_version_splice": "0",
+      "schema_version_ext": "0.0.1"
+    },
+    {
+      "modality_id": 40,
+      "modality_name": "he_wsi",
+      "entity_id": 123,
+      "current": false,
+      "schema_version_splice": "0",
+      "schema_version_ext": "0.0.1"
+    },
+    {
+      "modality_id": 41,
+      "modality_name": "atacseq",
+      "entity_id": 38,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 42,
+      "modality_name": "wgbs",
+      "entity_id": 335,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 43,
+      "modality_name": "rrbs",
+      "entity_id": 238,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 44,
+      "modality_name": "targeted_bsseq",
+      "entity_id": 343,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 45,
+      "modality_name": "sr_shotgun_mgx",
+      "entity_id": 345,
+      "current": false,
+      "schema_version_splice": "1",
+      "schema_version_ext": "2.1.0"
+    },
+    {
+      "modality_id": 46,
+      "modality_name": "video_cage_mon",
+      "entity_id": 327,
+      "current": false,
+      "schema_version_splice": "0",
+      "schema_version_ext": "0.0.1"
+    }
+  ]
+}

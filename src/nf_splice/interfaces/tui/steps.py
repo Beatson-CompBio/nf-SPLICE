@@ -66,6 +66,14 @@ STEPS: tuple[Step, ...] = (
         "Confirm or edit pipeline identity, authors, funders and citation.",
     ),
     Step(
+        "assays",
+        "Assay capabilities",
+        "bundle",
+        ("identity",),
+        _layer_ready("bundle"),
+        "Declare every assay the pipeline can process; see each one's modalities.",
+    ),
+    Step(
         "inputs",
         "Inputs",
         "inputs",

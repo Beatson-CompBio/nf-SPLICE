@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from nf_splice.interfaces.tui.screens.assays import AssaysView
 from nf_splice.interfaces.tui.screens.build import BuildView
 from nf_splice.interfaces.tui.screens.components import ComponentsView
 from nf_splice.interfaces.tui.screens.done import DoneView
@@ -22,6 +23,7 @@ VIEWS: dict[str, type[StepView]] = {
         WelcomeView,
         RepositoryView,
         IdentityView,
+        AssaysView,
         InputsView,
         OutputsView,
         ComponentsView,

@@ -450,6 +450,73 @@ def _initialise(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _search_assays(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.catalogue import default_catalogue
+
+    catalogue = default_catalogue()
+    return {
+        "success": True,
+        "vocabulary": catalogue.provenance.reference(),
+        "results": [item.to_json() for item in catalogue.search(str(a["text"]))][:40],
+    }
+
+
+def _show_assay(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.catalogue import CatalogueError, default_catalogue
+
+    catalogue = default_catalogue()
+    try:
+        resolved = catalogue.resolve_reference(str(a["reference"]))
+    except CatalogueError as error:
+        return {"success": False, "error": error.to_json()}
+    registration = resolved.registration
+    return {
+        "success": True,
+        "capability": resolved.to_json(),
+        "description": resolved.assay.description,
+        "deployment_current": registration.current if registration else None,
+        "note": "deployment_current is one deployment's ingestion support; it does "
+        "not limit what a pipeline may declare",
+    }
+
+
+def _assay_candidates(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.inspectors.assays import detect_assay_candidates
+    from nf_splice.layers.bundle import declared_capabilities
+
+    return _untrusted(
+        {
+            "declared": declared_capabilities(ctx.root),
+            "candidates": [
+                item.to_json() for item in detect_assay_candidates(ctx.root)
+            ],
+            "rule": "a candidate is a mention, not proof; FASTQ input alone never "
+            "establishes a library preparation",
+        }
+    )
+
+
+def _add_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.layers.bundle import add_assay_capability
+
+    return _edit(
+        add_assay_capability(
+            ctx.root,
+            str(a["reference"]),
+            ctx.change,
+            evidence=str(a["evidence"]),
+            rationale=str(a["rationale"]),
+            sources=tuple(str(item) for item in a.get("sources") or ()),
+        )
+    )
+
+
+def _remove_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.layers.bundle import remove_assay_capability
+
+    return _edit(remove_assay_capability(ctx.root, str(a["reference"]), ctx.change))
+
+
 def _set_identity(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     changes = dict(a["changes"])
     forbidden = sorted(set(changes) & _HUMAN_ONLY_IDENTITY)
@@ -656,6 +723,16 @@ def _provenance(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _patch(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    layer = layer_spec(str(a["layer"])).name
+    for operation in a["operations"]:
+        path = str(dict(operation).get("path", ""))
+        if layer == "bundle" and path.startswith(
+            ("/pipeline/assay_capabilities", "/pipeline/modality")
+        ):
+            raise PolicyViolation(
+                "assay capabilities change only through add_assay_capability and "
+                "remove_assay_capability, which check them against the vocabulary"
+            )
     return _edit(
         apply_patch(
             ctx.root,
@@ -899,6 +976,60 @@ OPERATIONS: dict[str, Operation] = {
             _D,
             "draft",
             _initialise,
+        ),
+        Operation(
+            "search_assay_catalogue",
+            "Search the SPLICE assay and modality vocabulary by label, alias, "
+            "registered code or entity id. Shows exact entity types and every path.",
+            _obj({"text": {"type": "string", "minLength": 1}}, ["text"]),
+            _R,
+            "read",
+            _search_assays,
+        ),
+        Operation(
+            "show_assay",
+            "Resolve one assay (registered code such as polya_rnaseq, or "
+            "entity:<id>) to its type, assay types, modality subtypes, modalities "
+            "and every path.",
+            _obj({"reference": {"type": "string", "minLength": 1}}, ["reference"]),
+            _R,
+            "read",
+            _show_assay,
+        ),
+        Operation(
+            "list_assay_candidates",
+            "Assays the repository names explicitly, with locations, and the "
+            "capabilities already declared. Mentions are candidates, not proof.",
+            _obj(),
+            _R,
+            "read",
+            _assay_candidates,
+        ),
+        Operation(
+            "add_assay_capability",
+            "Declare an assay the pipeline can process, by registered code or "
+            "entity:<id>, citing documented or detected evidence (path:line). "
+            "Only a person may assert a capability without evidence.",
+            _obj(
+                {
+                    "reference": {"type": "string", "minLength": 1},
+                    "evidence": {"enum": ["documented", "detected"]},
+                    "rationale": {"type": "string", "minLength": 1},
+                    "sources": {**_STRINGS, "minItems": 1},
+                },
+                ["reference", "evidence", "rationale", "sources"],
+            ),
+            _D,
+            "draft",
+            _add_assay,
+        ),
+        Operation(
+            "remove_assay_capability",
+            "Remove a declared assay capability by registered code or entity:<id>.",
+            _obj({"reference": {"type": "string", "minLength": 1}}, ["reference"]),
+            _D,
+            "draft",
+            _remove_assay,
         ),
         Operation(
             "set_identity",
