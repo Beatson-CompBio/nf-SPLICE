@@ -6,7 +6,7 @@
   },
   "repository": {
     "url": "https://github.com/org/multiroute",
-    "revision": "4c7364b4e43c161df6f95405a8d617fd9045be8d"
+    "revision": null
   },
   "contracts": {
     "https://schemas.splice-data.io/workflow-bundle/bundle": "0.3.0",

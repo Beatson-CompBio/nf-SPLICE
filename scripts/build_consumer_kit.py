@@ -20,6 +20,7 @@ The written skills and AGENTS.md are maintained by hand; the drift tests in
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -57,6 +58,24 @@ def _contract_files() -> dict[str, bytes]:
 
 def _example_files() -> dict[str, bytes]:
     sys.path.insert(0, str(ROOT / "tests"))
+    found: dict[str, bytes] = {}
+    with tempfile.TemporaryDirectory(prefix="nf-splice-kit-") as folder:
+        # The example is not a Git repository. Without a ceiling, a temporary
+        # folder inside a clone would let Git report the clone's own commit as
+        # the example's revision, so the output would depend on the machine.
+        previous = os.environ.get("GIT_CEILING_DIRECTORIES")
+        os.environ["GIT_CEILING_DIRECTORIES"] = folder
+        try:
+            found |= _build_example(Path(folder))
+        finally:
+            if previous is None:
+                os.environ.pop("GIT_CEILING_DIRECTORIES", None)
+            else:
+                os.environ["GIT_CEILING_DIRECTORIES"] = previous
+    return found
+
+
+def _build_example(folder: Path) -> dict[str, bytes]:
     from multi_route import EXAMPLE, author_all, build, copy_fixture
     from nf_splice.runtime.analysis_output import (
         generate_analysis_output,
@@ -64,29 +83,28 @@ def _example_files() -> dict[str, bytes]:
     )
 
     found: dict[str, bytes] = {}
-    with tempfile.TemporaryDirectory(prefix="nf-splice-kit-") as folder:
-        root = copy_fixture(Path(folder))
-        author_all(root)
-        build(root)
-        bundle = root / "splice"
-        for path in sorted(bundle.rglob("*")):
-            if path.is_file():
-                key = f"examples/bundle/{path.relative_to(bundle).as_posix()}"
-                found[key] = path.read_bytes()
-        result = generate_analysis_output(
-            root,
-            publish_directory=EXAMPLE,
-            job_metadata=JOB,
-            checksum_algorithm="sha256",
-        )
-        document = dict(result.document)
-        document["publish_directory"] = PUBLISH_DIRECTORY
-        content = (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode()
-        written = Path(folder) / "analysis_output.json"
-        written.write_bytes(content)
-        report = load_and_validate_analysis_output(root, written)
-        assert report.valid, report
-        found["examples/analysis_output.json"] = content
+    root = copy_fixture(folder)
+    author_all(root)
+    build(root)
+    bundle = root / "splice"
+    for path in sorted(bundle.rglob("*")):
+        if path.is_file():
+            key = f"examples/bundle/{path.relative_to(bundle).as_posix()}"
+            found[key] = path.read_bytes()
+    result = generate_analysis_output(
+        root,
+        publish_directory=EXAMPLE,
+        job_metadata=JOB,
+        checksum_algorithm="sha256",
+    )
+    document = dict(result.document)
+    document["publish_directory"] = PUBLISH_DIRECTORY
+    content = (json.dumps(document, indent=2, ensure_ascii=False) + "\n").encode()
+    written = folder / "analysis_output.json"
+    written.write_bytes(content)
+    report = load_and_validate_analysis_output(root, written)
+    assert report.valid, report
+    found["examples/analysis_output.json"] = content
     return found
 
 
