@@ -172,8 +172,9 @@ def diagnose(name: str, *, online: bool = False) -> Diagnosis:
     if name not in _MODULES:
         raise ValueError(f"unknown provider {name!r}; choose from {', '.join(NAMES)}")
     diagnosis: Diagnosis = _module(name).diagnose(online=online)
+    model = selected_model(name)
     diagnosis.checks.append(
-        Check("selected_model", True, selected_model(name) or "none chosen")
+        Check("selected_model", model is not None, model or "none chosen")
     )
     return diagnosis
 

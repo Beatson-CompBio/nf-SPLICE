@@ -90,6 +90,11 @@ checks that every ADR exists, every path exists and every test file exists.
 | Private `.splice-local/` workspace, published-only `splice/`, safe ignore rule and migration | ADR-0047 | `src/nf_splice/layout.py`, `src/nf_splice/services/migration.py`, `src/nf_splice/drafts/store.py` | `tests/test_layout.py` | Current |
 | Isolated integration copies, local commits of the validated bundle, explicit push | ADR-0048 | `src/nf_splice/services/source.py`, `src/nf_splice/services/gitops.py` | `tests/test_source_git_export.py` | Current |
 | Deterministic, verified ZIP export of the bundle or pipeline | ADR-0049 | `src/nf_splice/services/export.py` | `tests/test_source_git_export.py` | Current |
+| Explicit provider selection, typed provider errors, credential store and `nf-splice provider` commands | ADR-0050 | `src/nf_splice/agents/providers/__init__.py`, `src/nf_splice/agents/providers/base.py`, `src/nf_splice/credentials.py` | `tests/test_provider_cli.py`, `tests/test_agents.py` | Current |
+| Claude provider with a Console API key, private configuration and typed SDK errors | ADR-0050 | `src/nf_splice/agents/providers/claude.py` | `tests/test_agent_interfaces.py` | Current |
+| OpenAI provider: Sign in with ChatGPT and the Responses API | ADR-0051 | `src/nf_splice/agents/providers/openai_auth.py`, `src/nf_splice/agents/providers/openai.py` | `tests/test_openai_provider.py` | Current |
+| Codex provider through a locked-down app-server | ADR-0052 | `src/nf_splice/agents/providers/codex.py` | `tests/test_codex_provider.py` | Current |
+| OpenCode provider with deny-all permissions and a loopback tool bridge | ADR-0053 | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` | `tests/test_opencode_provider.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
@@ -102,7 +107,8 @@ checks that every ADR exists, every path exists and every test file exists.
 nf-splice 0.1.0 was a pre-release test version; 0.3.0 is the first supported
 release and the baseline for schema compatibility (ADR-0041).
 
-- **File-first authoring.** One YAML draft per layer under `splice/drafts/`
+- **File-first authoring.** One YAML draft per layer under the private
+  `.splice-local/drafts/`
   (plus native `.config` drafts for generated profiles) is the source of
   truth. Edit drafts with commands, the wizard or any editor; nf-splice applies
   targeted, comment-preserving patches and reports conflicts instead of
@@ -129,8 +135,23 @@ release and the baseline for schema compatibility (ADR-0041).
   the agent does the whole integration within an approved scope and reports
   truthfully what is done and what is blocked. Operation-level permissions,
   stale-proof approvals and attribution that never presents an agent's
-  decision as human review (ADR-0045). Provider-neutral, with a Claude Agent
-  SDK adapter; skills in `skills/` guide every provider (ADR-0046).
+  decision as human review (ADR-0045). Skills in `skills/` guide every
+  provider (ADR-0046).
+- **Four real AI providers** behind one protocol, each restricted to
+  nf-splice's tools by configuration and tests that attempt forbidden tools:
+  Claude (Agent SDK, Console API key), OpenAI (Sign in with ChatGPT for
+  open-source apps, or an explicitly chosen API key; Responses API), Codex
+  (locked-down app-server) and OpenCode (deny-all server, local or remote
+  models). Explicit selection, typed provider errors that pause rather than
+  lose work, per-user credential storage and
+  `nf-splice provider list|doctor|models|select|auth|test`
+  (ADR-0050 to ADR-0053). Dated account guidance in
+  `docs/guide/providers.md`.
+- **Private workspace and delivery:** private state in `.splice-local/`,
+  published files only in `splice/`, with migration (ADR-0047); an isolated
+  integration copy of the pipeline, local commits of the validated bundle
+  and push only on request (ADR-0048); verified, deterministic ZIP archives
+  of the bundle or the pipeline (ADR-0049).
 - **Output routes and evidence:** static tracing of Nextflow publication
   routes across alternative and optional branches, discovery of published
   outputs only, and `nf-splice assess`, which reports contract validity,
@@ -248,8 +269,79 @@ every cache, temporary file, report and session under `.nf-splice-local/`.
 | nf-core lint adapter against a real nf-core 4.0.2 on an nf-core-marked copy of the fixture | without Nextflow it first reported `error` (nf-core fails without Nextflow); now `not_run` with the reason, before nf-core is started |
 | Install from Git (`pip install "git+…@wip/nf-splice-v0.3.0"`) into a fresh Python 3.14 environment, then the user guide followed step by step on a new pipeline | Done at `ecf745d`: every layer reviewed, bundle published and validated, a job's `analysis_output.json` generated and validated, a new version released, a hand-edited file overwritten explicitly. Not repeated for the agentic commits, which are not pushed yet |
 
+| Release-completion phase, `scripts/run-checks.sh` at the provider commits | exit 0: 291 passed, 3 skipped; ruff clean; 161 files formatted; mypy clean on 150 files |
+| Wheel and sdist built from the final tree; wheel installed with `[dev,openai]` into fresh Python 3.10.21, 3.12.14 and 3.14.7 environments and the suite run against the installed package | 292 passed, 3 skipped on each |
+| Real Codex 0.162.1 app-server against a local fake Responses endpoint (`NF_SPLICE_CODEX` set) | passed: only the nf-splice tool (and Codex's `request_user_input`, which nf-splice refuses) was offered; forged `exec_command`, `shell`, `apply_patch` and `web_search` calls did not run |
+| Real OpenCode 2.0.29 server against a local fake model through a recording proxy | passed: forged `bash`, `write`, `read` and `webfetch` failed, only `nfsplice_*` was offered, no outbound connection was attempted; the tool is available on the first step |
+| Installed-wheel end-to-end on a real RNA-seq pipeline copy | see [End-to-end on a real pipeline](#end-to-end-on-a-real-pipeline) |
+
 The walkthrough found two documentation gaps and one wrong command in a
-message; all three are fixed. The two skipped tests are opt-in: `nextflow`
+message; all three are fixed. Running the suite against the installed wheel
+found that OpenCode reloads when the tool bridge is registered, so a prompt
+sent at once ran without the tools; the adapter now waits for the reload
+(`8f7ca26`).
+
+### Live provider verification
+
+No live provider credentials were available or authorised during this
+work, so no live model was used. These tests are **NOT RUN**; nothing here
+claims live verification.
+
+| Live check | Status | How to run it |
+| --- | --- | --- |
+| Claude Agent SDK assisted session with a Console API key and a spending cap | NOT RUN | `ANTHROPIC_API_KEY=… NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent` |
+| Sign in with ChatGPT and a completed Responses turn | NOT RUN | `nf-splice provider auth openai --sign-in`, then `nf-splice provider test openai --allow-remote-model` |
+| Codex app-server with a real ChatGPT plan token | NOT RUN | after the sign-in above: `nf-splice provider test codex --allow-remote-model` |
+| OpenCode with a real local tool-capable model | NOT RUN (no Ollama, LM Studio or other local model server is installed here) | configure the model in OpenCode, then `nf-splice provider test opencode` |
+| OpenCode with a configured cloud provider | NOT RUN (needs your authorisation for cost) | `nf-splice provider test opencode --model PROVIDER/MODEL --allow-remote-model` |
+
+`nf-splice provider doctor` from the installed wheel, with no credentials
+configured, reported: `claude` not ready (SDK 0.2.168 and its CLI present,
+no API key), `openai` and `codex` not ready (sign-in support present, no
+account signed in; Codex 0.162.1 verified), `opencode` ready (2.0.29, no
+model selected), `scripted` ready.
+
+## End-to-end on a real pipeline
+
+The maintainer supplied a copy of a real pipeline,
+`splice-nf-bulk-rnaseq` (based on nf-core/rnaseq, revision `e90c65a`), which
+also contains a hand-made `splice/` folder written before nf-splice could
+produce one. The run used the wheel installed into a fresh environment
+outside the repository.
+
+1. `nf-splice source prepare` made an isolated Git working copy on branch
+   `nf-splice/integration-splice-nf-bulk-rnaseq-copy`; `workspace check`
+   confirmed the ignore rule. `status` read the hand-made `splice/` as
+   published files that are outdated or unknown relative to drafts, without
+   touching them.
+2. `init --accept-detected` created the six drafts and flagged three
+   conflicting identity values (the copy's folder name and path against the
+   pipeline's own name and URL). About 450 review items remained: access
+   policies for each parameter, 117 statically traced publication routes,
+   73 components, profiles and provenance.
+3. Manual mode: identity resolved with `configure bundle --set …`; the
+   bundle layer became ready.
+4. AI-assisted mode with the scripted provider resumed at the inputs stage
+   (identity was recognised as already complete), staged a diff for
+   approval and applied exactly the approved revision; with no further
+   scripted decisions it asked the person instead of guessing.
+5. Switched to manual, changed an access policy with
+   `configure inputs --decision-file`, back to assisted, then to autonomous:
+   the autonomous run recorded a blocker per incomplete stage and reported
+   `partial` with the reasons, the 117 uncovered routes and "no example
+   output supplied".
+6. `export` and `git commit` both refused, because the existing hand-made
+   bundle does not validate against the 0.3.0 contracts; nothing was
+   committed or pushed.
+7. The original pipeline was unchanged (file hashes, HEAD and status
+   compared before and after), and no runtime file was written to the
+   nf-SPLICE checkout.
+
+Completing this pipeline needs the ~450 decisions to be reviewed by a person
+or a live model; that was not done here. The run found three defects, all
+fixed in `07bf3fd`: a triple-quoted `description` in the Nextflow
+configuration was read as a single quote; a README title in an HTML `<h1>`
+was missed; a decision-file entry with the wrong key ended in a traceback. The two skipped tests are opt-in: `nextflow`
 needs a Nextflow installation and `live_agent` needs approved Claude
 credentials.
 
@@ -264,13 +356,18 @@ credentials.
   backend and were not tested against the real bucket.
 - **Ingestion code** is not in this repository. The components shape is
   published as a schema, an example and fixtures; ingestion needs to read it.
-- **Claude Agent SDK:** the adapter is tested offline against a fake SDK
-  (least-privilege options, tool mediation, denials, resume, costs) and
-  through full sessions with the scripted provider. No live Claude session
-  has been run; `test_live_claude_assisted_session_proposes_without_changing_files`
-  is opt-in and needs an approved organisation setup.
-- **Codex and OpenCode:** the provider protocol is ready for them, but no
-  adapter is implemented.
+- **Live providers:** no live Claude, ChatGPT, Codex or OpenCode model was
+  used (see [Live provider verification](#live-provider-verification)). The
+  adapters are tested offline against fake SDKs, fake servers and, for Codex
+  and OpenCode, the real programs with local fake models.
+- **Codex** is enabled only for 0.162.x and **OpenCode** only for 2.0.x;
+  other versions are reported unavailable until verified. nf-splice installs
+  neither.
+- **Sign in with ChatGPT** needs a browser on the same computer; there is no
+  browserless flow.
+- **OpenCode readiness:** OpenCode has no API that reports the tools a
+  session has, so the adapter waits for its reload to finish and retries
+  once if the tools are not yet available.
 - **Static route analysis** reads Groovy text without running Nextflow. It
   follows `publishDir` in processes and configuration selectors, includes
   and aliases, and `if`/`else` blocks, but not channel-level routing
@@ -407,6 +504,14 @@ From specification section 18.
 | `d3ee657` | feat(assess): report contract validity, observed outputs and coverage separately |
 | `985ff0b` | docs: output routes, example evidence and the three assessments (ADR-0042, ADR-0043) |
 | `509fa97` | feat(agents)!: manual, AI-assisted and autonomous integration over one engine |
+| `31e9d5a` | docs(release): record agentic AI, output routes and their verification |
+| `58ba4ac` | feat(layout)!: private .splice-local/ workspace, published-only splice/ (ADR-0047) |
+| `de5af40` | feat(delivery): isolated working copies, local commits and verified ZIP export |
+| `4e7ca24` | feat(providers): typed errors, credentials, provider CLI, Claude and OpenAI |
+| `9558f92` | feat(providers): Codex app-server provider locked to nf-splice tools |
+| `8067b24` | feat(providers): OpenCode server provider with deny-all permissions |
+| `07bf3fd` | fix: findings from the end-to-end run on a real RNA-seq pipeline |
+| `8f7ca26` | fix(opencode): wait until OpenCode has loaded the tool bridge |
 
 `git log 9ad15c1..` lists everything, including later updates to this
 record.

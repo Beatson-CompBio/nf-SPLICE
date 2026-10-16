@@ -18,6 +18,10 @@ defines what each mode allows and how to behave at approval gates.
 - For the embedded agent: a session started by a person, who chose the mode,
   the provider and the permissions. Remote providers need the person's
   explicit consent (`--allow-remote-model`).
+- The providers are `claude`, `openai`, `codex`, `opencode` and `scripted`
+  (`nf-splice provider list`). Never choose, switch or sign in to a provider
+  for the person, and never ask for or handle a credential; point them to
+  `nf-splice provider doctor` and `docs/guide/providers.md`.
 
 ## The three modes
 
@@ -109,6 +113,11 @@ nf-splice --actor "Ada Lovelace" session start --mode autonomous --provider clau
 nf-splice session report
 nf-splice --actor "Ada Lovelace" session resume --mode assisted
 ```
+
+If the provider stops (a usage limit, exhausted credit, expired sign-in or
+lost connection), the session pauses with the reason and nothing is lost.
+The person continues with `nf-splice session resume`, with another
+provider (`--provider ... --model ...`) or manually (`--mode manual`).
 
 ## Verification gates
 

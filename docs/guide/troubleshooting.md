@@ -67,6 +67,15 @@ recorded with your name. Pass `--actor "Your Name"` or set
 **"the Claude provider needs the optional extra".** Install nf-splice with
 the `claude` extra; see [Agentic AI](agentic-ai.md#install).
 
+**A session is paused with `usage_exhausted`, `rate_limited` or
+`auth_required`.** The provider stopped; nothing was lost. Run
+`nf-splice provider doctor --online` to see why, then continue with
+`nf-splice session resume`, with another provider (`--provider`), or
+manually (`--mode manual`). See [AI providers and accounts](providers.md#when-a-provider-stops).
+
+**"choose a provider with --provider".** No provider was given and none is
+saved; run `nf-splice provider list` and `nf-splice provider select`.
+
 **The run ended as partial.** Read `nf-splice session report`. Each blocker
 names the decision, the affected file and a suggestion. Resume with
 `nf-splice session resume --mode assisted` to resolve them with the agent,

@@ -24,13 +24,17 @@ you ask for it.
 
 ## Install
 
+Install the extra for the provider you will use, for example:
+
 ```bash
 python -m pip install "nf-splice[claude] @ git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
+python -m pip install "nf-splice[openai] @ git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
 ```
 
-This adds the Claude Agent SDK. The Claude provider sends repository context
-to Anthropic's API, so every command that uses it needs your explicit
-consent with `--allow-remote-model`.
+Codex and OpenCode are separate programs you install yourself. See
+[AI providers and accounts](providers.md) for signing in, local models and
+billing. A provider that sends repository context to a remote model needs
+your explicit consent with `--allow-remote-model` on every command.
 
 ## What an agent can and cannot do
 
@@ -70,15 +74,21 @@ nf-splice session report
 
 | Provider | Use |
 | --- | --- |
-| `claude` | Claude through the Claude Agent SDK. Needs the `claude` extra and `--allow-remote-model`. |
+| `claude` | Claude through the Claude Agent SDK, with a Claude Platform API key. |
+| `openai` | OpenAI's Responses API with Sign in with ChatGPT (your Plus or Pro plan), or an API key you choose explicitly. |
+| `codex` | OpenAI's Codex agent through its app-server, locked to nf-splice's tools. |
+| `opencode` | Any model configured in OpenCode, including local models on your computer. |
 | `scripted` | Offline replay of a JSON script, for tests and reproducible demonstrations. |
 
-Support for other agent providers, such as Codex or OpenCode, is planned.
+```bash
+nf-splice provider list
+nf-splice provider doctor
+```
 
-**Accounts and billing.** Claude Agent SDK usage is billed through a Claude
-Platform (API) organisation. A Claude Team or Enterprise subscription does
-not by itself authorise or pay for it. Confirm your organisation's setup
-before use. `--max-budget-usd` caps spending per session.
+[AI providers and accounts](providers.md) explains, for each provider, how
+to sign in, where the model runs, who pays, what to ask an administrator,
+and what happens when a usage limit is reached. `--max-budget-usd` caps
+spending per session where the provider reports cost.
 
 ## Skills for your own coding agent
 

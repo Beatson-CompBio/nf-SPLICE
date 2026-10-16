@@ -80,6 +80,10 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0047 | Keep private authoring state in an ignored `.splice-local/` and publish only `splice/` | Current | — |
 | ADR-0048 | Integrate in an isolated working copy and commit only the validated bundle locally | Current | — |
 | ADR-0049 | Export deterministic, independently verified ZIP archives of the bundle or pipeline | Current | — |
+| ADR-0050 | Select providers explicitly, classify their failures and keep credentials outside every project | Current | — |
+| ADR-0051 | Use OpenAI through Sign in with ChatGPT for open-source apps and the Responses API | Current | — |
+| ADR-0052 | Run Codex only through a locked-down app-server whose restrictions are tested | Current | — |
+| ADR-0053 | Run OpenCode as a loopback server with deny-all permissions and a token-protected tool bridge | Current | — |
 
 ---
 
@@ -2484,3 +2488,235 @@ private, and its integrity must be checkable.
 
 - An archive is not a commit, and a build is not a published pull request;
   reports state each separately.
+
+## ADR-0050: Select providers explicitly, classify their failures and keep credentials outside every project
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, sections 7, 8, 11 and 12 |
+| Scope | Agent providers, credentials, provider command-line interface |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0044, ADR-0045, ADR-0051, ADR-0052, ADR-0053 |
+| Implementation | `src/nf_splice/agents/providers/__init__.py`, `src/nf_splice/agents/providers/base.py`, `src/nf_splice/agents/providers/claude.py`, `src/nf_splice/agents/providers/check.py`, `src/nf_splice/credentials.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_provider_cli.py`, `tests/test_agent_interfaces.py`, `tests/test_agents.py` |
+
+### Context
+
+Four real providers (`claude`, `openai`, `codex`, `opencode`) and the
+offline `scripted` provider share one engine. They differ in how people sign
+in, where inference runs and who pays. Providers fail for many reasons:
+some are worth retrying, others (exhausted credit, revoked sign-in) must
+never be retried. A credential must never reach a pipeline repository, a log,
+a commit or an archive.
+
+### Decision
+
+- A registry names the providers. Each adapter module is imported only when
+  that provider is used or diagnosed, so manual mode needs no provider SDK.
+- Selection is explicit: `--provider`, or the provider and model saved with
+  `nf-splice provider select`. nf-splice never routes to another provider,
+  model or billing route by itself. A session may switch provider or model on
+  `nf-splice session resume --provider ... --model ...`; the session's own
+  record supplies the context to a provider without continuation.
+- Every adapter reports failures as a `ProviderError` with one of twelve
+  kinds (`auth_required`, `invalid_credentials`, `consent_required`,
+  `rate_limited`, `usage_exhausted`, `budget_exhausted`,
+  `provider_unavailable`, `connection_lost`, `model_incompatible`,
+  `permission_denied`, `failed_turn`, `cancelled`), with redacted vendor
+  diagnostics and request ID. The engine retries only `rate_limited`,
+  `provider_unavailable` and `connection_lost`, at most twice, honouring
+  `Retry-After`, and only when the turn has not yet touched a tool;
+  otherwise it pauses the session with the reason, so it can be resumed in
+  any mode or with another provider.
+- Usage is recorded per provider with its billing route. Cost is recorded
+  only when a provider reports it (Claude's cumulative cost is counted as
+  deltas) and is otherwise `not_reported`.
+- Credentials (API keys, OAuth tokens) live in the user's configuration
+  folder (`$NF_SPLICE_CONFIG_DIR`, else `$XDG_CONFIG_HOME/nf-splice`, else
+  `~/.config/nf-splice`), owner-only and written atomically; never in a
+  project or `.splice-local/`, never printed.
+- `nf-splice provider list|doctor|models|select|auth|test` shows each
+  provider's sign-in method, inference location and billing route, checks
+  installation and credentials (`--online` contacts the provider), and runs
+  a one-tool connection test only with `--allow-remote-model`.
+- Claude uses a Claude Platform (Console) API key only, passed to the Agent
+  SDK with a private `CLAUDE_CONFIG_DIR`; Claude.ai subscription login is not
+  used, because Anthropic does not allow third-party products to offer it
+  without approval (checked 15 October 2026). Plan API credits fund the key's
+  Console organisation.
+
+### Alternatives rejected
+
+- Falling back to another provider or to metered billing when one fails:
+  silently changes who pays and where data goes.
+- Storing keys in the project or the session: they would be committed,
+  archived or shared.
+- Importing Claude Code's subscription login: not permitted for
+  third-party products.
+
+### Consequences
+
+- A paused session states why it stopped and how to continue.
+- Live provider behaviour is verified only by the opt-in tests and
+  `nf-splice provider test`; CI uses fixtures and fakes.
+
+## ADR-0051: Use OpenAI through Sign in with ChatGPT for open-source apps and the Responses API
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 9 |
+| Scope | OpenAI provider and sign-in |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0050, ADR-0052 |
+| Implementation | `src/nf_splice/agents/providers/openai_auth.py`, `src/nf_splice/agents/providers/openai.py`, `src/nf_splice/agents/providers/http.py` |
+| Tests | `tests/test_openai_provider.py` |
+
+### Context
+
+OpenAI's Sign in with ChatGPT for open-source applications (published
+September 2026) lets eligible ChatGPT Plus and Pro users use their plan for
+Responses API inference without an API key. It defines the OAuth flow, the
+`chatgpt.tokens.use.direct` scope and the supported inference route.
+
+### Decision
+
+- Sign-in follows the documented flow: first registration through
+  `dynamic_agent_client` with the application name `nf-splice` and a stable
+  per-computer `ext_agent_host_id`; PKCE (S256), fresh state and nonce, a
+  `127.0.0.1` loopback callback; the ID token's signature (OpenAI's JWKS),
+  issuer, audience (the issued client ID), expiry and nonce are verified
+  before anything is saved. Each issued client ID and verified identity is
+  saved as one account; several accounts can be saved and one selected.
+- Plan usage is enabled only when the scope was granted. Tokens refresh
+  before expiry under a cross-process lock, refresh tokens rotate, terminal
+  refresh errors require signing in again, and sign-out revokes.
+- Inference uses only `POST /v1/responses` with `store: false` and
+  `stream: true`. The model sees nf-splice function tools only; hosted tools
+  are never requested and any other call is refused. A stream that ends
+  without `response.completed` is a failure and nothing from it is applied.
+  OpenAI's error codes, including the subscription-sharing ones, map to the
+  typed errors; usage limits pause the session and point to ChatGPT
+  Settings > Usage without guessing a reset time.
+- API-key mode is a separate choice (`nf-splice provider auth openai --use
+  api-key --yes`), never a fallback.
+
+### Alternatives rejected
+
+- Reading Codex's or ChatGPT's token files, or calling ChatGPT backend
+  endpoints: not supported and not permitted.
+- Server-side conversation storage (`store: true`): unnecessary; the engine
+  keeps the record.
+
+### Consequences
+
+- The `openai` extra (PyJWT with cryptography) is needed for sign-in.
+- Eligibility is decided by OpenAI per account; a model list is not proof
+  of access, so `nf-splice provider test` runs a real turn.
+
+## ADR-0052: Run Codex only through a locked-down app-server whose restrictions are tested
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 9 |
+| Scope | Codex provider |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0050, ADR-0051 |
+| Implementation | `src/nf_splice/agents/providers/codex.py` |
+| Tests | `tests/test_codex_provider.py` |
+
+### Context
+
+Codex brings its own shell, file editing, web search, plugins, skills and
+subagents. nf-splice may expose Codex only if those cannot bypass its tools,
+and only by Codex's documented protocol.
+
+### Decision
+
+- Codex runs as `codex app-server` over stdio with the documented
+  Responses provider route for open-source apps: the person's Sign in with
+  ChatGPT token (or the API key they chose) reaches it only as
+  `ACCESS_TOKEN`. No Codex login is used.
+- A private `CODEX_HOME`, an allowlisted environment, web search off,
+  project instruction files ignored, no MCP servers, the native-tool
+  features disabled, a read-only sandbox in an empty folder and ephemeral
+  threads leave the per-turn dynamic nf-splice tools as the only callable
+  tools. Every approval request is cancelled; user-input, elicitation and
+  unknown requests are refused; a native tool item interrupts the turn and
+  pauses the session.
+- Only Codex 0.162.x, whose restrictions the real-binary test verifies, is
+  enabled; other versions are reported unavailable. nf-splice never
+  installs Codex.
+- Threads are started per turn because dynamic tools are fixed when a
+  thread starts; the engine supplies its session summary instead of a
+  provider continuation.
+
+### Alternatives rejected
+
+- Relying on the system prompt to keep Codex to nf-splice tools: not a
+  restriction.
+- The app-server's `chatgptAuthTokens` login: marked for OpenAI internal
+  use only.
+
+### Consequences
+
+- A new Codex release must be verified with the real-binary test before
+  `SUPPORTED` is widened.
+
+## ADR-0053: Run OpenCode as a loopback server with deny-all permissions and a token-protected tool bridge
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-15 |
+| Source | Maintainer's release-completion and multi-provider instructions for 0.3.0, section 10 |
+| Scope | OpenCode provider |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0050 |
+| Implementation | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` |
+| Tests | `tests/test_opencode_provider.py` |
+
+### Context
+
+OpenCode is an intermediary over model providers the person configures,
+cloud or local. Its server API also offers shells, terminals and file
+writing to authenticated clients, and its agents have native tools.
+
+### Decision
+
+- nf-splice launches `opencode serve` on `127.0.0.1` with a random server
+  password, project configuration, model-catalogue fetching, auto-update and
+  file watching disabled, an empty private folder and an allowlisted
+  environment (provider keys only when named in `NF_SPLICE_OPENCODE_ENV`),
+  or attaches to a loopback server; remote addresses are refused.
+- Each turn registers a loopback MCP bridge with a fresh bearer token and
+  code mode off, and creates a session whose permission ruleset denies
+  everything except `nfsplice_*`. Permission requests are rejected; any other
+  tool succeeding stops the turn and pauses the session.
+- Models come from OpenCode's own catalogue (`nf-splice provider models
+  opencode`); a model that cannot call tools is refused. A loopback
+  endpoint is classified local (no remote-model consent and no cost); any
+  other or unknown endpoint is remote.
+- Only OpenCode 2.0.x (the `permissions` API) is enabled; 1.x is reported
+  unavailable. nf-splice never installs OpenCode, packages or models.
+
+### Alternatives rejected
+
+- Exposing nf-splice tools through OpenCode plugins: code inside OpenCode
+  rather than behind nf-splice's own toolbox.
+- Trusting a server URL as evidence that inference is local.
+
+### Consequences
+
+- The real-server test proves, through a recording proxy, that a local
+  model run makes no outbound connection.
+

@@ -37,7 +37,13 @@ themselves (manual), with an agent that proposes and waits for approval
   `src/nf_splice/agents/stages.py` passes. Never treat model output as
   validation.
 - Orchestration, permissions, persistence and validation must not depend on a
-  provider SDK. Provider code stays in `src/nf_splice/agents/providers/`.
+  provider SDK. Provider code stays in `src/nf_splice/agents/providers/`
+  (claude, openai, codex, opencode, scripted); each restricts the model to
+  nf-splice's tools by configuration, proven by tests that attempt forbidden
+  tools.
+- Provider credentials live only in the user's configuration folder
+  (`src/nf_splice/credentials.py`); never write them to a repository, a log,
+  a test fixture or an archive.
 
 ### Permissions
 
@@ -75,7 +81,9 @@ scripts/run-checks.sh
 
 `scripts/run-checks.sh` runs pytest, ruff, ruff format, mypy, the dependency
 check and the staged-path guard. Opt-in tests: `nextflow` (needs Nextflow)
-and `live_agent` (needs approved Claude credentials).
+and `live_agent` (needs approved Claude credentials). The Codex and OpenCode
+lockdown tests run against local fake models when those programs are
+installed (`NF_SPLICE_CODEX`, `NF_SPLICE_OPENCODE`).
 
 After changing commands or contracts, regenerate the references:
 

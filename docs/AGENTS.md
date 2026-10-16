@@ -17,7 +17,7 @@ CLI (nf-splice ask | session ...)   Wizard (Ask AI, session views)
                                operations.py ── nf-splice services
                                    |            (layers, lifecycle,
                                sandbox.py        coverage, checks)
-                 providers: claude, scripted (protocol.py)
+   providers: claude, openai, codex, opencode, scripted (protocol.py)
 ```
 
 - `src/nf_splice/agents/engine.py` drives assisted and autonomous sessions
@@ -26,7 +26,8 @@ CLI (nf-splice ask | session ...)   Wizard (Ask AI, session views)
   same services the CLI uses. `toolbox.py` mediates every call.
 - `sandbox.py` runs staged operations on a private copy for previews.
 - `state.py` persists sessions, checkpoints and the repository lock.
-- `protocol.py` is the provider protocol; adapters live in `providers/`.
+- `protocol.py` is the provider protocol; adapters live in `providers/`,
+  registered in `providers/__init__.py`.
 
 Importing `nf_splice.agents` never imports a provider SDK.
 
@@ -131,19 +132,36 @@ class ProviderSession(Protocol):
 A turn receives the instruction, the system prompt (rules, mode, vocabulary
 and the relevant skills) and a tool invoker. The provider may call the
 offered tools through the invoker and streams `message`, `tool_call`,
-`usage` and `error` events. Providers without structured tool calling are
-refused; remote providers need `--allow-remote-model`.
+`tool_result`, `denied`, `usage` and `done` events. Providers without
+structured tool calling are refused; remote providers need
+`--allow-remote-model`.
 
-### Claude Agent SDK
+A provider reports failure by raising `ProviderError`
+(`src/nf_splice/agents/providers/base.py`) with one of twelve kinds. The
+engine retries only `rate_limited`, `provider_unavailable` and
+`connection_lost`, at most twice and only before any tool was touched;
+every other kind pauses the session with the reason
+(ADR-0050). Credentials are read from `src/nf_splice/credentials.py`, never
+from the project. Each adapter also offers `diagnose()` and
+`list_models()` for `nf-splice provider doctor` and `models`.
 
-Install the `claude` extra (`claude-agent-sdk>=0.2.167,<0.3`). Each turn
-configures the SDK with built-in tools disabled (`tools=[]`) and listed in
-`disallowed_tools`, no user or project settings, only the in-process
-`nf_splice` MCP server with this turn's tools, and both `can_use_tool` and a
-`PreToolUse` hook denying anything else. Conversations continue across turns
-and processes with the SDK's `resume` option. Spending is capped with
-`max_budget_usd`. The live smoke test is opt-in:
-`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent`.
+In every adapter the only model-callable tools are the nf-splice tools
+offered for the turn, and the restriction is enforced by configuration and
+tested by attempting forbidden calls, not by the prompt.
+
+| Provider | Module | Restriction | Tests |
+| --- | --- | --- | --- |
+| Claude Agent SDK | `claude.py` | `tools=[]`, built-ins in `disallowed_tools`, no user or project settings, only the in-process `nf_splice` MCP server, `can_use_tool` and a `PreToolUse` hook deny the rest; Console API key and a private `CLAUDE_CONFIG_DIR` | `tests/test_agent_interfaces.py` |
+| OpenAI Responses | `openai.py`, `openai_auth.py` | Function tools only, `store: false`, `stream: true`; any other call is refused | `tests/test_openai_provider.py` |
+| Codex app-server | `codex.py` | Private `CODEX_HOME`, native features disabled, read-only sandbox in an empty folder, ephemeral threads, dynamic tools only, approvals cancelled; 0.162.x only | `tests/test_codex_provider.py` |
+| OpenCode server | `opencode.py`, `mcp_bridge.py` | Loopback server with a random password, project config off, deny-all permissions except `nfsplice_*`, token-protected loopback MCP bridge; 2.0.x only | `tests/test_opencode_provider.py` |
+| Scripted | `scripted.py` | No model | many |
+
+Live tests are opt-in and skipped without credentials:
+`NF_SPLICE_LIVE_AGENT=1 pytest -m live_agent` (Claude). The real Codex and
+OpenCode lockdown tests run when the binaries are present
+(`NF_SPLICE_CODEX`, `NF_SPLICE_OPENCODE` or `PATH`) and use local fake model
+endpoints, so they cost nothing.
 
 ### Scripted
 
@@ -151,13 +169,12 @@ and processes with the SDK's `resume` option. Spending is capped with
 through the real engine and services. It is used for offline tests and
 reproducible demonstrations.
 
-### Adding Codex, OpenCode or another provider
+### Adding another provider
 
-Implement the protocol in `src/nf_splice/agents/providers/`, register it in
-`provider_for`, and run the provider conformance tests in
-`tests/test_agent_interfaces.py` against it. The engine, permissions,
-validation and persistence need no change. These adapters are not
-implemented yet.
+Implement the protocol in `src/nf_splice/agents/providers/`, raise
+`ProviderError` for failures, add `diagnose()` and `list_models()`, register
+it in `providers/__init__.py`, and add tests that attempt forbidden native
+tools. The engine, permissions, validation and persistence need no change.
 
 ## Skills
 

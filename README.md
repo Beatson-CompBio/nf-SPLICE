@@ -62,8 +62,10 @@ nf-splice --version
 ```
 
 To try a branch before it is merged, add `@<branch>` to the address, for
-example `...nf-SPLICE.git@wip/nf-splice-v0.3.0`. To use agentic AI, install
-the `claude` extra; see [Agentic AI](docs/guide/agentic-ai.md).
+example `...nf-SPLICE.git@wip/nf-splice-v0.3.0`. Agentic AI works with
+Claude, OpenAI (including your ChatGPT Plus or Pro plan), Codex and OpenCode
+(including local models); see [Agentic AI](docs/guide/agentic-ai.md) and
+[AI providers and accounts](docs/guide/providers.md).
 
 ## Quick start
 
