@@ -89,7 +89,7 @@
       "namespace": "local",
       "tool": {
         "name": "fastqc",
-        "version": "0.12.1--hdfd78af_0"
+        "version": "0.12.1"
       },
       "evidence": [
         "modules.json",
@@ -106,7 +106,7 @@
       "namespace": "local",
       "tool": {
         "name": "hisat2",
-        "version": "2.2.1--h87f3376_4"
+        "version": "2.2.1"
       },
       "evidence": [
         "modules.json",
@@ -122,7 +122,7 @@
       "namespace": "local",
       "tool": {
         "name": "multiqc",
-        "version": "1.25.1--pyhdfd78af_0"
+        "version": "1.25.1"
       },
       "evidence": [
         "modules.json",
@@ -138,7 +138,7 @@
       "namespace": "local",
       "tool": {
         "name": "salmon",
-        "version": "1.10.3--h6dccd9a_2"
+        "version": "1.10.3"
       },
       "evidence": [
         "modules.json",
@@ -154,7 +154,7 @@
       "namespace": "local",
       "tool": {
         "name": "samtools",
-        "version": "1.21--h50ea8bc_0"
+        "version": "1.21"
       },
       "evidence": [
         "modules.json",

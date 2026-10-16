@@ -15,9 +15,19 @@ class ModuleDiscoveryError(ValueError):
 
 
 _SEMVER = re.compile(r"^v?(\d+(?:\.\d+)+(?:[-+][A-Za-z0-9_.-]+)?)")
+#: A Bioconda/BioContainers image tag is ``<tool version>--<build string>``,
+#: for example ``0.12.1--hdfd78af_0``; the build string is not a tool version.
+_IMAGE_BUILD = re.compile(r"--[A-Za-z0-9_.]+$")
 
 
 def module_items(root: Path) -> tuple[dict[str, Any], ...]:
+    """Modules listed in ``modules.json``.
+
+    Two layouts are read: nf-core's own (``repos`` → repository → ``modules``
+    → install directory → module name), plus local modules found under
+    ``modules/local/``, which nf-core does not list; and a flat ``items`` array
+    of ``{"kind": "module", "path": ...}`` entries.
+    """
     path = root / "modules.json"
     if not path.is_file():
         raise ModuleDiscoveryError("modules.json is required for component discovery")
@@ -25,13 +35,56 @@ def module_items(root: Path) -> tuple[dict[str, Any], ...]:
         loaded: object = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ModuleDiscoveryError(f"invalid modules.json: {error}") from error
-    if not isinstance(loaded, dict) or not isinstance(loaded.get("items"), list):
-        raise ModuleDiscoveryError("modules.json must contain an items array")
-    return tuple(
-        item
-        for item in loaded["items"]
-        if isinstance(item, dict) and item.get("kind") == "module"
+    if isinstance(loaded, dict) and isinstance(loaded.get("items"), list):
+        return tuple(
+            item
+            for item in loaded["items"]
+            if isinstance(item, dict) and item.get("kind") == "module"
+        )
+    if isinstance(loaded, dict) and isinstance(loaded.get("repos"), dict):
+        return _nf_core_items(root, loaded["repos"])
+    raise ModuleDiscoveryError(
+        "modules.json must contain nf-core's repos map or an items array"
     )
+
+
+def _nf_core_items(root: Path, repos: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    found: dict[str, dict[str, Any]] = {}
+    for repository, entry in sorted(repos.items()):
+        modules = entry.get("modules") if isinstance(entry, dict) else None
+        if not isinstance(modules, dict):
+            continue
+        for install_directory, listed in sorted(modules.items()):
+            if not isinstance(listed, dict):
+                continue
+            for name, details in sorted(listed.items()):
+                relative = f"modules/{install_directory}/{name}"
+                if not (root / relative / "main.nf").is_file():
+                    continue
+                found[relative] = {
+                    "kind": "module",
+                    "path": relative,
+                    "namespace": install_directory,
+                    "name": name.rsplit("/", 1)[-1],
+                    "source_repository": repository,
+                    "git_sha": details.get("git_sha")
+                    if isinstance(details, dict)
+                    else None,
+                }
+    local = root / "modules" / "local"
+    if local.is_dir():
+        for main_nf in sorted(local.rglob("main.nf")):
+            relative = main_nf.parent.relative_to(root).as_posix()
+            found.setdefault(
+                relative,
+                {
+                    "kind": "module",
+                    "path": relative,
+                    "namespace": "local",
+                    "name": main_nf.parent.name,
+                },
+            )
+    return tuple(found[key] for key in sorted(found))
 
 
 def module_metadata(path: Path) -> dict[str, Any]:
@@ -88,7 +141,8 @@ def detected_versions(
         basename = uri.rsplit("/", 1)[-1]
         if ":" not in basename:
             continue
-        match = _SEMVER.match(basename.split(":", 1)[1])
+        tag = _IMAGE_BUILD.sub("", basename.split(":", 1)[1])
+        match = _SEMVER.match(tag)
         if match:
             values.add(match.group(1))
     return tuple(sorted(values))

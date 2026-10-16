@@ -61,8 +61,9 @@ overwrites your edits.
 
 The wizard remembers the current step, deferred steps and half-typed form
 values between sessions. Sessions contain no review decisions, so deleting
-one loses nothing that matters. They are stored outside the repository, in
-`NF_SPLICE_SESSION_DIR` (default `$XDG_CACHE_HOME/nf-splice/sessions`).
+one loses nothing that matters. They are stored in the working copy's
+private `.splice-local/sessions/wizard/`, next to the drafts, and are never
+committed. Set `NF_SPLICE_SESSION_DIR` to keep them somewhere else.
 
 Start without a session:
 

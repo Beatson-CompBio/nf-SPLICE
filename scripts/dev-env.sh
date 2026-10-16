@@ -14,6 +14,17 @@ chmod 700 .nf-splice-local .nf-splice-local/agent .nf-splice-local/tmp
 export NF_SPLICE_REPO_ROOT="$PWD"
 export TMPDIR="$PWD/.nf-splice-local/tmp"
 export TMP="$TMPDIR" TEMP="$TMPDIR"
+# Provider credentials stay in the person's own store, outside the clone:
+# fix it before XDG_CONFIG_HOME is redirected below (ignoring the redirect
+# itself when the script is sourced twice).
+if [ -z "${NF_SPLICE_CONFIG_DIR:-}" ]; then
+    _nf_splice_config="${XDG_CONFIG_HOME:-$HOME/.config}"
+    if [ "$_nf_splice_config" = "$PWD/.nf-splice-local/cache/config" ]; then
+        _nf_splice_config="$HOME/.config"
+    fi
+    export NF_SPLICE_CONFIG_DIR="$_nf_splice_config/nf-splice"
+    unset _nf_splice_config
+fi
 export XDG_CACHE_HOME="$PWD/.nf-splice-local/cache"
 export XDG_STATE_HOME="$PWD/.nf-splice-local/cache/state"
 export XDG_CONFIG_HOME="$PWD/.nf-splice-local/cache/config"

@@ -12,7 +12,9 @@
 ▶ ✓ Done
 == done
 Bundle valid: yes (6 contract files)
-The reviewed decisions are the committed draft files; reproduce and check them in CI with:
+The reviewed decisions are in your private drafts (.splice-local/, never committed); only splice/ is published. Check a checkout in CI with:
+  nf-splice validate --json
+  nf-splice schema check --json
+Where the drafts are present, such as this working copy, also run:
   nf-splice draft validate
   nf-splice build all --check --json
-  nf-splice validate --json

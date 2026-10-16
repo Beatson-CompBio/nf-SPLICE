@@ -473,3 +473,93 @@ def test_container_expression_stops_at_the_next_directive(tmp_path: Path) -> Non
             ReferenceKind.OCI_REGISTRY,
         )
     ]
+
+
+def test_image_build_strings_are_not_tool_versions() -> None:
+    from nf_splice.inspectors.modules import detected_versions
+
+    uris = (
+        "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
+        "https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0",
+    )
+    assert detected_versions({"tool_version": "0.12.1"}, "m/fastqc", uris) == (
+        "0.12.1",
+    )
+    assert detected_versions({}, "m/tool", ("org/tool:1.4.0-rc1",)) == ("1.4.0-rc1",)
+
+
+def test_nf_core_modules_json_is_read(tmp_path: Path) -> None:
+    """nf-core keeps modules under repos → repository → modules → directory."""
+    from nf_splice.inspectors.modules import module_items
+
+    for relative in ("modules/nf-core/fastqc", "modules/nf-core/samtools/sort"):
+        (tmp_path / relative).mkdir(parents=True)
+        (tmp_path / relative / "main.nf").write_text("process X {}\n", "utf-8")
+    (tmp_path / "modules" / "local" / "report").mkdir(parents=True)
+    (tmp_path / "modules" / "local" / "report" / "main.nf").write_text("", "utf-8")
+    (tmp_path / "modules.json").write_text(
+        json.dumps(
+            {
+                "name": "nf-core/example",
+                "repos": {
+                    "https://github.com/nf-core/modules.git": {
+                        "modules": {
+                            "nf-core": {
+                                "fastqc": {"branch": "master", "git_sha": "abc"},
+                                "samtools/sort": {"branch": "master", "git_sha": "def"},
+                                "missing": {"branch": "master", "git_sha": "000"},
+                            }
+                        },
+                        "subworkflows": {"nf-core": {}},
+                    }
+                },
+            }
+        ),
+        "utf-8",
+    )
+    items = module_items(tmp_path)
+    assert [(item["path"], item["namespace"], item["name"]) for item in items] == [
+        ("modules/local/report", "local", "report"),
+        ("modules/nf-core/fastqc", "nf-core", "fastqc"),
+        ("modules/nf-core/samtools/sort", "nf-core", "sort"),
+    ]
+
+
+def test_init_accepts_an_nf_core_modules_json(tmp_path: Path) -> None:
+    from typer.testing import CliRunner
+
+    from layer_fixtures import write_pipeline
+    from nf_splice.cli import app
+
+    write_pipeline(tmp_path)
+    module = tmp_path / "modules" / "nf-core" / "fastqc"
+    module.mkdir(parents=True, exist_ok=True)
+    (module / "main.nf").write_text(
+        "process FASTQC {\n"
+        "    container 'quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0'\n"
+        "}\n",
+        "utf-8",
+    )
+    (tmp_path / "modules.json").write_text(
+        json.dumps(
+            {
+                "repos": {
+                    "https://github.com/nf-core/modules.git": {
+                        "modules": {"nf-core": {"fastqc": {"git_sha": "abc"}}}
+                    }
+                }
+            }
+        ),
+        "utf-8",
+    )
+    result = CliRunner().invoke(
+        app,
+        ["--actor", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
+    )
+    assert result.exit_code == 0, result.output
+    from nf_splice.layers.components import pending_components
+
+    pending = {view.id: view for view in pending_components(tmp_path)}
+    fastqc = pending["component:modules__nf-core__fastqc"]
+    assert fastqc.versions == ("0.12.1",)
+    assert not any("conflicting versions" in problem for problem in fastqc.problems)

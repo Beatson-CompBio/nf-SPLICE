@@ -65,3 +65,44 @@ def test_local_workspace_is_ignored_by_git() -> None:
         check=False,
     )
     assert result.returncode == 0
+
+
+def test_guard_reads_literal_staged_names_even_when_git_would_quote_them(
+    tmp_path: Path,
+) -> None:
+    """A secret below a non-ASCII folder is still refused (NUL-delimited names)."""
+    import os
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    secret = tmp_path / "données" / "credentials.json"
+    secret.parent.mkdir()
+    secret.write_text("{}", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "-A"], check=True)
+    quoted = subprocess.run(
+        ["git", "-C", str(tmp_path), "diff", "--cached", "--name-only"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert quoted.startswith('"')  # Git's default display would hide the name
+    previous = Path.cwd()
+    os.chdir(tmp_path)
+    try:
+        assert _guard()._staged_paths() == ["données/credentials.json"]
+        assert _guard().main([]) == 1
+    finally:
+        os.chdir(previous)
+
+
+def test_dev_env_keeps_credentials_outside_the_clone(tmp_path: Path) -> None:
+    script = (
+        f"cd {ROOT} && unset NF_SPLICE_CONFIG_DIR && export HOME={tmp_path} "
+        "XDG_CONFIG_HOME= && . scripts/dev-env.sh && echo $NF_SPLICE_CONFIG_DIR "
+        "&& unset NF_SPLICE_CONFIG_DIR && . scripts/dev-env.sh "
+        "&& echo $NF_SPLICE_CONFIG_DIR"
+    )
+    result = subprocess.run(
+        ["sh", "-c", script], capture_output=True, text=True, check=True
+    )
+    first, second = result.stdout.split()
+    assert first == second == f"{tmp_path}/.config/nf-splice"

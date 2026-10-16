@@ -52,13 +52,19 @@ def violations(paths: list[str]) -> list[str]:
 
 
 def _staged_paths() -> list[str]:
+    # NUL-delimited names are the literal paths. Git's default display quotes
+    # and escapes unusual names (non-ASCII, quotes, control characters), which
+    # would hide a forbidden basename such as credentials.json.
     result = subprocess.run(
-        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR"),
+        ("git", "diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"),
         check=True,
         capture_output=True,
-        text=True,
     )
-    return [line for line in result.stdout.splitlines() if line]
+    return [
+        name.decode("utf-8", errors="surrogateescape")
+        for name in result.stdout.split(b"\0")
+        if name
+    ]
 
 
 def main(argv: list[str]) -> int:
