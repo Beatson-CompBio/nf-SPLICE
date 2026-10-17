@@ -68,10 +68,11 @@ changes and hand edits.
 | `repository.url`, `repository.revision` | Workflow repository and the Git commit it was at, or `null` when unknown. |
 | `contracts` | Contract revision of each of the five families, keyed by family URI. |
 | `sources` | Repository files the bundle was built from, keyed by path: `sha256` and `role` (`input-schema-evidence`, `adopted-config` or `ro-crate-source:<strategy>`). |
-| `provenance.ro_crate_strategy` | `include`, `enriched` or `generated`. |
+| `provenance.ro_crate_strategy` | How the authored RO-Crate graph began: `adopted`, `generated`, `nf-core` or `authored`. |
 | `provenance.ro_crate_source_sha256` | Hash of the root RO-Crate the published one was based on, or `null`. |
 | `provenance.ro_crate_sha256` | Hash of the published RO-Crate. |
 | `managed_files` | Every published file except the lock itself, keyed by path, with its `sha256`. |
+| `distributions` | Present when an image file is published: nf-splice's record of each verification, keyed by container ID, with the verified `sha256`, `download_uri` and `size_bytes`, a `source_images_sha256` digest of the container's sources, and `verification`: `fresh` (nf-splice downloaded and checked the file for this bundle) or `historical` (reused from an earlier bundle's verification without downloading it again). It records past verifications; it never shows a file is reachable now. |
 
 To check a bundle's integrity, recompute the SHA-256 of each file in
 `managed_files` and compare. `nf-splice validate` does this and also

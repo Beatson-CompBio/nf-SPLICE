@@ -739,3 +739,145 @@ async def test_the_wizard_states_the_same_lifecycle_as_the_cli(tmp_path: Path) -
         report = str(wizard.query_one("#done-report", Static).render())
     assert "Published, but not ready for SPLICE ingestion." in report
     assert "runtime parameters: input" in report
+
+
+# ------------------------------------------------------------ image reuse
+
+
+def _lock(root: Path) -> dict[str, Any]:
+    loaded: dict[str, Any] = json.loads(
+        (root / "splice" / "nf-splice.lock.json").read_text(encoding="utf-8")
+    )
+    return loaded
+
+
+def _rewrite_published(root: Path, mutate: Any) -> None:
+    """Change components.json and re-vouch for it in the lock, as a tool might."""
+    import hashlib
+
+    path = root / "splice" / "components.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    mutate(document)
+    payload = (json.dumps(document, indent=2) + "\n").encode("utf-8")
+    path.write_bytes(payload)
+    lock = _lock(root)
+    lock["managed_files"]["components.json"]["sha256"] = hashlib.sha256(
+        payload
+    ).hexdigest()
+    (root / "splice" / "nf-splice.lock.json").write_text(
+        json.dumps(lock, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def test_the_lock_records_each_verification_and_its_basis(tmp_path: Path) -> None:
+    root, star = _verified_bundle(tmp_path)
+    record = _lock(root)["distributions"][star]
+    assert record["verification"] == "fresh"
+    assert set(record) == {
+        "sha256",
+        "download_uri",
+        "size_bytes",
+        "source_images_sha256",
+        "verification",
+    }
+    # Re-seed only the components, as a fresh clone of the inventory would.
+    from layer_fixtures import ADA
+    from nf_splice.services.workspace import initialise
+
+    (root / ".splice-local" / "drafts" / "components.draft.yaml").unlink()
+    (root / ".splice-local" / "reviews" / "components.review.json").unlink()
+    initialise(root, ADA)
+    edit_draft_file(
+        root, "components", lambda data: data.update(require_downloadable_images=False)
+    )
+    assert _container(root, star)["distribution"] is not None
+    from nf_splice.services.lifecycle import promote
+
+    promote(root, None, ADA, replace_existing=True)
+    assert _lock(root)["distributions"][star]["verification"] == "historical"
+    deployment = assess_readiness(root).dimensions["deployment"]
+    assert any("historical verification" in note for note in deployment.notes)
+    assert any("not checked" in note for note in deployment.notes)
+
+
+def test_reuse_needs_the_lock_record_metadata_and_sources_to_agree(
+    tmp_path: Path,
+) -> None:
+    def reused(root: Path, star: str) -> bool:
+        _reseed(root)
+        return _container(root, star)["distribution"] is not None
+
+    root, star = _verified_bundle(tmp_path / "no-record")
+    lock = _lock(root)
+    lock.pop("distributions")  # an earlier lock with no verification record
+    (root / "splice" / "nf-splice.lock.json").write_text(json.dumps(lock))
+    assert not reused(root, star)
+
+    root, star = _verified_bundle(tmp_path / "metadata")
+
+    def wrong_cache_name(document: dict[str, Any]) -> None:
+        for item in document["containers"]:
+            if item["id"] == star:
+                item["distribution"]["cache_filename"] = "other.img"
+
+    _rewrite_published(root, wrong_cache_name)
+    assert not reused(root, star)
+
+    root, star = _verified_bundle(tmp_path / "checksum")
+
+    def other_checksum(document: dict[str, Any]) -> None:
+        for item in document["containers"]:
+            if item["id"] == star:
+                item["distribution"]["sha256"] = "0" * 64
+
+    _rewrite_published(root, other_checksum)
+    assert not reused(root, star)
+
+    root, star = _verified_bundle(tmp_path / "agreeing")
+    assert reused(root, star)
+
+
+def test_reverify_checks_availability_now_and_never_changes_a_mismatch(
+    tmp_path: Path,
+) -> None:
+    from nf_splice.layers.base import load_review_state
+    from nf_splice.layers.components import reverify_distributions
+    from test_containers import FakeFetcher, _ok, _public
+
+    root, star = _verified_bundle(tmp_path)
+    _reseed(root)
+    assert "adopted_distribution" in {item.code for item in _component_issues(root)}
+    before = (root / ".splice-local" / "drafts" / "components.draft.yaml").read_bytes()
+
+    changed = reverify_distributions(
+        root,
+        [star],
+        fetcher=FakeFetcher({_IMAGE: _ok(_SIF + b"tampered")}),
+        resolver=_public,
+    )
+    assert [item.status for item in changed] == ["changed"]
+    assert "nothing was changed" in changed[0].detail
+    assert "adopted_distribution" in {item.code for item in _component_issues(root)}
+
+    def unreachable(url: str, *, timeout: float) -> Any:
+        from nf_splice.services.containers import ContainerServiceError
+
+        raise ContainerServiceError(f"{url} is unreachable")
+
+    failed = reverify_distributions(root, [star], fetcher=unreachable, resolver=_public)
+    assert [item.status for item in failed] == ["failed"]
+
+    fresh = reverify_distributions(
+        root, [star], fetcher=FakeFetcher({_IMAGE: _ok(_SIF)}), resolver=_public
+    )
+    assert [item.status for item in fresh] == ["fresh"]
+    record = load_review_state(root, "components").section("verified")[star]
+    assert record["basis"] == "fresh" and "adopted_from" not in record
+    assert "adopted_distribution" not in {item.code for item in _component_issues(root)}
+    after = (root / ".splice-local" / "drafts" / "components.draft.yaml").read_bytes()
+    assert after == before  # only the verification record changed
+
+    refused = runner.invoke(
+        app, ["containers", "reverify", star, "--repository", str(root)]
+    )
+    assert refused.exit_code == 2 and "--approve-network" in refused.output

@@ -213,6 +213,20 @@ def _deployment(splice: Path, dimension: Dimension) -> None:
                 f"{len(missing)} container(s) need a verified downloadable image: "
                 + ", ".join(missing[:10])
             )
+    lock = _load(splice / "nf-splice.lock.json")
+    records = (lock or {}).get("distributions") if isinstance(lock, dict) else None
+    historical = sorted(
+        str(key)
+        for key, value in (records or {}).items()
+        if isinstance(value, dict) and value.get("verification") == "historical"
+    )
+    if historical:
+        dimension.notes.append(
+            f"{len(historical)} image file(s) rest on a historical verification; "
+            "whether they are reachable now was not checked "
+            "(`nf-splice containers reverify --approve-network`): "
+            + ", ".join(historical[:10])
+        )
     default = None
     if isinstance(profiles, dict):
         default = next(

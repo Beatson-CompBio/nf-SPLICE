@@ -355,6 +355,40 @@ def _revision(root: Path) -> str | None:
     return value if result.returncode == 0 and value else None
 
 
+def verification_records(
+    root: Path, components: bytes | None
+) -> dict[str, dict[str, Any]]:
+    """The lock's record of every verified image distribution being published.
+
+    Each entry states the checksum, address and size nf-splice verified, a
+    digest of the container's source images, and whether the verification
+    was a fresh download (``fresh``) or carried over from an earlier bundle
+    (``historical``). Deterministic: no times are recorded.
+    """
+    from nf_splice.layers.base import load_review_state
+    from nf_splice.layers.components import sources_digest
+
+    if components is None:
+        return {}
+    verified = load_review_state(root, "components").section("verified")
+    records: dict[str, dict[str, Any]] = {}
+    for container in json.loads(components).get("containers") or []:
+        distribution = container.get("distribution")
+        evidence = verified.get(container.get("id"))
+        if not isinstance(distribution, dict) or not isinstance(evidence, dict):
+            continue
+        if evidence.get("sha256") != distribution.get("sha256"):
+            continue
+        records[str(container["id"])] = {
+            "sha256": distribution["sha256"],
+            "download_uri": distribution["download_uri"],
+            "size_bytes": distribution.get("size_bytes"),
+            "source_images_sha256": sources_digest(container["source_images"]),
+            "verification": str(evidence.get("basis") or "fresh"),
+        }
+    return records
+
+
 def _whole_bundle(
     root: Path,
 ) -> tuple[dict[str, bytes], dict[str, str], list[DraftIssue]]:
@@ -386,6 +420,7 @@ def _whole_bundle(
             "ro_crate_sha256": sha256(payloads["ro-crate-metadata.json"]),
         },
         repository_revision=_revision(root),
+        distributions=verification_records(root, payloads.get("components.json")),
     )
     payloads["bundle.json"] = rendered.bundle
     payloads["README.md"] = rendered.readme

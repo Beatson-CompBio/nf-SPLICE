@@ -59,6 +59,7 @@ Global options go before the command name, for example
 | [`nf-splice containers classify`](#nf-splice-containers-classify) | Classify a container reference without network access. |
 | [`nf-splice containers cache-name`](#nf-splice-containers-cache-name) | Print the Nextflow Singularity/Apptainer cache file name. |
 | [`nf-splice containers verify`](#nf-splice-containers-verify) | Download and verify an image, then record its distribution (network). |
+| [`nf-splice containers reverify`](#nf-splice-containers-reverify) | Download recorded image files again and check them now (network). |
 | [`nf-splice session start`](#nf-splice-session-start) | Start an AI-assisted or autonomous integration session. |
 | [`nf-splice session status`](#nf-splice-session-status) | Show a session's stages, conversation and pending proposal (read-only). |
 | [`nf-splice session list`](#nf-splice-session-list) | List this repository's sessions, most recent first. |
@@ -755,6 +756,28 @@ nf-splice containers verify [OPTIONS] CONTAINER URL
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--registry` | `<str>` |  | Configured Nextflow registry. |
+
+### nf-splice containers reverify
+
+Download recorded image files again and check them now (network).
+
+A reused (historical) verification says nothing about whether a file is
+still reachable; this is the fresh check. Matches are recorded as fresh
+verifications; changed or unreachable files are reported, never changed.
+
+```text
+nf-splice containers reverify [OPTIONS] [CONTAINERS]
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `CONTAINERS` | no | Container IDs; every recorded distribution if none. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--approve-network` |  |  | Allow downloading each recorded image file again. |
+| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice session start
 

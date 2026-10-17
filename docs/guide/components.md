@@ -107,10 +107,26 @@ and private or local network addresses (on every redirect too), limits the
 download size and never leaves a partial file behind.
 
 When `init` seeds the inventory from an earlier `splice/components.json`,
-a container's verified image file is kept only if the lock vouches for that
-published file, the file records the image as verified and every source of
-the container is unchanged. It is not downloaded again; validation says so
-(`adopted_distribution`), and `nf-splice containers verify` checks it anew.
+a container's verified image file is reused without downloading it only
+when everything agrees: the lock vouches for that published file; the
+lock's record of the verification (`distributions`) names the same
+checksum, address and size; the distribution is consistent (HTTPS, a `sif`
+or `img` file, the Nextflow cache name of these sources); and the
+container's sources are unchanged. That is a *historical* verification: it
+shows nf-splice checked the file once, never that it is reachable now.
+Validation says so (`adopted_distribution`), the lock records it as
+`historical`, and readiness notes it.
+
+To check availability now, download the files again:
+
+```bash
+nf-splice containers reverify --approve-network
+nf-splice containers reverify container-0123456789ab --approve-network
+```
+
+A file that still matches is recorded as a `fresh` verification. A file
+whose checksum or size changed, or that cannot be downloaded, is reported
+and left as it is; the command exits with status 2 so you can decide.
 
 ## Useful tools
 

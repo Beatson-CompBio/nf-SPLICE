@@ -65,7 +65,12 @@ from nf_splice.layers.base import (
     update_review_state,
 )
 from nf_splice.layers.bundle import validate_bundle_draft
-from nf_splice.services.containers import Fetcher, Resolver, verify_image_url
+from nf_splice.services.containers import (
+    ContainerServiceError,
+    Fetcher,
+    Resolver,
+    verify_image_url,
+)
 
 LAYER = "components"
 PENDING = "pending"
@@ -352,43 +357,61 @@ UNRESOLVED = "unresolved"
 SEEDED = "seeded"
 
 
-def _lock_verified(root: Path, payload: bytes) -> bool:
-    """Whether the published components.json is the file nf-splice last built.
+def sources_digest(sources: Mapping[str, Any]) -> str:
+    """A digest of a container's source images (runtime to reference)."""
+    canonical = json.dumps(dict(sources), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    Its hash must match the lock's record: a hand-edited or foreign file is
-    not evidence of an earlier verification.
+
+def _lock_evidence(root: Path, payload: bytes) -> dict[str, Any] | None:
+    """The lock's verification records, if it vouches for components.json.
+
+    The lock's hash of the published file must match: a hand-edited or
+    foreign file is not evidence of an earlier verification.
     """
     try:
         lock = json.loads(
             (root / "splice" / "nf-splice.lock.json").read_text(encoding="utf-8")
         )
     except (OSError, UnicodeError, json.JSONDecodeError):
-        return False
-    record = ((lock or {}).get("managed_files") or {}).get("components.json") or {}
-    return isinstance(record, dict) and record.get("sha256") == (
-        hashlib.sha256(payload).hexdigest()
-    )
+        return None
+    if not isinstance(lock, dict):
+        return None
+    record = (lock.get("managed_files") or {}).get("components.json") or {}
+    if not (
+        isinstance(record, dict)
+        and record.get("sha256") == hashlib.sha256(payload).hexdigest()
+    ):
+        return None
+    distributions = lock.get("distributions") or {}
+    return distributions if isinstance(distributions, dict) else {}
 
 
 def _published_inventory(
     root: Path,
-) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[str, str]], bool | None, bool]:
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, tuple[str, str]],
+    bool | None,
+    dict[str, Any] | None,
+]:
     """Published containers, component (id, container id) by path, image policy.
 
     Read as evidence from ``splice/components.json`` (0.3.0 or an earlier
     layout) so known container IDs stay stable across the migration. The last
-    value says whether the file is the one the lock records.
+    value is the lock's verification records when the lock vouches for the
+    file, else ``None``.
     """
     path = root / "splice" / "components.json"
     if path.is_symlink() or not path.is_file():
-        return {}, {}, None, False
+        return {}, {}, None, None
     try:
         payload = path.read_bytes()
         loaded = json.loads(payload.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}, {}, None, False
+        return {}, {}, None, None
     if not isinstance(loaded, dict):
-        return {}, {}, None, False
+        return {}, {}, None, None
     containers = {
         str(item["id"]): item
         for item in loaded.get("containers") or []
@@ -404,36 +427,56 @@ def _published_inventory(
         containers,
         links,
         policy if isinstance(policy, bool) else None,
-        _lock_verified(root, payload),
+        _lock_evidence(root, payload),
     )
 
 
 def _adopted_distribution(
-    published: Mapping[str, Any], selected: Mapping[str, str], trusted: bool
+    published: Mapping[str, Any],
+    selected: Mapping[str, str],
+    evidence: Mapping[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """A published, verified distribution that still matches the sources.
+    """A previously verified distribution that may be reused, or ``None``.
 
-    Kept only when the published file is the one nf-splice built (the lock
-    agrees), it records the distribution as verified, and the image source
-    the distribution was made from (every runtime's source) is unchanged.
-    Nothing is downloaded or invented: the checksum and address
-    are the ones nf-splice verified before.
+    Reused without downloading only when everything agrees: the lock vouches
+    for the published ``components.json``; the lock's own record of the
+    verification names the same checksum, address and size; the published
+    distribution is internally consistent (an HTTPS address, a ``sif`` or
+    ``img`` file, the Nextflow cache name of these sources); and the
+    container's source images are byte-for-byte the ones verified (their
+    digest matches the lock's). This is historical evidence of a past
+    verification: it never shows the file is reachable today.
     """
     distribution = published.get("distribution")
     resolution = published.get("resolution") or {}
+    sources = published.get("source_images")
+    container_id = published.get("id")
+    record = (evidence or {}).get(str(container_id)) if evidence is not None else None
     if not (
-        trusted
+        isinstance(record, dict)
         and isinstance(distribution, dict)
         and isinstance(resolution, dict)
         and resolution.get("status") == "verified"
-        and distribution.get("sha256")
-        and str(distribution.get("download_uri", "")).startswith("https://")
+        and isinstance(sources, dict)
+        and dict(sources) == dict(selected)
     ):
         return None
-    sources = published.get("source_images")
-    if not isinstance(sources, dict) or dict(sources) != dict(selected):
+    uri = str(distribution.get("download_uri", ""))
+    try:
+        cache_name = cache_filename_for({"source_images": dict(selected)})
+    except LayerError:
         return None
-    return dict(distribution)
+    consistent = (
+        uri.startswith("https://")
+        and distribution.get("format") in {"sif", "img"}
+        and bool(distribution.get("filename"))
+        and distribution.get("cache_filename") == cache_name
+        and record.get("sha256") == distribution.get("sha256")
+        and record.get("download_uri") == uri
+        and record.get("size_bytes") == distribution.get("size_bytes")
+        and record.get("source_images_sha256") == sources_digest(selected)
+    )
+    return dict(distribution) if consistent else None
 
 
 def _references(container: Mapping[str, Any]) -> set[str]:
@@ -466,7 +509,7 @@ def seed_inventory(
     when its source is unchanged and the lock vouches for the published
     file; the last value returned holds those verification records.
     """
-    published, links, policy, trusted = _published_inventory(root)
+    published, links, policy, lock_evidence = _published_inventory(root)
     adopted: dict[str, dict[str, Any]] = {}
     containers: list[dict[str, Any]] = []
     by_sources: dict[str, str] = {}
@@ -561,7 +604,9 @@ def seed_inventory(
                         identifier = container_id(signature)
                 by_sources[signature] = identifier
                 distribution = (
-                    _adopted_distribution(published[identifier], selected, trusted)
+                    _adopted_distribution(
+                        published[identifier], selected, lock_evidence
+                    )
                     if identifier in published
                     else None
                 )
@@ -569,6 +614,7 @@ def seed_inventory(
                     adopted[identifier] = {
                         "sha256": distribution["sha256"],
                         "download_uri": distribution["download_uri"],
+                        "basis": "historical",
                         "adopted_from": "splice/components.json",
                     }
                 containers.append(
@@ -886,6 +932,7 @@ def verify_distribution(
             "sha256": verified.sha256,
             "download_uri": url,
             "final_url": verified.final_url,
+            "basis": "fresh",
         }
 
     return edit_draft(
@@ -896,6 +943,106 @@ def verify_distribution(
         action="verify_distribution",
         review=record,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class Reverification:
+    """Outcome of downloading one recorded distribution again."""
+
+    container_id: str
+    download_uri: str
+    status: str  # fresh, changed or failed
+    detail: str
+
+    def to_json(self) -> dict[str, str]:
+        return {
+            "container_id": self.container_id,
+            "download_uri": self.download_uri,
+            "status": self.status,
+            "detail": self.detail,
+        }
+
+
+def reverify_distributions(
+    repository_root: str | Path,
+    containers: Sequence[str] = (),
+    *,
+    fetcher: Fetcher | None = None,
+    resolver: Resolver | None = None,
+    scratch: Path | None = None,
+) -> tuple[Reverification, ...]:
+    """Download recorded distributions again and check them (network, opt-in).
+
+    The fresh availability check that historical verification never is: each
+    distribution is downloaded in full from its recorded address and its
+    checksum and size compared with the record. A match is recorded as a
+    ``fresh`` verification; a different file (``changed``) or a failed
+    download (``failed``) is reported and nothing is changed, so the person
+    decides what to do. The draft itself is never edited.
+    """
+    root = Path(repository_root).resolve()
+    data = _draft(root)
+    wanted = set(containers)
+    known = {
+        str(item.get("id"))
+        for item in data.get("containers") or []
+        if isinstance(item, dict)
+    }
+    unknown = sorted(wanted - known)
+    if unknown:
+        raise LayerError(f"unknown container(s): {', '.join(unknown)}")
+    options: dict[str, Any] = {"scratch": scratch}
+    if fetcher is not None:
+        options["fetcher"] = fetcher
+    if resolver is not None:
+        options["resolver"] = resolver
+    results: list[Reverification] = []
+    fresh: dict[str, dict[str, Any]] = {}
+    for item in data.get("containers") or []:
+        if not isinstance(item, dict) or not isinstance(item.get("distribution"), dict):
+            continue
+        identifier = str(item.get("id"))
+        if wanted and identifier not in wanted:
+            continue
+        distribution = item["distribution"]
+        uri = str(distribution.get("download_uri"))
+        try:
+            image = verify_image_url(uri, **options)
+        except ContainerServiceError as error:
+            results.append(Reverification(identifier, uri, "failed", str(error)))
+            continue
+        if image.sha256 != distribution.get(
+            "sha256"
+        ) or image.size_bytes != distribution.get("size_bytes"):
+            results.append(
+                Reverification(
+                    identifier,
+                    uri,
+                    "changed",
+                    f"the file now has SHA-256 {image.sha256} and "
+                    f"{image.size_bytes} bytes, not the recorded "
+                    f"{distribution.get('sha256')}; nothing was changed",
+                )
+            )
+            continue
+        fresh[identifier] = {
+            "sha256": image.sha256,
+            "download_uri": uri,
+            "final_url": image.final_url,
+            "basis": "fresh",
+        }
+        results.append(
+            Reverification(
+                identifier, uri, "fresh", "downloaded again; checksum and size match"
+            )
+        )
+    if fresh:
+
+        def record(state: ReviewState) -> None:
+            state.section("verified").update(fresh)
+
+        update_review_state(root, LAYER, record)
+    return tuple(results)
 
 
 def _pipeline(root: Path) -> tuple[dict[str, str] | None, list[DraftIssue]]:
@@ -1043,9 +1190,11 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
                     LAYER,
                     f"/containers/{index}/distribution",
                     "adopted_distribution",
-                    f"{container.id}: verified when the earlier bundle was built and "
-                    "kept because its source is unchanged; it was not downloaded "
-                    "again (`nf-splice containers verify` re-checks it)",
+                    f"{container.id}: historical verification, reused because the "
+                    "lock, its verification record, the distribution and the "
+                    "source images all agree; it was not downloaded again, so "
+                    "its current availability is unknown; check it now with "
+                    "`nf-splice containers reverify`",
                     Severity.WARNING,
                 )
             )

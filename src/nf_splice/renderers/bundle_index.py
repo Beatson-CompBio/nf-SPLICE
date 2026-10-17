@@ -128,6 +128,7 @@ def render_bundle_index(
     sources: Mapping[str, Mapping[str, str]],
     provenance: Mapping[str, Any],
     repository_revision: str | None,
+    distributions: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> RenderedBundleIndex:
     """Render bundle.json, README.md and the lock around layer payloads."""
     bundle = _json(bundle_document(metadata, maintainers, default_profile))
@@ -145,4 +146,11 @@ def render_bundle_index(
             for path, payload in sorted(managed.items())
         },
     }
+    if distributions:
+        # nf-splice's own record of each image file it verified: evidence
+        # for reusing the verification later, never proof of availability.
+        lock["distributions"] = {
+            key: dict(sorted(distributions[key].items()))
+            for key in sorted(distributions)
+        }
     return RenderedBundleIndex(bundle=bundle, readme=readme, lock=_json(lock))

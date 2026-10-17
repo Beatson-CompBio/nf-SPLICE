@@ -25,7 +25,7 @@ Run `nf-splice plan` to see everything still open, or
 | `conditional_route_not_covered` (warning) | A route published under a condition matches no output. | Add an output for it, or exclude it with a reason; keep alternative routes. |
 | `route_unverified` (warning) | Static analysis could not resolve a route. | Check the code; add an output or exclude it if it is published. |
 | `container_not_mapped` | A module declares a container but its component names none. | Set `container_id`, or record what stops it under `unresolved`. |
-| `adopted_distribution` (warning) | A verified image file was kept from the earlier bundle without downloading it again. | Nothing, or run `nf-splice containers verify` to check it again. |
+| `adopted_distribution` (warning) | A verified image file was reused from the earlier bundle without downloading it again: a historical verification, not proof it is reachable now. | Nothing, or check it now with `nf-splice containers reverify --approve-network`. |
 | `unresolved_component` | A module's container or version needs a decision. | Resolve it in the draft and remove the `unresolved` entry. |
 | `module_not_listed` (warning) | A module is not in the inventory. | Add it, or leave it out on purpose. |
 | `syntax` | A draft cannot be parsed. | Fix it in your editor; nf-splice never rewrites it. |

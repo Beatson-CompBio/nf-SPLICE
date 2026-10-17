@@ -64,9 +64,11 @@ references, or planning downloadable images for an HPC deployment.
   add it or remove it on purpose.
 - `unverified_distribution`: a checksum or URL was entered by hand; only
   `nf-splice containers verify`/`deliver` records one.
-- `adopted_distribution` (warning): a verified image file was kept from the
-  earlier `splice/components.json` because the lock vouches for that file
-  and the container's sources are unchanged; it was not downloaded again.
+- `adopted_distribution` (warning): a verified image file was reused from
+  the earlier bundle because the lock, its verification record, the
+  distribution and the sources all agree. It is a historical verification:
+  never say the image is available now. A person checks that with
+  `nf-splice containers reverify --approve-network`.
 - Processes defined inline in a workflow file are components too, with
   `type: workflow_process`, `path` the `.nf` file and `process` the process
   name (for example `path: main.nf`, `process: TILE_SLIDE`). Never put the

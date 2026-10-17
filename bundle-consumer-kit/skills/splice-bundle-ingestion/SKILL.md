@@ -50,7 +50,7 @@ downstream component needs; you choose tables, documents or columns.
 | Containers: `id`, `type`, `uri`, `source_images`, `distribution`, `resolution.status`; and `require_downloadable_images` | `components.json` | Launcher (image pre-fetch), software inventory |
 | Components: `id`, `type`, `name`, `namespace`, `path`, `process`, `tool.name`, `tool.version`, `container_id`, `conda_packages`, `evidence` | `components.json` | Software inventory, "tools used" pages, citations. `type` is `workflow_module` (`path` is the module directory) or `workflow_process` (`path` is the `.nf` file and `process` the process name); key components by `id`, never by `path` alone |
 | RO-Crate | `ro-crate-metadata.json` | Provenance export (store as a document) |
-| Integrity: `managed_files` hashes, `repository.url`, `repository.revision`, `contracts` | `nf-splice.lock.json` | Change detection, provenance ("built from commit …") |
+| Integrity: `managed_files` hashes, `repository.url`, `repository.revision`, `contracts`; `distributions` (each image file's verified checksum and whether that verification was `fresh` or `historical`) | `nf-splice.lock.json` | Change detection, provenance ("built from commit …"). A verification record is not proof an image is reachable now: download and check the SHA-256 yourself |
 
 ### Parameters
 

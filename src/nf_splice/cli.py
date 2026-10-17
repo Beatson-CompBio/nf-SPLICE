@@ -2149,6 +2149,46 @@ def containers_verify_command(
     typer.echo("Verified distribution recorded.")
 
 
+@containers_app.command("reverify")
+def containers_reverify_command(
+    containers: Annotated[
+        list[str] | None,
+        typer.Argument(help="Container IDs; every recorded distribution if none."),
+    ] = None,
+    repository: RepositoryOption = Path("."),
+    approve_network: bool = typer.Option(
+        False,
+        "--approve-network",
+        help="Allow downloading each recorded image file again.",
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Download recorded image files again and check them now (network).
+
+    A reused (historical) verification says nothing about whether a file is
+    still reachable; this is the fresh check. Matches are recorded as fresh
+    verifications; changed or unreachable files are reported, never changed.
+    """
+    if not approve_network:
+        typer.echo(
+            "reverify downloads every selected image file; pass --approve-network",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    results = _run(
+        lambda: component_layer.reverify_distributions(repository, containers or ())
+    )
+    if json_output:
+        typer.echo(dumps([item.to_json() for item in results]))
+    else:
+        if not results:
+            typer.echo("No recorded distribution to check.")
+        for item in results:
+            typer.echo(f"{item.container_id}: {item.status} - {item.detail}")
+    if any(item.status != "fresh" for item in results):
+        raise typer.Exit(code=2)
+
+
 # ---------------------------------------------------------------- analysis output
 
 
