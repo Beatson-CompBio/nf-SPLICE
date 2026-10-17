@@ -376,6 +376,8 @@ class SessionToolbox:
         if not review:
             return
         assessment = arguments.get("draft_assessment") or {}
+        if self.stage == "outputs":
+            self._require_route_decisions(arguments)
         changed = self.stage_changed or bool(
             self.outcome.staged or self.outcome.executed
         )
@@ -383,6 +385,41 @@ class SessionToolbox:
             raise PolicyViolation(
                 "the draft is unchanged: list under draft_assessment.confirmed what "
                 "you verified against the evidence, or change the draft"
+            )
+
+    def _stage_root(self) -> Path:
+        """Where the stage's drafts are: the preview copy while planning."""
+        if self.mode is ToolMode.STAGE and self.sandbox is not None:
+            return self.sandbox.repository
+        return self.root
+
+    def _require_route_decisions(self, arguments: Mapping[str, Any]) -> None:
+        """Every uncovered alternative route must be addressed by the review."""
+        from nf_splice.services.lifecycle import validate_layer
+
+        issues = validate_layer(self._stage_root(), "outputs").issues
+        open_routes = sorted(
+            {
+                item.message.split(" ", 1)[0]
+                for item in issues
+                if item.code == "conditional_route_not_covered"
+            }
+        )
+        assessment = arguments.get("draft_assessment") or {}
+        text = " ".join(
+            str(value)
+            for key in ("findings", "uncertainties")
+            for value in arguments.get(key) or []
+        ) + " ".join(
+            str(value) for values in assessment.values() for value in values or []
+        )
+        unaddressed = [name for name in open_routes if name not in text]
+        if unaddressed:
+            raise PolicyViolation(
+                "these published alternative routes are neither catalogued nor "
+                "excluded: " + ", ".join(unaddressed[:20]) + ". Add outputs for "
+                "them, exclude them with a reason, or say in findings or "
+                "uncertainties why each stays out"
             )
 
     def _control(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

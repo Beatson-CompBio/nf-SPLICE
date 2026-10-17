@@ -453,3 +453,125 @@ def test_structural_and_standards_checks_are_reported_apart(
     document = json.loads(cli.output)
     assert document["checks"]["standards"]["status"] == "not_run"
     assert document["assessment"]["recommendation"]["action"] == "keep"
+
+
+# ------------------------------------------------------------ outputs
+
+
+def _drop_output(root: Path, predicate: Any) -> None:
+    edit_draft_file(
+        root,
+        "outputs",
+        lambda data: data.update(
+            outputs=[item for item in data["outputs"] if not predicate(item)]
+        ),
+    )
+
+
+def _codes(root: Path) -> dict[str, list[Any]]:
+    from nf_splice.services.lifecycle import validate_layer
+
+    found: dict[str, list[Any]] = {}
+    for item in validate_layer(root, "outputs").issues:
+        found.setdefault(item.code, []).append(item)
+    return found
+
+
+def test_an_established_uncovered_route_blocks_until_resolved(tmp_path: Path) -> None:
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    _drop_output(
+        root,
+        lambda item: any("multiqc" in pattern for pattern in item["path_patterns"]),
+    )
+    found = _codes(root)
+    established = found["route_not_covered"]
+    assert established[0].severity.value == "error"
+    assert "MULTIQC always publishes" in established[0].message
+    assert "false_positive" in established[0].message
+
+    def exclude(kind: str | None) -> None:
+        def mutate(data: dict[str, Any]) -> None:
+            entry = {"process": "MULTIQC", "reason": "Static discovery is wrong."}
+            if kind is not None:
+                entry["kind"] = kind
+            data["excluded_routes"] = [entry]
+
+        edit_draft_file(root, "outputs", mutate)
+
+    exclude("not_a_kind")
+    assert "invalid_value" in _codes(root)
+    exclude("false_positive")
+    assert "route_not_covered" not in _codes(root)
+
+
+def test_alternative_routes_stay_in_the_catalogue_as_classified_warnings(
+    tmp_path: Path,
+) -> None:
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    _drop_output(root, lambda item: item["key"] == "hisat2_alignment")
+    found = _codes(root)
+    assert "route_not_covered" not in found
+    conditional = found["conditional_route_not_covered"]
+    assert conditional[0].severity.value == "warning"
+    assert "HISAT2_ALIGN" in conditional[0].message
+    assert "union of every route" in conditional[0].message
+    # No approval queue: the draft still builds with the warning.
+    build(root)
+    assert (root / "splice" / "outputs.schema.json").is_file()
+
+
+def test_unresolvable_routes_are_unverified_warnings_never_blockers(
+    tmp_path: Path,
+) -> None:
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    module = root / "modules" / "local" / "dynamic"
+    module.mkdir(parents=True)
+    (module / "main.nf").write_text(
+        "process DYNAMIC {\n"
+        '    publishDir "${params.outdir}/${task.ext.prefix}"\n'
+        "    output:\n"
+        "    path out_name\n"
+        "    script:\n"
+        "    'true'\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    main = root / "main.nf"
+    text = main.read_text(encoding="utf-8")
+    main.write_text(
+        "include { DYNAMIC } from './modules/local/dynamic/main'\n"
+        + text.replace("workflow {", "workflow {\n    DYNAMIC()", 1),
+        encoding="utf-8",
+    )
+    found = _codes(root)
+    unverified = found.get("route_unverified", [])
+    assert all(item.severity.value == "warning" for item in unverified)
+    assert "route_not_covered" not in found
+
+
+def test_an_outputs_review_must_address_uncovered_alternative_routes(
+    tmp_path: Path,
+) -> None:
+    from layer_fixtures import follow_scope, review_arguments
+
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    _drop_output(root, lambda item: item["key"] == "hisat2_alignment")
+    tools = _review_toolbox(root, "outputs", "outputs")
+    follow_scope(tools)
+    silent = tools.call("complete_review", review_arguments("outputs"))
+    assert silent["denied"] and "HISAT2_ALIGN" in str(silent)
+    explained = tools.call(
+        "complete_review",
+        review_arguments(
+            "outputs",
+            uncertainties=[
+                "HISAT2_ALIGN is published when params.aligner is hisat2; the "
+                "developer must say whether that route is supported"
+            ],
+        ),
+    )
+    assert explained["success"], explained

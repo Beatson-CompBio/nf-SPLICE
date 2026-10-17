@@ -727,6 +727,33 @@ def _label(item: Any, index: int) -> str:
     return f"output {key!r}" if key else f"output {index}"
 
 
+#: Why a published route is left out of the catalogue (draft-only, optional):
+#: an intermediate the platform need not classify, a route static discovery
+#: reported although the pipeline does not publish it, or output outside the
+#: integration's scope.
+EXCLUSION_KINDS = frozenset({"intermediate", "false_positive", "out_of_scope"})
+
+#: How firmly the code establishes that an uncovered route is published.
+ESTABLISHED = "established"
+CONDITIONAL = "conditional"
+UNVERIFIED = "unverified"
+
+
+def route_class(route: Any) -> str:
+    """Established, conditional (or configuration-dependent) or unverified."""
+    if route.status is CoverageStatus.UNRESOLVED:
+        return UNVERIFIED
+    if route.status is CoverageStatus.INFERRED_UNVERIFIED:
+        # Published, but by a default rule, a saveAs or run-time path parts.
+        return CONDITIONAL
+    if route.conditional or (
+        route.publication is not None
+        and (route.publication.dynamic or route.publication.enabled)
+    ):
+        return CONDITIONAL
+    return ESTABLISHED
+
+
 def _exclusions(
     data: Mapping[str, Any],
 ) -> tuple[list[tuple[str, str]], list[DraftIssue]]:
@@ -757,6 +784,17 @@ def _exclusions(
                 )
             )
             continue
+        kind = item.get("kind")
+        if kind is not None and kind not in EXCLUSION_KINDS:
+            issues.append(
+                issue(
+                    LAYER,
+                    f"{pointer}/kind",
+                    "invalid_value",
+                    "kind is one of " + ", ".join(sorted(EXCLUSION_KINDS)),
+                )
+            )
+            continue
         if not str(item.get("reason") or "").strip():
             issues.append(
                 issue(
@@ -776,13 +814,24 @@ def _coverage_issues(
     patterns: Sequence[str],
     exclusions: Sequence[tuple[str, str]],
 ) -> list[DraftIssue]:
-    """Published routes no catalogue entry matches: a substantive finding.
+    """Published routes no catalogue entry matches, by how firm the evidence is.
 
-    Reported as warnings: static analysis cannot prove a route is really
-    published at run time, and the author may have good reason to leave one
-    out (record it in ``excluded_routes``). This replaces the former
-    candidate-review gate: what matters is what the catalogue covers, not
-    whether each heuristic candidate was clicked.
+    - *Established* (confirmed from the code, with no condition, switch or
+      dynamic path): an error, ``route_not_covered``. The catalogue is the
+      union of what the pipeline publishes, so an established output may not
+      be silently missing. Resolve it by adding or correcting an output, or
+      by listing it under ``excluded_routes`` with a reason (``kind:
+      false_positive`` when static discovery is wrong).
+    - *Conditional* (a workflow branch, ``when:``, ``ext.when``, an
+      ``enabled`` switch or a dynamic path): a warning,
+      ``conditional_route_not_covered``. The union of routes still applies:
+      an example run that took another branch is no reason to drop it.
+    - *Unverified* (static analysis could not resolve the route): a warning,
+      ``route_unverified``. Never a blocker.
+
+    Excluded routes, ``versions.yml`` and unreachable code are not reported.
+    This replaces the former candidate-review gate: what matters is what the
+    catalogue covers, not whether each heuristic candidate was clicked.
     """
     try:
         analysis = analyse_routes(root)
@@ -805,8 +854,9 @@ def _coverage_issues(
             if (match := re.match(r"^\^([A-Za-z0-9_.-]+)/", pattern))
         }
     )
-    uncovered: dict[str, list[str]] = {}
+    uncovered: dict[tuple[str, str], list[str]] = {}
     where: dict[str, str] = {}
+    conditions: dict[str, str] = {}
     seen: set[str] = set()
     for route in analysis.published:
         glob = route.published_glob
@@ -830,22 +880,58 @@ def _coverage_issues(
             expression.match(sample) for expression in compiled for sample in examples
         ):
             continue
-        uncovered.setdefault(route.instance, []).append(glob)
+        kind = route_class(route)
+        uncovered.setdefault((kind, route.instance), []).append(glob)
         if route.publication is not None:
             where.setdefault(route.instance, route.publication.location)
-    return [
-        issue(
-            LAYER,
-            "/outputs",
-            "route_not_covered",
-            f"{instance} publishes {len(globs)} path(s) no output pattern matches"
-            + (f" ({where[instance]})" if instance in where else "")
-            + f": {', '.join(sorted(globs))}. Add outputs for them, or list "
-            "them under excluded_routes with a reason",
-            Severity.WARNING,
-        )
-        for instance, globs in sorted(uncovered.items())
-    ]
+        path = next((item for item in route.conditions if item), None)
+        if path:
+            conditions.setdefault(route.instance, "when " + " and ".join(path)[:160])
+        elif route.notes:
+            conditions.setdefault(route.instance, route.notes[0])
+    found = []
+    for (kind, instance), globs in sorted(uncovered.items()):
+        place = f" ({where[instance]})" if instance in where else ""
+        paths = ", ".join(sorted(globs))
+        if kind == ESTABLISHED:
+            found.append(
+                issue(
+                    LAYER,
+                    "/outputs",
+                    "route_not_covered",
+                    f"{instance} always publishes {len(globs)} path(s) no output "
+                    f"pattern matches{place}: {paths}. Add or correct outputs for "
+                    "them, or list them under excluded_routes with a reason (kind: "
+                    "intermediate, false_positive or out_of_scope)",
+                )
+            )
+        elif kind == CONDITIONAL:
+            when = f" ({conditions[instance]})" if instance in conditions else ""
+            found.append(
+                issue(
+                    LAYER,
+                    "/outputs",
+                    "conditional_route_not_covered",
+                    f"{instance} publishes {len(globs)} path(s){when}{place} that no "
+                    f"output pattern matches: {paths}. The catalogue is the union "
+                    "of every route; add outputs for them, or exclude them with a "
+                    "reason",
+                    Severity.WARNING,
+                )
+            )
+        else:
+            found.append(
+                issue(
+                    LAYER,
+                    "/outputs",
+                    "route_unverified",
+                    f"static analysis could not establish whether {instance} "
+                    f"publishes {paths}{place}; check the code and catalogue or "
+                    "exclude it if it is published",
+                    Severity.WARNING,
+                )
+            )
+    return found
 
 
 def _contract_input(

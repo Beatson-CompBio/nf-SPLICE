@@ -459,8 +459,10 @@ def test_out_01_03_04_07_routes_seed_a_catalogue_and_coverage_is_substantive(
         ),
     )
     issues = validate_layer(root, "outputs").issues
-    covered = [item for item in issues if item.code == "route_not_covered"]
+    # HISAT2 is an alternative route: a classified warning, never dropped.
+    covered = [item for item in issues if item.code == "conditional_route_not_covered"]
     assert covered and "HISAT2_ALIGN" in covered[0].message
+    assert "when " in covered[0].message
     assert all(item.severity.value == "warning" for item in covered)
     assert "pending_candidate" not in {item.code for item in issues}
 
