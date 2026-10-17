@@ -13,9 +13,13 @@ import subprocess
 import sys
 from pathlib import PurePosixPath
 
-# Development-only prefixes that must never enter version control.
+# Development-only prefixes that must never enter version control. Each is
+# anchored at the repository root: deliberately versioned fixtures such as
+# tests/fixtures/<name>/repository/.splice-local/ stay committable.
 FORBIDDEN_PREFIXES = (
     ".nf-splice-local/",
+    # nf-splice's private authoring, agent and test state (ADR-0047).
+    ".splice-local/",
     ".venv/",
     "venv/",
     ".mypy_cache/",
