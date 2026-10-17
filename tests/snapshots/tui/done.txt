@@ -12,7 +12,8 @@
   ✓ Build
 ▶ ✓ Done
 == done
-Bundle valid: yes (6 contract files)
+Published and ready for SPLICE ingestion.
+Contract files checked: 6
 The reviewed decisions are in your private drafts (.splice-local/, never committed); only splice/ is published. Check a checkout in CI with:
   nf-splice validate --json
   nf-splice schema check --json

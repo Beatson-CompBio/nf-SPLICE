@@ -21,7 +21,10 @@ _LAYER_STEP = {
 
 class ReviewView(StepView):
     step_id = "review"
-    explanation = "Every blocker must be resolved before the bundle can be published."
+    explanation = (
+        "Every draft blocker must be resolved before the bundle can be published. "
+        "Publishing is not ingestion readiness: the last step reports that."
+    )
 
     def compose(self) -> ComposeResult:
         yield Static("", id="review-summary", classes="section")
@@ -31,7 +34,10 @@ class ReviewView(StepView):
 
     def refresh_view(self, snapshot: WizardSnapshot) -> None:
         if snapshot.publish_ready:
-            text = "All layers are ready. Continue to Build to review the plan diff."
+            text = (
+                "All drafts validate. Continue to Build to review the plan diff; "
+                "readiness for SPLICE ingestion is reported after publishing."
+            )
         else:
             text = "Blockers:\n" + "\n".join(
                 f"- {item}" for item in snapshot.publish_blockers

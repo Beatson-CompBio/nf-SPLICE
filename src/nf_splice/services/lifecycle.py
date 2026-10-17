@@ -749,14 +749,18 @@ class BundleIssue:
 
 @dataclass(frozen=True, slots=True)
 class BundleReport:
-    """Whole-bundle ingestion readiness."""
+    """Contract, identity, classification and publication checks of a bundle.
+
+    Ingestion readiness needs more (runtime parameters, deployment and
+    provenance): see :func:`nf_splice.services.readiness.lifecycle`.
+    """
 
     issues: tuple[BundleIssue, ...]
     checked_files: int
 
     @property
     def valid(self) -> bool:
-        """Ingestion-ready: structurally valid *and* scientifically classified."""
+        """No blocking structural or classification issue (not readiness)."""
         return not any(item.severity is Severity.ERROR for item in self.issues)
 
     @property
@@ -779,7 +783,6 @@ class BundleReport:
         return {
             "structurally_valid": self.structurally_valid,
             "scientifically_classified": self.classified,
-            "ingestion_ready": self.valid,
         }
 
 

@@ -58,10 +58,9 @@ def _readiness(root: Path) -> dict[str, Any]:
     """Structurally valid, scientifically classified and ingestion-ready, apart."""
     from nf_splice.layers.bundle import declared_capabilities, rejected_assays
     from nf_splice.services.assay_discovery import assess_assays
-    from nf_splice.services.lifecycle import validate_bundle
+    from nf_splice.services.readiness import lifecycle
 
-    published = (root / "splice" / "bundle.json").is_file()
-    report = validate_bundle(root) if published else None
+    state = lifecycle(root)
     declared = [
         str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
         for item in declared_capabilities(root)
@@ -69,17 +68,16 @@ def _readiness(root: Path) -> dict[str, Any]:
     questions: list[str] = []
     if not declared:
         questions = list(assess_assays(root, rejected=rejected_assays(root)).questions)
-    from nf_splice.services.readiness import assess_readiness
-
-    dimensions = assess_readiness(root)
     return {
-        "bundle_published": published,
-        "structurally_valid": bool(report and report.structurally_valid),
-        "scientifically_classified": bool(report and report.classified and declared),
-        "ingestion_ready": bool(
-            report and report.valid and declared and dimensions.ingestion_ready
-        ),
-        "dimensions": dimensions.to_json()["dimensions"],
+        "bundle_published": state.published,
+        "drafts_valid": state.drafts_valid,
+        "lifecycle": state.state,
+        "headline": state.headline,
+        "reasons": state.reasons(),
+        "structurally_valid": state.structurally_valid,
+        "scientifically_classified": bool(state.scientifically_classified and declared),
+        "ingestion_ready": bool(state.ingestion_ready and declared),
+        "dimensions": state.readiness.to_json()["dimensions"],
         "assay_capabilities": declared,
         "open_assay_questions": questions,
     }
@@ -159,8 +157,8 @@ def build_report(
             key = f"{record.get('session_mode', state.mode.value)}"
             origins[key] = origins.get(key, 0) + 1
     statement = (
-        "Complete: every stage passed its deterministic checks and the published "
-        "bundle is valid."
+        "Complete: every stage passed its deterministic checks, and the published "
+        "bundle is ready for SPLICE ingestion."
         if complete
         else "Partial: "
         + (f"{len(blockers)} unresolved blocker(s); " if blockers else "")
@@ -172,6 +170,11 @@ def build_report(
             else ""
         )
         + ("supplied example output is incompatible. " if incompatible else "")
+        + (
+            f"{readiness['headline']}: " + "; ".join(readiness["reasons"][:5]) + ". "
+            if built.passed and not readiness["ingestion_ready"]
+            else ""
+        )
         + "See the stages and blockers below."
     )
     return {
@@ -263,6 +266,7 @@ def report_text(report: dict[str, Any]) -> str:
             ),
             "Ingestion-ready SPLICE bundle: "
             + ("yes" if readiness["ingestion_ready"] else "no"),
+            str(readiness.get("headline", "")),
         ]
         lines += [
             f"  Open question: {item}" for item in readiness["open_assay_questions"]

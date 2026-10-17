@@ -21,6 +21,7 @@ from typing import Any
 from typer.testing import CliRunner
 
 from agent_scripts import RouteAgent, _call
+from layer_fixtures import follow_scope
 from multi_route import EXAMPLE, copy_fixture
 from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
 from nf_splice.agents.protocol import ToolInvoker, TurnRequest
@@ -242,11 +243,12 @@ def _investigate_and_ask(request: TurnRequest, tools: ToolInvoker) -> list[str]:
                 rationale=f"The developer said: {answer.strip()}",
                 sources=["conversation: the developer's reply"],
             )
+        follow_scope(tools)
         _call(
             tools,
             "submit_stage_proposal",
             summary="Identity with the assays the developer confirmed.",
-            evidence=["conversation"],
+            evidence=["assess_assays"],
             uncertainties=[],
         )
         return ["Declared the confirmed assays."]
@@ -465,7 +467,6 @@ def test_g_ingestion_readiness_requires_classification(tmp_path: Path) -> None:
     assert report.levels() == {
         "structurally_valid": True,
         "scientifically_classified": False,
-        "ingestion_ready": False,
     }
     result = runner.invoke(app, ["validate", "--repository", str(root)])
     assert result.exit_code == 2

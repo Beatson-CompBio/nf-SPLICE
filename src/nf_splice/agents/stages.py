@@ -145,10 +145,13 @@ def _build_gate(root: Path) -> GateResult:
             tuple(f"splice/{item} differs from the drafts" for item in stale),
             "published bundle is out of date",
         )
+    from nf_splice.services.readiness import lifecycle
+
     return GateResult(
         report.valid,
         issues,
-        f"valid bundle ({report.checked_files} contract files)"
+        f"published ({report.checked_files} contract files checked); "
+        + lifecycle(root).headline.lower()
         if report.valid
         else "invalid",
     )

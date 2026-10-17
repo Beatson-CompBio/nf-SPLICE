@@ -53,11 +53,12 @@ class BuildView(StepView):
         replace = self.query_one("#build-replace", Switch).value
 
         def published(result: object) -> None:
+            from nf_splice.services.readiness import lifecycle
+
             wrote = getattr(result, "wrote", ())
-            self.query_one("#build-log", Static).update(
-                "\n".join(f"wrote splice/{path}" for path in wrote)
-                or "No files changed."
-            )
+            lines = [f"wrote splice/{path}" for path in wrote] or ["No files changed."]
+            lines.extend(lifecycle(app.repository).lines())
+            self.query_one("#build-log", Static).update("\n".join(lines))
 
         app.perform(
             "Publishing bundle",

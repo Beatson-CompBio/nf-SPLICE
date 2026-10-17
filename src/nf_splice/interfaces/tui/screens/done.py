@@ -8,6 +8,7 @@ from textual.widgets import Static
 from nf_splice.interfaces.tui.state import WizardSnapshot
 from nf_splice.interfaces.tui.widgets import StepView
 from nf_splice.services.lifecycle import validate_bundle
+from nf_splice.services.readiness import lifecycle
 
 CLI_EQUIVALENT = (
     "The reviewed decisions are in your private drafts (.splice-local/, never "
@@ -33,9 +34,10 @@ class DoneView(StepView):
 
     def refresh_view(self, snapshot: WizardSnapshot) -> None:
         report = validate_bundle(snapshot.repository)
+        state = lifecycle(snapshot.repository, drafts_valid=snapshot.publish_ready)
         lines = [
-            f"Bundle valid: {'yes' if report.valid else 'no'} "
-            f"({report.checked_files} contract files)"
+            *state.lines(),
+            f"Contract files checked: {report.checked_files}",
         ]
         lines.extend(
             f"{item.severity.value}: {item.path} [{item.rule}] {item.message}"

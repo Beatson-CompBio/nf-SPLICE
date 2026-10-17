@@ -316,10 +316,13 @@ def inspect_command(
 def status_command(
     repository: RepositoryOption = Path("."), json_output: JsonOption = False
 ) -> None:
-    """Show each layer's draft-derived status (read-only)."""
+    """Show each layer's draft status and where the bundle stands (read-only)."""
+    from nf_splice.services.readiness import lifecycle
+
     status = workspace_status(repository)
+    state = lifecycle(repository, drafts_valid=status.ready)
     if json_output:
-        typer.echo(dumps(status.to_json()))
+        typer.echo(dumps(status.to_json() | {"lifecycle": state.to_json()}))
         return
     typer.echo(f"Repository: {status.inspection.root}")
     typer.echo(f"SPLICE tree: {status.inspection.splice_tree.state.value}")
@@ -332,7 +335,9 @@ def status_command(
         )
     for warning in status.warnings:
         typer.echo(f"warning: {warning}")
-    typer.echo(f"Bundle ready to publish: {'yes' if status.ready else 'no'}")
+    typer.echo(f"Drafts valid (ready to publish): {'yes' if status.ready else 'no'}")
+    for line in state.lines():
+        typer.echo(line)
 
 
 # ---------------------------------------------------------------- init
@@ -1006,7 +1011,13 @@ def draft_validate_command(
     reports = [_call(inspect_layer, repository, name) for name in names]
     if json_output:
         typer.echo(
-            dumps({"valid": all(item["ready"] for item in reports), "layers": reports})
+            dumps(
+                {
+                    "scope": "drafts",
+                    "valid": all(item["ready"] for item in reports),
+                    "layers": reports,
+                }
+            )
         )
     else:
         for report in reports:
@@ -1015,6 +1026,11 @@ def draft_validate_command(
             )
             for item in report["issues"]:
                 typer.echo(_issue_line(item))
+        typer.echo(
+            "Draft checks only: `nf-splice build all` publishes, and "
+            "`nf-splice validate` reports whether the published bundle is ready "
+            "for SPLICE ingestion."
+        )
     if not all(item["ready"] for item in reports):
         raise typer.Exit(code=2)
 
@@ -1349,6 +1365,9 @@ def build_command(
             overwrite_edited=overwrite_edited or (),
         )
     )
+    from nf_splice.services.readiness import lifecycle
+
+    state = lifecycle(repository)
     if json_output:
         typer.echo(
             dumps(
@@ -1357,6 +1376,7 @@ def build_command(
                     "wrote": list(result.wrote),
                     "check": False,
                     "non_interactive": non_interactive,
+                    "lifecycle": state.to_json(),
                 }
             )
         )
@@ -1368,6 +1388,8 @@ def build_command(
         if result.wrote
         else "Published files are byte-identical; no files changed."
     )
+    for line in state.lines():
+        typer.echo(line)
 
 
 @app.command("validate")
@@ -1375,18 +1397,23 @@ def validate_command(
     repository: RepositoryOption = Path("."), json_output: JsonOption = False
 ) -> None:
     """Validate the published bundle and assess ingestion readiness (read-only)."""
-    from nf_splice.services.readiness import assess_readiness
+    from nf_splice.services.readiness import lifecycle
 
     report = validate_bundle(repository)
-    readiness = assess_readiness(repository)
-    ready = report.valid and readiness.ingestion_ready
+    state = lifecycle(repository)
+    readiness = state.readiness
+    ready = state.ingestion_ready
     if json_output:
         typer.echo(
             dumps(
                 {
                     "valid": report.valid,
                     **report.levels(),
+                    "published": state.published,
+                    "drafts_valid": state.drafts_valid,
                     "ingestion_ready": ready,
+                    "lifecycle": state.state,
+                    "reasons": state.reasons(),
                     "readiness": readiness.to_json()["dimensions"],
                     "checked_files": report.checked_files,
                     "issues": [item.to_json() for item in report.issues],
@@ -1394,7 +1421,6 @@ def validate_command(
             )
         )
     else:
-        levels = report.levels()
         stream = not ready
         if ready:
             typer.echo(
@@ -1405,12 +1431,13 @@ def validate_command(
         else:
             typer.echo(
                 "Structurally valid: "
-                + ("yes" if levels["structurally_valid"] else "no")
+                + ("yes" if state.structurally_valid else "no")
                 + "; scientifically classified: "
-                + ("yes" if levels["scientifically_classified"] else "no")
+                + ("yes" if state.scientifically_classified else "no")
                 + "; ready for ingestion: no.",
                 err=True,
             )
+            typer.echo(f"{state.headline}.", err=True)
         for name, dimension in readiness.dimensions.items():
             typer.echo(f"  {name.replace('_', ' ')}: {dimension.status}", err=stream)
             for text in dimension.blockers:
@@ -1780,8 +1807,11 @@ def export_command(
     except (ExportError, OSError, ValueError) as error:
         typer.echo(str(error), err=True)
         raise typer.Exit(code=2) from error
+    from nf_splice.services.readiness import lifecycle
+
+    state = lifecycle(repository)
     if json_output:
-        typer.echo(dumps(result.to_json()))
+        typer.echo(dumps(result.to_json() | {"lifecycle": state.to_json()}))
         return
     typer.echo(f"Wrote {result.path} ({result.size} bytes)")
     typer.echo(f"SHA-256: {result.sha256}")
@@ -1789,6 +1819,12 @@ def export_command(
         typer.echo(f"verified: {check}")
     for item in result.excluded[:20]:
         typer.echo(f"not included: {item}")
+    typer.echo(
+        "The archive's checks prove its contents, not that the bundle is ready "
+        "for SPLICE ingestion:"
+    )
+    for line in state.lines():
+        typer.echo(line)
 
 
 @app.command("assess")

@@ -12,7 +12,7 @@
   ○ Build
   · Done
 == review
-All layers are ready. Continue to Build to review the plan diff.
+All drafts validate. Continue to Build to review the plan diff; readiness for SPLICE ingestion is reported after publishing.
 <button Fix bundle>
 <button Fix inputs>
 <button Fix outputs>
