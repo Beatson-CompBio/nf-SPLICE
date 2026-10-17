@@ -2,11 +2,11 @@
   ✓ Repository
   ✓ Identity
 ▶ ✓ Assay capabilities
-  ! Inputs
+  ✓ Inputs
   ! Outputs
   ! Components
   ! Execution profiles
-  ! Provenance
+  ✓ Provenance
   ✓ Drafts
   ○ Readiness
   · Build
@@ -49,4 +49,5 @@ asserted
 [evidence locations path:line, comma separated]
 <button Declare highlighted assay>
 <button Remove highlighted assay>
-No issues: this layer is ready to promote.
+WARNING /pipeline/description  the repository disagrees about this value: "Reference pipeline." from nextflow.config:5; "The reference pipeline." from ro-crate-metadata.json#./description; write the correct one into the draft
+WARNING /pipeline/description  a concise description is recommended for platform display

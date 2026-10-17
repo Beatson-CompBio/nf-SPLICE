@@ -26,7 +26,15 @@ def _pending(tools: ToolInvoker, layer: str) -> list[dict[str, Any]]:
     return data
 
 
+def _draft(tools: ToolInvoker, layer: str) -> dict[str, Any]:
+    result = _call(tools, "read_draft", layer=layer)
+    assert result["success"], result
+    found: dict[str, Any] = result["data"]
+    return found
+
+
 def identity(tools: ToolInvoker) -> None:
+    _call(tools, "read_source", path="nextflow.config")
     _call(tools, "set_identity", changes=dict(IDENTITY))
     assessment = _call(tools, "assess_assays")["data"]
     for candidate in assessment["candidates"]:
@@ -51,6 +59,7 @@ def identity(tools: ToolInvoker) -> None:
 
 
 def inputs(tools: ToolInvoker) -> None:
+    _call(tools, "parameter_usage")
     _call(tools, "sync_identity")
     for name, principals in ACCESS.items():
         _call(tools, "set_parameter_access", parameters=[name], editable_by=principals)
@@ -59,55 +68,79 @@ def inputs(tools: ToolInvoker) -> None:
 def outputs(
     tools: ToolInvoker, *, skip: Sequence[str] = (), reject: Sequence[str] = ()
 ) -> None:
-    _call(tools, "set_output_contract_version", version="1.0.0")
-    for candidate in _pending(tools, "outputs"):
+    """Rewrite the seeded catalogue in one revision, from the route evidence."""
+    _call(tools, "analyse_routes")
+    draft = _draft(tools, "outputs")
+    catalogue: list[dict[str, Any]] = []
+    candidates = _call(tools, "list_pending", layer="outputs", include_decided=True)[
+        "data"
+    ]
+    for candidate in candidates:
         key = candidate["suggested_key"]
-        if key in skip:
+        reviewed = OUTPUTS.get(str(key))
+        if (
+            reviewed is None
+            or key in skip
+            or key in reject
+            or candidate["path_pattern"] is None
+            or reviewed["key"] in {item["key"] for item in catalogue}
+        ):
             continue
-        reviewed = OUTPUTS.get(key)
-        if reviewed is None or key in reject:
-            _call(
-                tools,
-                "reject_output",
-                candidate_id=candidate["id"],
-                reason="Not observed in the example run"
-                if key in reject
-                else "Not a platform output",
-            )
-            continue
-        _call(
-            tools,
-            "accept_output",
-            candidate_id=candidate["id"],
-            output=reviewed
-            | {"entity_types": ["file"], "path_patterns": [candidate["path_pattern"]]},
+        catalogue.append(
+            reviewed
+            | {"entity_types": ["file"], "path_patterns": [candidate["path_pattern"]]}
         )
+    result = _call(
+        tools,
+        "replace_draft",
+        layer="outputs",
+        expected_sha256=draft["sha256"],
+        section="/outputs",
+        data=catalogue,
+    )
+    assert result["success"], result
+    _call(tools, "set_output_contract_version", version="1.0.0")
 
 
 def components(tools: ToolInvoker) -> None:
-    _call(tools, "accept_unambiguous_components")
+    _call(tools, "component_inventory")
     _call(tools, "set_image_policy", require_downloadable=False)
 
 
 def profiles(tools: ToolInvoker) -> None:
-    for candidate in _pending(tools, "execution-profiles"):
-        _call(
-            tools,
-            "review_profile",
-            candidate_id=candidate["id"],
-            profile_type="development",
-            description="Local development.",
-            executor="local",
-            container_engine="singularity",
-            config_source=candidate["config_sources"][0],
-        )
-    status = _call(tools, "read_draft", layer="execution-profiles")
-    profiles = status["data"].get("profiles") or []
-    if profiles:
-        _call(tools, "set_default_profile", profile_id=profiles[0]["id"])
+    _call(tools, "read_config")
+    candidates = _pending(tools, "execution-profiles")
+    source = next(
+        (item["config_sources"][0] for item in candidates if item["config_sources"]),
+        "conf/local.config",
+    )
+    _call(tools, "read_source", path=source)
+    draft = _draft(tools, "execution-profiles")
+    result = _call(
+        tools,
+        "replace_draft",
+        layer="execution-profiles",
+        expected_sha256=draft["sha256"],
+        section="/profiles",
+        data=[
+            {
+                "id": "local",
+                "name": "Local",
+                "description": "Local development.",
+                "type": "development",
+                "engine": "nextflow",
+                "executor": "local",
+                "container_engine": "singularity",
+                "config": {"adopt": source},
+            }
+        ],
+    )
+    assert result["success"], result
+    _call(tools, "set_default_profile", profile_id="local")
 
 
 def provenance(tools: ToolInvoker) -> None:
+    _call(tools, "analyse_ro_crate")
     _call(tools, "provenance_strategy", strategy="generated")
 
 
@@ -144,11 +177,19 @@ class RouteAgent:
         _call(tools, "workspace_status")
         action(tools)
         if request.purpose == "plan":
-            _call(
+            submitted = _call(
                 tools,
                 "submit_stage_proposal",
                 summary=f"Review the {request.stage} layer.",
                 evidence=["repository files"],
                 uncertainties=[],
             )
+            if submitted.get("staged_operations"):
+                return [f"Prepared the {request.stage} stage."]
+        _call(
+            tools,
+            "complete_review",
+            summary=f"Reviewed the {request.stage} layer against the sources.",
+            checked=["the stage's sources and draft"],
+        )
         return [f"Prepared the {request.stage} stage."]

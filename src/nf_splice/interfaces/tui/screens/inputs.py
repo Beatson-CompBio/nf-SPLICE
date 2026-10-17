@@ -13,7 +13,7 @@ from textual.widgets import Button, DataTable, Static
 from nf_splice.domain.access import Principal
 from nf_splice.interfaces.tui.screens._common import issue_lines
 from nf_splice.interfaces.tui.state import WizardSnapshot
-from nf_splice.interfaces.tui.widgets import StepView
+from nf_splice.interfaces.tui.widgets import FilePanel, StepView
 from nf_splice.layers.base import read_layer
 from nf_splice.layers.inputs import import_inputs, iter_parameters, set_access
 from nf_splice.services.input_policy import form_fields
@@ -42,6 +42,7 @@ class InputsView(StepView):
         self.current: dict[str, tuple[list[str] | None, str | None]] = {}
 
     def compose(self) -> ComposeResult:
+        yield FilePanel("inputs")
         yield DataTable(id="inputs-table")
         with Horizontal(classes="row"):
             yield Button("Save policies", id="inputs-save", variant="primary")

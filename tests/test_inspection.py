@@ -45,7 +45,7 @@ def test_recognized_tree_uses_the_approved_bundle_shape(tmp_path: Path) -> None:
         "README.md",
         "bundle.json",
         "components.json",
-        "configs/profile-local-6c6f63616c.config",
+        "configs/local.config",
         "execution-profiles.json",
         "inputs.schema.json",
         "outputs.schema.json",

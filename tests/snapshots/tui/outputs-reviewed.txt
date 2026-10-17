@@ -6,18 +6,25 @@
 ▶ ✓ Outputs
   ! Components
   ! Execution profiles
-  ! Provenance
+  ✓ Provenance
   ✓ Drafts
   ○ Readiness
   · Build
   · Done
 == outputs
+
+<button Open YAML>
+<button Reload>
+<button Validate>
+<button Preview JSON>
+<button Explain errors>
+
+report | Report | job_report | job | ^reports/report\.html$ |
 [Example output tree directory (optional)]
 <button Discover>
 [analysis-output schema version X.Y.Z] 1.0.0
 <button Set version>
-process_output: main.nf:4 (confidence 0.85)
-publish_rule: main.nf:2 (confidence 0.85)
+
 [stable key] report
 [title] Report
 [description] Job report.
@@ -37,12 +44,16 @@ file
 ▲
 [anchored path pattern(s), comma separated] ^reports/report\.html$
 ^reports/report\.html$: matches 0 example path(s) []
+<button Save output>
+<button Add as new output>
+<button Remove output>
+Discovery hints (optional)
 [reject reason]
 <button Accept>
 <button Reject>
 <button Merge marked>
 <button Split patterns>
 <button Preview JSON>
-Reviewed outputs in draft: 1. Candidates: accepted=1
+Outputs in the catalogue: 1. Discovery hints: seeded=1
 
 No issues: this layer is ready to promote.

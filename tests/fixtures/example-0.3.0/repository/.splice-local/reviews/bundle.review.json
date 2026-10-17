@@ -3,6 +3,14 @@
     "/pipeline/assay_capabilities": {
       "sha256": "617f8a8dac9a17d4998c91abf67e545f639d731aa62b0339fc4eeaddb2ec949f",
       "event": "event:f79e16fe9eeae182"
+    },
+    "/pipeline/licence": {
+      "sha256": "529fc91e3f97d3b2c3fe5102bea89059d6aa65c9e44d6bbb86591bb31aa783e1",
+      "event": "event:71b36d0e7a215fe0"
+    },
+    "/pipeline/released_at": {
+      "sha256": "f48962d4f1e0aa451be54e36828d0922300efe8592ccff4020a1c51cda2bba3e",
+      "event": "event:71b36d0e7a215fe0"
     }
   },
   "conflicts": {},
@@ -96,14 +104,82 @@
       "before_sha256": "04e39e2c4f8d058dd811ba07284732dd5932ce50de57ad0d5aff9d7ca637d85d",
       "after_sha256": "04e39e2c4f8d058dd811ba07284732dd5932ce50de57ad0d5aff9d7ca637d85d",
       "source_revision": null
+    },
+    {
+      "id": "event:667922cc49095595",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "bundle",
+      "action": "promote",
+      "pointers": [
+        "README.md",
+        "bundle.json",
+        "nf-splice.lock.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "04e39e2c4f8d058dd811ba07284732dd5932ce50de57ad0d5aff9d7ca637d85d",
+      "after_sha256": "04e39e2c4f8d058dd811ba07284732dd5932ce50de57ad0d5aff9d7ca637d85d",
+      "source_revision": null
+    },
+    {
+      "id": "event:71b36d0e7a215fe0",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "bundle",
+      "action": "set_identity",
+      "pointers": [
+        "/pipeline/licence",
+        "/pipeline/released_at"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "04e39e2c4f8d058dd811ba07284732dd5932ce50de57ad0d5aff9d7ca637d85d",
+      "after_sha256": "60805695c2165d407029073a0ff6ef891c8c928b94eb17aa9fd99df6b63289d6",
+      "source_revision": null
+    },
+    {
+      "id": "event:f06c1eae9e23a32b",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "bundle",
+      "action": "promote",
+      "pointers": [
+        "README.md",
+        "bundle.json",
+        "nf-splice.lock.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "60805695c2165d407029073a0ff6ef891c8c928b94eb17aa9fd99df6b63289d6",
+      "after_sha256": "60805695c2165d407029073a0ff6ef891c8c928b94eb17aa9fd99df6b63289d6",
+      "source_revision": null
     }
   ],
   "evidence": [],
   "format": "0.3.0",
   "layer": "bundle",
   "promoted": {
-    "bundle.json": "297663895cfeea15741ccf94358aee4f06e2c38aea9c2f7c51167aef8237076b",
-    "README.md": "7689d8c4f6e7b4dcf66bf0b3d13aef00a2f0ad495d1e07fe83edd731ae21eb11",
-    "nf-splice.lock.json": "743bd662a64159cca0336a388f1534549d9a524c26f64aff380c65c2bfcf4eef"
+    "bundle.json": "d0d4b77b6a98114c2f1ebd7fb3401a092f701e901e506af07a5b13ffa93a71c3",
+    "README.md": "3b69850a1431b9b4d14bb0715318424d756f45ec473d51ac3edea0377ca7a252",
+    "nf-splice.lock.json": "b1c33289d0a807c15caf9849e63cc98fec66fe0e1d777f267d09a36ebccb4edb"
   }
 }

@@ -60,6 +60,7 @@ from nf_splice.agents.protocol import (
     ProviderCapabilities,
     ProviderUnavailable,
     TurnRequest,
+    resolve_effort,
 )
 from nf_splice.agents.providers import selected_model
 from nf_splice.agents.providers.base import (
@@ -129,6 +130,12 @@ def is_loopback(url: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+#: OpenCode offers reasoning as per-model *variants* (``provider/model#high``),
+#: set on the session's model; which exist depends on the model.
+REASONING_CONTROL = "OpenCode model variant"
+_EFFORT_VALUES = ("low", "medium", "high", "xhigh", "max")
 
 
 def inference_location(model: dict[str, Any]) -> str:
@@ -391,6 +398,7 @@ class OpenCodeProvider:
     model: str | None = None
     _server: Server | None = None
     _location: str | None = None
+    _efforts: tuple[str, ...] = ()
 
     def server(self) -> Server:
         if self._server is None:
@@ -415,8 +423,12 @@ class OpenCodeProvider:
         if self._location is None:
             chosen = self.model or selected_model("opencode")
             try:
-                self._location = (
-                    inference_location(self.model_info(chosen)) if chosen else "remote"
+                info = self.model_info(chosen) if chosen else {}
+                self._location = inference_location(info) if chosen else "remote"
+                self._efforts = tuple(
+                    str(item.get("id"))
+                    for item in info.get("variants") or []
+                    if isinstance(item, dict) and item.get("id") in _EFFORT_VALUES
                 )
             except (ProviderError, ProviderUnavailable):
                 self._location = "remote"
@@ -435,6 +447,8 @@ class OpenCodeProvider:
             continuation=False,
             inference="local" if local else "remote",
             billing="none (local model)" if local else "opencode-configured-provider",
+            reasoning_control=REASONING_CONTROL,
+            reasoning_efforts=self._efforts,
         )
 
     def open(self, repository: Path) -> OpenCodeSession:
@@ -524,6 +538,7 @@ class OpenCodeSession:
     _session: str | None = None
     _cancelled: bool = False
     _stop: threading.Event = field(default_factory=threading.Event)
+    _variant: str | None = None
 
     @property
     def conversation_ref(self) -> str | None:
@@ -557,6 +572,19 @@ class OpenCodeSession:
                 f"{chosen} cannot call tools, so it cannot run nf-splice sessions",
                 "Choose a tool-capable model, or continue manually.",
             )
+        variants = tuple(
+            str(item.get("id"))
+            for item in info.get("variants") or []
+            if isinstance(item, dict) and item.get("id")
+        )
+        self._variant, notice = resolve_effort(
+            request.reasoning_effort,
+            tuple(item for item in variants if item in _EFFORT_VALUES),
+            provider=f"OpenCode model {chosen}",
+            control=REASONING_CONTROL,
+        )
+        if notice:
+            yield AgentEvent(EventKind.NOTICE, notice)
         bridge = ToolBridge(request.tools, BRIDGE)
         sink: queue.Queue[Any] = queue.Queue()
         self._stop = threading.Event()
@@ -626,7 +654,8 @@ class OpenCodeSession:
             "/api/session",
             {
                 "title": "nf-splice",
-                "model": model_ref(chosen),
+                "model": model_ref(chosen)
+                | ({"variant": self._variant} if self._variant else {}),
                 "permissions": PERMISSIONS,
             },
         )

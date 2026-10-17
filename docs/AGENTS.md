@@ -31,35 +31,77 @@ CLI (nf-splice ask | session ...)   Wizard (Ask AI, session views)
 
 Importing `nf_splice.agents` never imports a provider SDK.
 
-## Stages and gates
+## Stages, gates and reviews
 
-| Stage | Gate (deterministic) | Operations offered |
+| Stage | Gate (deterministic) | Draft operations offered |
 | --- | --- | --- |
 | discover | every draft exists and parses | `initialise_drafts` (run without a model) |
-| identity | `bundle` layer valid | `set_identity`, `confirm_values`, `patch_draft` |
-| inputs | `inputs` layer valid | `sync_identity`, `reimport_inputs`, `set_parameter_access`, `confirm_values`, `patch_draft` |
-| outputs | `outputs` layer valid | `discover_outputs`, `set_output_contract_version`, `accept_output`, `reject_output`, `merge_outputs`, `split_output`, `update_output`, `confirm_values`, `patch_draft` |
-| components | `components` layer valid | `discover_components`, `accept_component`, `accept_unambiguous_components`, `reject_component`, `set_image_policy`, `confirm_values`, `patch_draft` |
-| profiles | `execution-profiles` layer valid | `discover_profiles`, `review_profile`, `reject_profile`, `set_default_profile`, `add_slurm_default_profile`, `confirm_values`, `patch_draft` |
-| provenance | `provenance` layer valid | `provenance_strategy`, `confirm_values`, `patch_draft` |
+| identity | `bundle` layer valid | `replace_draft`, `set_identity`, `patch_draft`, `add_assay_capability`, `remove_assay_capability`, `reject_assay_candidate`, `confirm_values` |
+| inputs | `inputs` layer valid | `replace_draft`, `set_parameter_access`, `sync_identity`, `reimport_inputs`, `patch_draft`, `confirm_values` |
+| outputs | `outputs` layer valid | `replace_draft`, `update_output`, `set_output_contract_version`, `discover_outputs`, `accept_output`, `reject_output`, `merge_outputs`, `split_output`, `patch_draft`, `confirm_values` |
+| components | `components` layer valid | `replace_draft`, `set_image_policy`, `discover_components`, `accept_component`, `accept_unambiguous_components`, `reject_component`, `patch_draft`, `confirm_values` |
+| profiles | `execution-profiles` layer valid | `replace_draft`, `write_config`, `set_default_profile`, `discover_profiles`, `review_profile`, `reject_profile`, `add_slurm_default_profile`, `patch_draft`, `confirm_values` |
+| provenance | `provenance` layer valid | `replace_draft`, `provenance_strategy`, `patch_draft`, `confirm_values` |
 | validate | publication plan has no blockers | none; failing layers are reopened |
 | build | published bundle valid and current | `build_bundle` (run without a model) |
 | verify | records the assessment | `run_optional_checks` |
 | report | writes the report | none |
 
+A layer stage completes only when its gate passes **and** a review is
+recorded for the current draft (ADR-0058): an approved proposal, or the
+agent's `complete_review`. Passing the gate never skips the review. The
+toolbox records every read the model makes (file and line range, search,
+analysis) in the stage's `investigation`; `complete_review` is refused
+unless the pipeline's own sources were inspected. The review is stored with
+its kind (`scientific` for identity, inputs, outputs and provenance;
+`operational` for components and profiles), the draft hash, the sources
+fingerprint, the provider, model and reasoning effort. With the session
+policy `review: reuse_unchanged` (`--review reuse-unchanged`), a completed
+review from an earlier session is reused only while the draft and the
+sources are byte-identical. The report lists each stage's markers
+(`draft-valid`, `scientific-review-complete`, `operational-review-complete`)
+and the readiness dimensions.
+
+`replace_draft` takes the sha256 returned by `read_draft` and either complete
+YAML text or a section (JSON pointer) and its data; `write_config` writes a
+native profile config. Both refuse unsafe content and concurrent edits, keep
+semantically invalid content, and return the validation issues. Capabilities
+cannot be changed through `replace_draft`.
+
 Every stage also offers the read operations: `workspace_status`,
-`inspect_draft`, `read_draft`, `read_source`, `search_source`,
-`list_pending`, `analyse_routes`, `list_example_outputs`,
-`reconcile_example_outputs`, `preview_build`, `validate_layer`,
-`validate_bundle`, `assess`, `explain_term`, `classify_container`,
-`analyse_ro_crate` and `read_skill`.
+`inspect_draft`, `read_draft`, `contract_reference`, `read_source`,
+`search_source`, `parameter_usage`, `component_inventory`,
+`analyse_execution`, `read_config`, `list_pending`, `analyse_routes`,
+`list_example_outputs`, `reconcile_example_outputs`, `preview_build`,
+`validate_layer`, `validate_bundle`, `assess`, `explain_term`,
+`classify_container`, `analyse_ro_crate`, the assay tools and `read_skill`.
 
 Session-control tools record intent without touching files:
-`submit_stage_proposal`, `assess_objection`, `record_blocker` and
-`record_evidence`.
+`submit_stage_proposal`, `complete_review`, `assess_objection`,
+`record_blocker` and `record_evidence`.
 
 `nf-splice session tools` prints every schema; `--stage outputs` shows one
 stage's offer.
+
+## Reasoning effort
+
+`Budgets.reasoning_effort` (`--reasoning-effort low|medium|high|xhigh|max|default`,
+default `high`) travels in every `TurnRequest`. Each adapter maps it with
+`resolve_effort` to its real control and emits a `notice` event when it
+cannot apply the request:
+
+| Provider | Native control | Values |
+| --- | --- | --- |
+| Claude | Claude Agent SDK `effort` with `thinking: {type: adaptive}` | the installed SDK's `EffortLevel` |
+| OpenAI | Responses API `reasoning.effort` | low, medium, high |
+| Codex | app-server `turn/start` `effort` | low, medium, high, xhigh |
+| OpenCode | the selected model's `variant` | the variants the model lists |
+| Scripted | none | none |
+
+An unsupported value is lowered to the nearest supported one below it, never
+raised; with no control nothing is sent. The session records what was
+requested and applied. Effort is separate from turns, time, cost and
+context.
 
 ## How a call is handled
 
@@ -84,7 +126,7 @@ stage's offer.
 | `draft_edit` | Change `.splice-local/drafts/` through the layer services |
 | `build` | Publish into `splice/` transactionally |
 | `overwrite` | Replace differing or hand-edited published files |
-| `external_tools`, `run_nextflow`, `network` | Run nf-core lint |
+| `external_tools`, `run_nextflow`, `network` | Run optional checks (nf-core lint, rocrate-validator) |
 
 `install`, `publish_external`, `credentials` and `human_consent` can never
 be granted. Paths are resolved inside the repository; `..`, absolute paths,

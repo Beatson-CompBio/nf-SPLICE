@@ -145,4 +145,25 @@ def detected_versions(
         match = _SEMVER.match(tag)
         if match:
             values.add(match.group(1))
-    return tuple(sorted(values))
+    return _consistent(values)
+
+
+def _consistent(values: set[str]) -> tuple[str, ...]:
+    """Drop build suffixes and versions another, more precise one extends.
+
+    ``9.4--cfg-5bee`` is version 9.4 with an image build; ``2.7.11`` is how
+    a version pattern reads ``2.7.11b``, and an image tagged ``5.26`` is the
+    series of ``5.26.2``. Genuinely different versions are all kept, so a
+    real conflict stays visible.
+    """
+    cleaned = {re.sub(r"--.*$", "", value) for value in values if value}
+    kept = set()
+    for value in cleaned:
+        if not any(
+            other != value
+            and other.startswith(value)
+            and not other[len(value)].isdigit()
+            for other in cleaned
+        ):
+            kept.add(value)
+    return tuple(sorted(kept))

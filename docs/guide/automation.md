@@ -47,14 +47,16 @@ nf-splice --actor "ci" build all --non-interactive --replace-existing
 label so decisions made in CI are attributed. When no label is given, a CI
 identity from the environment is used where available.
 
-## Reproducible review
+## Reproducible authoring
 
-Record review decisions in files and apply them in CI:
+The drafts are the record: keep `.splice-local/drafts/` with the working
+copy (or regenerate it with `init` and apply your edits as files). Decision
+files remain available for teams that prefer them:
 
 ```bash
 nf-splice configure outputs --decision-file output-decisions.yaml
 nf-splice configure inputs --decision-file input-access.json
 ```
 
-See [Outputs](outputs.md#review-many-candidates-at-once) and
-[Inputs](inputs.md#many-parameters-at-once) for the formats.
+See [Outputs](outputs.md#discovery-hints-optional) and
+[Inputs](inputs.md#access-policies) for the formats.

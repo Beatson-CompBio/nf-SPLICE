@@ -1,11 +1,8 @@
-# nf-SPLICE provenance draft (authoritative, editable).
-# Fields left null are unresolved; detected values need confirmation.
 x-splice-draft:
   layer: provenance
   status: draft
   format: 0.3.0
   note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
-strategy: generated
 source: null
 crate:
   '@context': https://w3id.org/ro/crate/1.1/context
@@ -21,17 +18,21 @@ crate:
       '@type': Dataset
       mainEntity:
         '@id': main.nf
+      hasPart:
+        - '@id': main.nf
       name: rnaquant
       version: 1.2.0
       description: Quantifies RNA-seq reads.
+      license: MIT
+      datePublished: "2026-10-15T10:00:00Z"
     - '@id': main.nf
       '@type':
         - File
         - SoftwareSourceCode
         - ComputationalWorkflow
-      name: rnaquant
       programmingLanguage:
         '@id': "#nextflow"
+      name: rnaquant
       version: 1.2.0
       url: https://github.com/org/rnaquant
     - '@id': "#nextflow"
@@ -56,3 +57,4 @@ crate:
     - '@id': "#reviewer-Ada"
       '@type': Person
       name: Ada
+origin: generated

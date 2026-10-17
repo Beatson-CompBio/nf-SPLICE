@@ -39,6 +39,9 @@ claude = [
 openai = [
   "PyJWT[crypto]>=2.10,<3",
 ]
+s3 = [
+  "boto3>=1.34,<2",
+]
 dev = [
   "build>=1.5,<2",
   "mypy>=2.3,<3",
@@ -73,6 +76,9 @@ addopts = ["-ra", "--strict-config", "--strict-markers"]
 markers = [
   "nextflow: opt-in integration test requiring a local Nextflow installation",
   "live_agent: opt-in test calling a real AI provider with real credentials",
+  "reference_pipeline: opt-in test on a real pipeline checkout (NF_SPLICE_BULK_RNASEQ)",
+  "rocrate_validator: opt-in test running rocrate-validator (NF_SPLICE_ROCRATE_VALIDATOR)",
+  "s3: opt-in test uploading to a real S3-compatible store (NF_SPLICE_S3_TEST=1)",
 ]
 testpaths = ["tests"]
 

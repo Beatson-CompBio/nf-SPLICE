@@ -55,9 +55,9 @@ nf-splice draft diff
 nf-splice build all --replace-existing
 ```
 
-Re-run the provenance step with the strategy you chose before (`generated`
-or `enriched`) so the RO-Crate carries the new version. With `include`,
-update your root `ro-crate-metadata.json` first.
+The provenance shortcut brings the RO-Crate graph to the new version (or
+edit the graph's `version` yourself; with an adopted root crate, update your
+root `ro-crate-metadata.json` and use `--strategy enriched`).
 
 nf-splice never replaces a published file silently: after reviewing the
 difference, pass `--replace-existing`.

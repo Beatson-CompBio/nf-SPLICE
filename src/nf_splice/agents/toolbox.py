@@ -60,6 +60,57 @@ class TurnOutcome:
     failures: list[str] = field(default_factory=list)
     messages: list[str] = field(default_factory=list)
     budget_exhausted: bool = False
+    #: What the model actually inspected, recorded from its tool calls.
+    inspected: list[str] = field(default_factory=list)
+    review: dict[str, Any] | None = None
+    notices: list[str] = field(default_factory=list)
+
+
+#: Read tools that look at the pipeline itself (not only at a draft). A
+#: review must have used at least one of them.
+SOURCE_INSPECTIONS = frozenset(
+    {
+        "read_source",
+        "search_source",
+        "analyse_routes",
+        "parameter_usage",
+        "component_inventory",
+        "analyse_execution",
+        "analyse_ro_crate",
+        "assess_assays",
+        "list_example_outputs",
+        "reconcile_example_outputs",
+        "read_config",
+    }
+)
+
+
+def inspection(
+    name: str, arguments: Mapping[str, Any], result: Mapping[str, Any]
+) -> str:
+    """A factual, compact record of one read call and what it returned."""
+    data = result.get("data") if isinstance(result.get("data"), Mapping) else {}
+    if name == "read_source":
+        lines = data.get("lines") if isinstance(data, Mapping) else None
+        span = (
+            f"{lines[0]}-{lines[1]}"
+            if isinstance(lines, list) and len(lines) == 2
+            else "?"
+        )
+        return f"read_source {arguments.get('path')}:{span}"
+    if name == "search_source":
+        matches = data.get("matches") if isinstance(data, Mapping) else None
+        count = len(matches) if isinstance(matches, list) else 0
+        return (
+            f"search_source /{arguments.get('pattern')}/ in "
+            f"{arguments.get('glob') or '*'} ({count} match(es))"
+        )
+    detail = ", ".join(
+        f"{key}={arguments[key]}"
+        for key in ("layer", "name", "config", "example", "path")
+        if arguments.get(key) is not None
+    )
+    return f"{name}({detail})" if detail else name
 
 
 def _clip(value: Any) -> Any:
@@ -87,6 +138,7 @@ class SessionToolbox:
         session_directory: Path | None = None,
         sandbox: Sandbox | None = None,
         log: Callable[[dict[str, Any]], None] | None = None,
+        prior_inspections: int = 0,
     ) -> None:
         self.root = root
         self.policy = policy
@@ -100,6 +152,7 @@ class SessionToolbox:
         self.session_directory = session_directory
         self.sandbox = sandbox
         self._log = log
+        self.prior_inspections = prior_inspections
         self.outcome = TurnOutcome()
 
     def schemas(self) -> list[dict[str, Any]]:
@@ -181,14 +234,20 @@ class SessionToolbox:
         if operation.kind == "read":
             if self.mode is ToolMode.STAGE and self.sandbox is not None:
                 # While planning, reads see the staged changes on the preview copy.
-                return self.sandbox.run(
+                result = self.sandbox.run(
                     operation,
                     arguments,
                     change=self.change,
                     policy=self.policy,
                     examples=self.examples,
                 )
-            return self._run(operation, arguments)
+            else:
+                result = self._run(operation, arguments)
+            if result.get("success"):
+                entry = inspection(name, arguments, result)
+                if entry not in self.outcome.inspected:
+                    self.outcome.inspected.append(entry)
+            return result
         if self.mode is ToolMode.OBSERVE:
             raise PolicyViolation(
                 f"{name} changes files; this turn is read-only (answer, do not edit)"
@@ -272,5 +331,19 @@ class SessionToolbox:
         if name == "record_blocker":
             self.outcome.blockers.append(arguments)
             return {"success": True, "note": "blocker recorded"}
+        if name == "complete_review":
+            looked = self.prior_inspections + sum(
+                1
+                for item in self.outcome.inspected
+                if item.split(" ", 1)[0].split("(", 1)[0] in SOURCE_INSPECTIONS
+            )
+            if not looked:
+                raise PolicyViolation(
+                    "a review needs evidence: inspect the pipeline itself first "
+                    "(read_source, search_source, analyse_routes, parameter_usage, "
+                    "component_inventory, analyse_execution or analyse_ro_crate)"
+                )
+            self.outcome.review = arguments
+            return {"success": True, "note": "review recorded"}
         self.outcome.evidence.append(arguments)
         return {"success": True, "note": "evidence recorded"}

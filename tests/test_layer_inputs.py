@@ -79,8 +79,14 @@ def _compiled(root: Path) -> dict[str, Any]:
 
 def test_import_preserves_every_nf_schema_construct(tmp_path: Path) -> None:
     upstream = _repository(tmp_path)
-    codes = {item.code for item in validate_inputs_draft(tmp_path).issues}
-    assert codes == {"access_unreviewed"}
+    # Imported with least privilege: nobody may change any value and forms
+    # show none, and that is already a valid contract (no review queue).
+    imported = _compiled(tmp_path)
+    parameters = list(iter_parameters(imported))
+    assert parameters and all(item.editable_by == () for item in parameters)
+    assert all(
+        item.schema["x-splice-ui"]["visibility"] == "hidden" for item in parameters
+    )
     _review_all(tmp_path)
     compiled = _compiled(tmp_path)
 
@@ -145,7 +151,9 @@ def test_permissions_are_enforced_in_services_not_ui(tmp_path: Path) -> None:
     user_fields = {item.name: item for item in form_fields(schema, Principal.USER)}
     assert "trace_report_suffix" not in user_fields
     assert "max_cpus" not in user_fields  # hidden and not editable
-    assert user_fields["outdir"].editable is False
+    # Platform-only and hidden: in the contract, not in users' forms.
+    assert "outdir" not in user_fields
+    assert user_fields["genome"].editable is True
     assert engine_parameters(schema, {"genome": "GRCh38"}) == {"genome": "GRCh38"}
     with pytest.raises(ValueError, match="snakemake"):
         engine_parameters(schema, {}, engine="snakemake")
@@ -192,8 +200,12 @@ def test_reimport_merges_upstream_changes_without_resetting_edits(
     apply_reimport(tmp_path, ADA)
     text = (tmp_path / DRAFT).read_text(encoding="utf-8")
     assert "Curated description." in text and "maximum: 50" in text
-    codes = {item.pointer for item in validate_inputs_draft(tmp_path).issues}
-    assert "/$defs/analysis/properties/new_flag/x-splice-access" in codes
+    # A new upstream parameter arrives with the same conservative policy.
+    added = next(
+        item for item in iter_parameters(_compiled(tmp_path)) if item.name == "new_flag"
+    )
+    assert added.editable_by == ()
+    assert added.schema["x-splice-ui"] == {"visibility": "hidden"}
 
     upstream["$defs"]["reference_genome_options"]["properties"]["genome"][
         "description"

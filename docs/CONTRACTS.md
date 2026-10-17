@@ -88,7 +88,14 @@ There is no `outputs.json`. Output metadata lives only in
    `source_images`. If `require_downloadable_images` is `true` and an image
    cannot be downloaded, reject the bundle rather than fall back.
 6. Run jobs with `default_execution_profile` unless an operator chooses
-   another profile.
+   another profile. Each profile's `config_strategy` is `authored` (a native
+   Nextflow config written for the bundle) or `adopted` (a repository config
+   published unchanged); either way, the config at its `path` is what to use.
+
+`ro-crate-metadata.json` is one Workflow RO-Crate describing the repository,
+with the `splice/` directory and each published file as entities. In a
+pipeline archive exported by nf-splice, every repository file sits at the
+archive root, beside a `ro-crate-metadata.json` identical to the bundle's.
 
 ## Assay capabilities
 
@@ -107,8 +114,9 @@ them. A registered assay carries its platform `registered_code` (such as
   them.
 - Bundles carry no platform accession identifiers.
 - A bundle without assay capabilities is not ready for ingestion: nf-splice
-  does not publish one, and `nf-splice validate` reports structural validity,
-  scientific classification and ingestion readiness separately.
+  does not publish one. `nf-splice validate` reports readiness as separate
+  dimensions: contracts, scientific classification, runtime parameters,
+  deployment, provenance and publication.
 
 ## Identity and versions
 

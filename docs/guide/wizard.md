@@ -48,7 +48,13 @@ In tables:
 | Step | Keys |
 | --- | --- |
 | Inputs | `u` user, `p` platform, `g` agent, `v` visibility, then **Save policies** |
-| Outputs | `a` accept, `r` reject (enter a reason), Space mark, `m` merge marked, `s` split |
+| Outputs | select an output, edit it, **Save output**; in *Discovery hints*: `a` accept, `r` reject, Space mark, `m` merge, `s` split |
+
+Every layer step has **Open YAML** (opens the draft in `$VISUAL` or
+`$EDITOR`), **Reload**, **Validate**, **Preview JSON** and **Explain
+errors**; the execution-profiles step also opens the profile's native
+config. The tables show what is in the drafts; nothing waits for you to
+accept discovery hints.
 
 ## Working alongside your editor
 

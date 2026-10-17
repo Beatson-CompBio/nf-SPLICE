@@ -76,7 +76,7 @@ Execution profiles. No other keys are allowed.
 | `container_engine` | non-empty string | yes | Container runtime, for example `singularity` or `docker`. |
 | `config` | `configs/<profile id>.config` | yes | Configuration file of the profile, relative to the bundle directory. Pass it to the engine, for example with `nextflow run -c`. |
 | `default` | boolean | yes | Whether this is the default profile. |
-| `config_strategy` | one of `adopted`, `generated` | yes | `adopted`: a byte-identical copy of a configuration from the workflow repository. `generated`: written by nf-splice. |
+| `config_strategy` | one of `adopted`, `authored` | yes | `adopted`: a byte-identical copy of a configuration owned by the workflow repository. `authored`: the native Nextflow configuration written for this bundle (by a person or an agent) in nf-splice's editable drafts. |
 | `site_parameters` | array of objects | no | Operator settings. |
 
 ### `profiles[].site_parameters[]` (each item)
@@ -119,7 +119,7 @@ Operator settings. No other keys are allowed.
       "container_engine": "singularity",
       "config": "configs/profile-slurm-736c75726d.config",
       "default": true,
-      "config_strategy": "generated",
+      "config_strategy": "authored",
       "site_parameters": [
         {
           "name": "queue",

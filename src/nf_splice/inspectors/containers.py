@@ -12,11 +12,20 @@ from pathlib import Path, PurePosixPath
 
 from nf_splice.domain.components import ContainerRuntime, ContainerSource, ReferenceKind
 
-_CONTAINER = re.compile(r"\bcontainer\b\s*(?:=\s*)?")
+#: The ``container`` directive, at the start of a line (not the word in a
+#: script or comment).
+_CONTAINER = re.compile(r"^[ \t]*container\b[ \t]*(?:=[ \t]*)?", re.M)
 _QUOTED = re.compile(r"(?P<quote>['\"])(?P<value>(?:(?!(?P=quote)).)*)(?P=quote)", re.S)
+#: The runtime condition of nf-core's container ternary, in its common forms:
+#: ``containerEngine == 'singularity'`` and
+#: ``containerEngine in ['apptainer','singularity']`` (either order), optionally
+#: with ``&& !task.ext.singularity_pull_docker_container``.
 _CONDITION = re.compile(
-    r"containerEngine\s*==\s*['\"](?P<engine>singularity|apptainer)['\"]"
+    r"containerEngine\s*(?:==\s*['\"](?P<engine>singularity|apptainer)['\"]"
+    r"|in\s*\[(?P<engines>[^\]]*)\])"
+    r"(?P<pull>\s*&&\s*!\s*task\.ext\.singularity_pull_docker_container)?"
 )
+_IMAGE_ENGINES = ("singularity", "apptainer")
 _OCI = re.compile(
     r"^(?:[a-z0-9.-]+(?::[0-9]+)?/)?[a-z0-9]+(?:[._-][a-z0-9]+)*"
     r"(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*(?::[\w][\w.-]{0,127})?(?:@sha256:[0-9a-f]{64})?$"
@@ -82,6 +91,16 @@ def _expression(text: str, start: int) -> str:
     return "\n".join(kept)
 
 
+def _condition_engines(condition: re.Match[str] | None) -> tuple[str, ...]:
+    """Singularity-family engines a ternary condition selects, in order."""
+    if condition is None:
+        return ()
+    if condition.group("engine"):
+        return (condition.group("engine"),)
+    listed = re.findall(r"""['"]([a-z]+)['"]""", condition.group("engines") or "")
+    return tuple(item for item in _IMAGE_ENGINES if item in listed)
+
+
 def _line(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
 
@@ -98,19 +117,21 @@ def container_sources(main_nf: Path, relative: str) -> tuple[ContainerSource, ..
         values = [item.group("value") for item in _QUOTED.finditer(expression)]
         values = [item for item in values if item and not item.isspace()]
         condition = _CONDITION.search(expression)
-        if condition and "?" in expression and ":" in expression:
+        engines = _condition_engines(condition)
+        if condition and engines and "?" in expression and ":" in expression:
             ternary = expression[condition.end() :]
             branches = [
                 item
-                for item in re.findall(r"'([^'\s]+)'", ternary)
-                if item not in {"singularity", "apptainer"}
+                for item in re.findall(r"""['"]([^'"\s]+)['"]""", ternary)
+                if item not in _IMAGE_ENGINES
             ]
             if len(branches) == 2:
-                selected = ContainerRuntime(condition.group("engine"))
-                for runtime, raw in (
-                    (selected, branches[0]),
-                    (ContainerRuntime.DOCKER, branches[1]),
-                ):
+                # The first branch is what Singularity/Apptainer use; the
+                # second is what every other engine (Docker, Podman) pulls.
+                pairs = [
+                    (ContainerRuntime(engine), branches[0]) for engine in engines
+                ] + [(ContainerRuntime.DOCKER, branches[1])]
+                for runtime, raw in pairs:
                     found.append(
                         ContainerSource(
                             raw=raw,

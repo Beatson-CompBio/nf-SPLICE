@@ -30,8 +30,11 @@ from nf_splice.layers import execution as execution_layer
 from nf_splice.layers import inputs as input_layer
 from nf_splice.layers import outputs as output_layer
 from nf_splice.layers import provenance as provenance_layer
-from nf_splice.layers.base import LAYERS, layer_spec
-from nf_splice.layers.bundle import set_identity_fields, validate_bundle_draft
+from nf_splice.layers.base import LAYERS, layer_spec, read_layer
+from nf_splice.layers.bundle import (
+    set_identity_fields,
+    unreviewed_detected_values,
+)
 from nf_splice.runtime import (
     AnalysisOutputError,
     generate_analysis_output,
@@ -420,11 +423,7 @@ def _configure_identity(
     if changes:
         _run(lambda: set_identity_fields(repository, changes, _context()))
     if confirm:
-        pending = [
-            item.pointer
-            for item in validate_bundle_draft(repository).issues
-            if item.code == "unconfirmed_detected_value"
-        ]
+        pending = list(unreviewed_detected_values(repository))
         if pending:
             _run(lambda: confirm_values(repository, "bundle", pending, _context()))
     _finish(repository, "bundle", "Identity draft saved")
@@ -556,14 +555,31 @@ def _parameter_access(repository: Path, name: str) -> list[str]:
     raise LayerError(f"unknown parameter {name!r}")
 
 
+_LIST_OUTPUT_FIELDS = {"formats", "scopes", "entity_types", "path_patterns"}
+
+
 def _output_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
     candidates = {item.id: item for item in output_layer.pending_candidates(repository)}
+    keys = set(output_layer.output_keys(repository)) if assignments else set()
     fields: dict[str, dict[str, str]] = {}
+    edits: dict[str, dict[str, Any]] = {}
     for left, value in assignments:
-        candidate_id, dot, field = left.rpartition(".")
-        if not dot or candidate_id not in candidates:
-            raise LayerError("--set must use PENDING_CANDIDATE_ID.FIELD=VALUE")
-        fields.setdefault(candidate_id, {})[field] = value
+        target, dot, field = left.rpartition(".")
+        if dot and target in keys:
+            edits.setdefault(target, {})[field] = (
+                [part for part in value.split(",") if part]
+                if field in _LIST_OUTPUT_FIELDS
+                else value
+            )
+            continue
+        if not dot or target not in candidates:
+            raise LayerError(
+                "--set must use OUTPUT_KEY.FIELD=VALUE for an output in the draft "
+                "(or PENDING_CANDIDATE_ID.FIELD=VALUE)"
+            )
+        fields.setdefault(target, {})[field] = value
+    for key, changes in edits.items():
+        _call(output_layer.update_output, repository, key, changes, _context())
     for candidate_id, assigned in fields.items():
         candidate = candidates[candidate_id]
         if assigned.pop("action", "accept") == "reject":
@@ -658,7 +674,20 @@ def _component_reviews(repository: Path, assignments: list[tuple[str, str]]) -> 
 def _profile_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
     grouped: dict[str, dict[str, str]] = {}
     pending = {item.id for item in execution_layer.pending_profiles(repository)}
+    drafted = set(execution_layer.profile_ids(repository)) if assignments else set()
+    edits: dict[str, dict[str, Any]] = {}
+    remaining = []
     for left, value in assignments:
+        target, dot, field = left.rpartition(".")
+        if dot and target in drafted and target not in pending:
+            edits.setdefault(target, {})[field] = value
+        else:
+            remaining.append((left, value))
+    for identifier, changes in edits.items():
+        _call(
+            execution_layer.update_profile, repository, identifier, changes, _context()
+        )
+    for left, value in remaining:
         candidate_id = next(
             (
                 item
@@ -668,7 +697,10 @@ def _profile_reviews(repository: Path, assignments: list[tuple[str, str]]) -> No
             None,
         )
         if candidate_id is None:
-            raise LayerError(f"unknown pending profile in {left!r}")
+            raise LayerError(
+                f"unknown profile in {left!r}: use PROFILE_ID.FIELD=VALUE for a "
+                "profile in the draft"
+            )
         grouped.setdefault(candidate_id, {})[left[len(candidate_id) + 1 :]] = value
     for candidate_id, fields in grouped.items():
         if fields.get("action") == "reject":
@@ -749,7 +781,16 @@ def configure_command(
         False, help="Execution profiles: add the generated SPLICE Slurm candidate."
     ),
     strategy: str | None = typer.Option(
-        None, help="Provenance: include, enriched or generated."
+        None,
+        help="Provenance shortcut: include (adopt the root crate), enriched "
+        "(correct a copy from the identity) or generated (rebuild from the "
+        "identity). Editing the YAML does the same.",
+    ),
+    with_nf_core: bool = typer.Option(
+        False,
+        "--with-nf-core",
+        help="Provenance: replace the crate with nf-core's generator output, run "
+        "on an isolated copy (needs nf-core installed; never touches the pipeline).",
     ),
     reimport: bool = typer.Option(
         False, help="Inputs: apply a conflict-free nextflow_schema.json re-import."
@@ -884,6 +925,20 @@ def configure_command(
         _export(export_unresolved, execution_layer.pending_profiles(repository))
         _finish(repository, "execution-profiles", "Execution-profile draft saved")
         return
+    if with_nf_core:
+        run = _run(
+            lambda: provenance_layer.generate_with_nf_core(
+                repository, _context(), approve=True
+            )
+        )
+        typer.echo(
+            f"nf-core {run.version or '?'} generated a candidate crate; "
+            + (
+                "removed nf-core hosting claims: " + ", ".join(run.removed_claims)
+                if run.removed_claims
+                else "no hosting claims needed removing"
+            )
+        )
     if strategy == "include":
         _run(lambda: provenance_layer.choose_include(repository, _context()))
     elif strategy == "enriched":
@@ -1084,6 +1139,146 @@ def draft_promote_command(
     )
 
 
+@draft_app.command("contract")
+def draft_contract_command(layer: LayerArgument) -> None:
+    """Show every authorable field of a layer's draft (read-only)."""
+    from nf_splice.services.contract_reference import authorable_contract
+
+    name = _run(lambda: layer_spec("bundle" if layer == "identity" else layer).name)
+    typer.echo(dumps(authorable_contract(name)))
+
+
+@draft_app.command("parameters")
+def draft_parameters_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """Where workflow code reads params.*, against the input contract (read-only)."""
+    from nf_splice.inspectors.parameters import parameter_usage
+
+    state = read_layer(repository.resolve(), "inputs")
+    declared = (
+        {item.name for item in input_layer.iter_parameters(state.draft.data)}
+        if state.draft is not None and isinstance(state.draft.data, dict)
+        else set()
+    )
+    document = parameter_usage(repository).to_json(declared)
+    if json_output:
+        typer.echo(dumps(document))
+        return
+    typer.echo(
+        f"{document['files_scanned']} file(s) scanned: "
+        + ", ".join(
+            f"{key}={value}" for key, value in sorted(document["counts"].items())
+        )
+    )
+    for item in document["undeclared"]:
+        typer.echo(f"undeclared: params.{item['name']} ({', '.join(item['code'][:3])})")
+    for item in document["internal_or_config"]:
+        typer.echo(
+            f"{item['classification']}: params.{item['name']} "
+            f"({', '.join(item['defined_in_config'][:2])})"
+        )
+    if document["comment_only"]:
+        typer.echo("only in comments: " + ", ".join(document["comment_only"]))
+    if document["declared_but_unused"]:
+        typer.echo(
+            "declared but not read by code: "
+            + ", ".join(document["declared_but_unused"])
+        )
+
+
+@draft_app.command("resources")
+def draft_resources_command(
+    repository: RepositoryOption = Path("."),
+    config: str | None = typer.Option(
+        None, help="An execution profile's config name (default, cirrus, ...)."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Resource selectors, task.memory uses and one config's memory settings."""
+    from nf_splice.services.execution_review import analyse_execution
+
+    text = None
+    if config:
+        found = execution_layer.read_config_draft(repository, config)
+        text = found["text"]
+        if text is None:
+            raise typer.BadParameter(f"{found['path']} does not exist")
+    report = analyse_execution(repository, text)
+    if json_output:
+        typer.echo(dumps(report))
+        return
+    for item in report["selectors"]:
+        typer.echo(
+            f"{item['selector']}: cpus {item['cpus']}, memory {item['memory']} "
+            f"({item['location']})"
+        )
+    for item in report["task_memory_uses"]:
+        typer.echo(
+            ("guarded" if item["guarded"] else "UNGUARDED")
+            + f" task.memory in {item['process']} at {item['location']}"
+        )
+    if "config" in report:
+        typer.echo("config: " + dumps(report["config"]).replace("\n", " "))
+    for item in report.get("cpu_sizing", []):
+        typer.echo(
+            f"{item['selector']}: {item['cpus_for_intended_memory']} CPU(s) give "
+            f"{item['memory_at_those_cpus_gb']:g} GB (intended "
+            f"{item['intended_memory_gb']:g} GB, declared {item['declared_cpus']})"
+        )
+    for note in report["notes"]:
+        typer.echo(f"note: {note}")
+
+
+@draft_app.command("check-config")
+def draft_check_config_command(
+    profile: Annotated[str, typer.Argument(help="Execution profile ID.")],
+    repository: RepositoryOption = Path("."),
+    allow: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--allow",
+            help="run_nextflow: let `nextflow config` evaluate the configuration.",
+        ),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Ask Nextflow for the effective configuration of one profile (opt-in)."""
+    from nf_splice.services.checks import nextflow_config_check
+
+    root = repository.resolve()
+    state = read_layer(root, "execution-profiles")
+    profiles = (
+        state.draft.data.get("profiles") or []
+        if state.draft is not None and isinstance(state.draft.data, dict)
+        else []
+    )
+    selected = next(
+        (
+            item
+            for item in profiles
+            if isinstance(item, dict) and item.get("id") == profile
+        ),
+        None,
+    )
+    if selected is None:
+        raise typer.BadParameter(f"unknown execution profile {profile!r}")
+    _strategy, path, problem = execution_layer.profile_config(root, selected)
+    if path is None:
+        raise typer.BadParameter(problem or "the profile has no config")
+    result = nextflow_config_check(
+        root, permitted=set(allow or []), profile_config=path
+    )
+    if json_output:
+        typer.echo(dumps(result.to_json()))
+    else:
+        typer.echo(f"{result.name}: {result.status.value} ({result.reason})")
+        for item in result.warnings:
+            typer.echo(f"  warning: {item}")
+    if result.status.value in {"failed", "error"}:
+        raise typer.Exit(code=2)
+
+
 @draft_app.command("recover")
 def draft_recover_command(repository: RepositoryOption = Path(".")) -> None:
     """Restore the previous release after an interrupted publication."""
@@ -1179,42 +1374,55 @@ def build_command(
 def validate_command(
     repository: RepositoryOption = Path("."), json_output: JsonOption = False
 ) -> None:
-    """Validate the published bundle, cross-file identity and lock (read-only)."""
+    """Validate the published bundle and assess ingestion readiness (read-only)."""
+    from nf_splice.services.readiness import assess_readiness
+
     report = validate_bundle(repository)
+    readiness = assess_readiness(repository)
+    ready = report.valid and readiness.ingestion_ready
     if json_output:
         typer.echo(
             dumps(
                 {
                     "valid": report.valid,
                     **report.levels(),
+                    "ingestion_ready": ready,
+                    "readiness": readiness.to_json()["dimensions"],
                     "checked_files": report.checked_files,
                     "issues": [item.to_json() for item in report.issues],
                 }
             )
         )
-    elif report.valid:
-        typer.echo(
-            f"Valid SPLICE bundle ({report.checked_files} contract files checked): "
-            "structurally valid, scientifically classified, ready for ingestion."
-        )
-        for item in report.issues:
-            typer.echo(f"warning: {item.path} [{item.rule}] {item.message}")
     else:
         levels = report.levels()
-        typer.echo(
-            "Structurally valid: "
-            + ("yes" if levels["structurally_valid"] else "no")
-            + "; scientifically classified: "
-            + ("yes" if levels["scientifically_classified"] else "no")
-            + "; ready for ingestion: no.",
-            err=True,
-        )
+        stream = not ready
+        if ready:
+            typer.echo(
+                f"Valid SPLICE bundle ({report.checked_files} contract files "
+                "checked): structurally valid, scientifically classified, ready "
+                "for ingestion."
+            )
+        else:
+            typer.echo(
+                "Structurally valid: "
+                + ("yes" if levels["structurally_valid"] else "no")
+                + "; scientifically classified: "
+                + ("yes" if levels["scientifically_classified"] else "no")
+                + "; ready for ingestion: no.",
+                err=True,
+            )
+        for name, dimension in readiness.dimensions.items():
+            typer.echo(f"  {name.replace('_', ' ')}: {dimension.status}", err=stream)
+            for text in dimension.blockers:
+                typer.echo(f"    blocker: {text}", err=stream)
+            for text in dimension.notes:
+                typer.echo(f"    note: {text}", err=stream)
         for item in report.issues:
             typer.echo(
                 f"{item.severity.value}: {item.path} [{item.rule}] {item.message}",
-                err=True,
+                err=stream,
             )
-    if not report.valid:
+    if not ready:
         raise typer.Exit(code=2)
 
 
@@ -1705,6 +1913,112 @@ def preview_outputs_command(
 
 
 # ---------------------------------------------------------------- containers
+
+
+@containers_app.command("plan")
+def containers_plan_command(
+    repository: RepositoryOption = Path("."),
+    runtime: str | None = typer.Option(
+        None, help="singularity or apptainer (default: the default profile's)."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Which image each container needs and how it would be obtained (offline)."""
+    from nf_splice.services.images import plan_images
+
+    actions = _run(lambda: plan_images(repository, runtime=runtime))
+    if json_output:
+        typer.echo(dumps([item.to_json() for item in actions]))
+        return
+    counts: dict[str, int] = {}
+    for item in actions:
+        counts[item.status] = counts.get(item.status, 0) + 1
+        typer.echo(
+            f"{item.container} [{item.status}] {item.source or '-'} -> "
+            f"{item.filename or '-'} ({item.note})"
+        )
+    typer.echo(
+        "Plan: "
+        + ", ".join(f"{key} {value}" for key, value in sorted(counts.items()))
+        + ". Nothing was fetched or uploaded."
+    )
+
+
+@containers_app.command("store")
+def containers_store_command(
+    endpoint: str = typer.Option(..., help="https:// S3-compatible endpoint."),
+    bucket: str = typer.Option(..., help="Bucket for images."),
+    prefix: str = typer.Option("", help="Key prefix, e.g. images/."),
+    region: str | None = typer.Option(None, help="Region, if the store needs one."),
+    profile: str | None = typer.Option(
+        None, help="AWS credential profile to use (credentials are never stored)."
+    ),
+    public_base_url: str | None = typer.Option(
+        None, help="https:// URL that serves the bucket's objects for download."
+    ),
+) -> None:
+    """Configure the image store (no secrets; kept in your config folder)."""
+    from nf_splice.services.images import StoreSettings, save_settings
+
+    path = _run(
+        lambda: save_settings(
+            StoreSettings(endpoint, bucket, prefix, region, profile, public_base_url)
+        )
+    )
+    typer.echo(f"Saved image-store settings to {path} (no credentials).")
+
+
+@containers_app.command("deliver")
+def containers_deliver_command(
+    repository: RepositoryOption = Path("."),
+    container: Annotated[
+        list[str] | None,
+        typer.Option("--container", help="Only these container IDs. Repeatable."),
+    ] = None,
+    approve_network: bool = typer.Option(
+        False, help="Approve fetching or converting the planned images."
+    ),
+    approve_upload: bool = typer.Option(
+        False, help="Approve uploading them to the configured store."
+    ),
+    json_output: JsonOption = False,
+) -> None:
+    """Fetch or convert, upload, verify and record images (explicitly approved)."""
+    from nf_splice.services.images import (
+        S3Uploader,
+        deliver_images,
+        load_settings,
+        s3_client,
+    )
+
+    settings = load_settings()
+    if settings is None:
+        raise typer.BadParameter(
+            "no image store is configured; run `nf-splice containers store`"
+        )
+    if not (approve_network and approve_upload):
+        raise typer.BadParameter(
+            "review `nf-splice containers plan`, then pass --approve-network and "
+            "--approve-upload"
+        )
+    uploader = S3Uploader(settings, _run(lambda: s3_client(settings)))
+    actions = _run(
+        lambda: deliver_images(
+            repository,
+            _context(),
+            approve_network=approve_network,
+            approve_upload=approve_upload,
+            uploader=uploader,
+            containers=list(container or []) or None,
+        )
+    )
+    if json_output:
+        typer.echo(dumps([item.to_json() for item in actions]))
+    else:
+        for item in actions:
+            typer.echo(f"{item.container}: {item.outcome}")
+    if any(str(item.outcome).startswith("failed") for item in actions):
+        raise typer.Exit(code=2)
 
 
 @containers_app.command("classify")
@@ -2432,11 +2746,22 @@ def session_start_command(
     ),
     example_output: ExampleOutputOption = None,
     allow: AllowOption = None,
-    max_tool_calls: int = typer.Option(300, help="Tool calls for the whole session."),
+    max_tool_calls: int = typer.Option(1500, help="Tool calls for the whole session."),
     max_stage_attempts: int = typer.Option(3, help="Attempts per stage."),
     max_budget_usd: float | None = typer.Option(None, help="Provider spending cap."),
-    turn_timeout: float = typer.Option(600.0, help="Seconds per provider turn."),
+    turn_timeout: float = typer.Option(1800.0, help="Seconds per provider turn."),
     model: str | None = typer.Option(None, help="Explicit provider model."),
+    reasoning_effort: str = typer.Option(
+        "high",
+        help="Reasoning effort: low, medium, high, xhigh, max, or default (the "
+        "provider's own). Each provider applies its real control or says it cannot.",
+    ),
+    review: str = typer.Option(
+        "always",
+        help="always: every layer gets an AI review, even when it validates; "
+        "reuse-unchanged: reuse a completed review while the draft and sources "
+        "are unchanged.",
+    ),
     interactive: bool | None = typer.Option(
         None,
         "--interactive/--no-interactive",
@@ -2453,6 +2778,12 @@ def session_start_command(
     if mode not in {"assisted", "autonomous"}:
         raise typer.BadParameter("mode must be assisted or autonomous")
     actor = _human()
+    if reasoning_effort not in {"low", "medium", "high", "xhigh", "max", "default"}:
+        raise typer.BadParameter(
+            "reasoning effort: low, medium, high, xhigh, max or default"
+        )
+    if review not in {"always", "reuse-unchanged"}:
+        raise typer.BadParameter("review: always or reuse-unchanged")
     policy = _policy(
         example_output,
         allow,
@@ -2463,6 +2794,10 @@ def session_start_command(
         model=model,
         turn_timeout=turn_timeout,
     )
+    policy.budgets.reasoning_effort = (
+        None if reasoning_effort == "default" else reasoning_effort
+    )
+    policy.review = review.replace("-", "_")
     agent = _make_provider(provider, script, model=model)
     engine = _agent_run(
         lambda: SessionEngine.create(

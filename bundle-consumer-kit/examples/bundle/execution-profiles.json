@@ -11,17 +11,17 @@
     "version": "1.0.0",
     "engine": "nextflow"
   },
-  "default_profile": "profile-local-6c6f63616c",
+  "default_profile": "local",
   "profiles": [
     {
-      "id": "profile-local-6c6f63616c",
+      "id": "local",
       "name": "Local",
       "description": "Local development.",
       "type": "development",
       "engine": "nextflow",
       "executor": "local",
       "container_engine": "singularity",
-      "config": "configs/profile-local-6c6f63616c.config",
+      "config": "configs/local.config",
       "default": true,
       "config_strategy": "adopted"
     }

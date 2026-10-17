@@ -10,6 +10,7 @@ checksum is never accepted as verified.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -93,11 +94,35 @@ def _process_names(main_nf: Path) -> list[str]:
     )
 
 
+def _scanned_items(root: Path) -> tuple[dict[str, Any], ...]:
+    """Modules found on disk when ``modules.json`` is absent."""
+    found = []
+    modules = root / "modules"
+    if modules.is_dir() and not modules.is_symlink():
+        for main_nf in sorted(modules.rglob("main.nf")):
+            relative = main_nf.parent.relative_to(root).as_posix()
+            if "tests" in Path(relative).parts:
+                continue
+            parts = Path(relative).parts
+            found.append(
+                {
+                    "kind": "module",
+                    "path": relative,
+                    "namespace": parts[1] if len(parts) > 2 else "local",
+                    "name": main_nf.parent.name,
+                }
+            )
+    return tuple(found)
+
+
 def _discover(root: Path) -> list[dict[str, Any]]:
-    try:
-        items = module_items(root)
-    except ModuleDiscoveryError as error:
-        raise LayerError(str(error)) from error
+    if (root / "modules.json").is_file():
+        try:
+            items = module_items(root)
+        except ModuleDiscoveryError as error:
+            raise LayerError(str(error)) from error
+    else:
+        items = _scanned_items(root)
     overrides = config_overrides(root)
     discovered = []
     for item in sorted(items, key=lambda value: str(value.get("path"))):
@@ -141,6 +166,16 @@ def _discover(root: Path) -> list[dict[str, Any]]:
     return discovered
 
 
+def discovered_modules(repository_root: str | Path) -> list[dict[str, Any]]:
+    """Every module found, with its container references (read-only)."""
+    found = []
+    for item in _discover(Path(repository_root).resolve()):
+        sources = [ContainerSource.model_validate(value) for value in item["sources"]]
+        selected, problems = _proposed_sources(sources)
+        found.append(item | {"selected_sources": selected, "problems": problems})
+    return found
+
+
 def _proposed_sources(
     sources: Sequence[ContainerSource],
 ) -> tuple[dict[str, str], list[str]]:
@@ -181,24 +216,225 @@ class ComponentCandidateView:
     problems: tuple[str, ...]
 
 
+#: Draft-only component field: what still stops the component publishing
+#: (an unresolved container expression, conflicting versions). It is never
+#: published; validation reports it until the author resolves and removes it.
+UNRESOLVED = "unresolved"
+SEEDED = "seeded"
+
+
+def _published_inventory(
+    root: Path,
+) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[str, str]], bool | None]:
+    """Published containers, component (id, container id) by path, image policy.
+
+    Read as evidence from ``splice/components.json`` (0.3.0 or an earlier
+    layout) so known container IDs stay stable across the migration.
+    """
+    path = root / "splice" / "components.json"
+    if path.is_symlink() or not path.is_file():
+        return {}, {}, None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}, {}, None
+    if not isinstance(loaded, dict):
+        return {}, {}, None
+    containers = {
+        str(item["id"]): item
+        for item in loaded.get("containers") or []
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    links = {
+        str(item["path"]): (str(item["id"]), str(item.get("container_id") or ""))
+        for item in loaded.get("components") or []
+        if isinstance(item, dict) and item.get("id") and item.get("path")
+    }
+    policy = loaded.get("require_downloadable_images")
+    return containers, links, policy if isinstance(policy, bool) else None
+
+
+def _references(container: Mapping[str, Any]) -> set[str]:
+    """Every image reference a published container record names."""
+    found = {
+        str(value)
+        for key in ("uri", "source_image")
+        if isinstance(value := container.get(key), str)
+    }
+    sources = container.get("source_images")
+    if isinstance(sources, dict):
+        found.update(str(value) for value in sources.values())
+    normalised = set()
+    for value in found:
+        bare = value.removeprefix("docker://")
+        normalised.update({bare, bare.removeprefix("quay.io/")})
+    return normalised
+
+
+def seed_inventory(
+    root: Path, discovered: Sequence[Mapping[str, Any]]
+) -> tuple[dict[str, Any], list[str]]:
+    """Build the first ``components.draft.yaml`` from the module inventory.
+
+    Every module becomes a component. Containers are deduplicated by their
+    per-runtime sources; a previously published container whose reference
+    matches keeps its ID. Anything that cannot be resolved statically stays
+    visible in the component's draft-only ``unresolved`` list instead of
+    being guessed.
+    """
+    published, links, policy = _published_inventory(root)
+    containers: list[dict[str, Any]] = []
+    by_sources: dict[str, str] = {}
+    components: list[dict[str, Any]] = []
+    reused = 0
+    for candidate in discovered:
+        sources = [
+            ContainerSource.model_validate(item) for item in candidate["sources"]
+        ]
+        selected, problems = _proposed_sources(sources)
+        versions = list(candidate["versions"])
+        if not versions:
+            # The module's conda environment pins the tool itself.
+            tool = re.escape(str(candidate["tool_name"]).lower())
+            versions = sorted(
+                {
+                    match.group(1)
+                    for package in candidate["conda_packages"]
+                    if (
+                        match := re.fullmatch(
+                            rf"(?:[\w-]+::)?{tool}=+([\w.]+?)(?:=.*)?",
+                            str(package).lower(),
+                        )
+                    )
+                }
+            )
+        previous_id, previous_container = links.get(candidate["path"], ("", ""))
+        component: dict[str, Any] = {
+            "id": previous_id or candidate["id"].removeprefix("component:"),
+            "type": "workflow_module",
+            "name": candidate["name"],
+            "path": candidate["path"],
+            "namespace": candidate["namespace"],
+            "tool": {"name": candidate["tool_name"]}
+            | ({"version": versions[0]} if len(versions) == 1 else {}),
+            "evidence": candidate["evidence"],
+        }
+        unresolved = list(problems)
+        if len(versions) > 1:
+            unresolved.append(
+                f"conflicting tool versions {', '.join(versions)}: set tool.version"
+            )
+        if selected and not problems:
+            # One logical image may be listed for Singularity only by one
+            # module and for Singularity and Apptainer by another: merge
+            # records whose shared runtimes name the same references.
+            existing = next(
+                (
+                    item
+                    for item in containers
+                    if all(
+                        item["source_images"].get(runtime) in (None, raw)
+                        for runtime, raw in selected.items()
+                    )
+                    and set(item["source_images"].values()) & set(selected.values())
+                    and selected.get("docker") == item["source_images"].get("docker")
+                ),
+                None,
+            )
+            if existing is not None:
+                existing["source_images"] = dict(
+                    sorted({**existing["source_images"], **selected}.items())
+                )
+                component["container_id"] = existing["id"]
+                selected = {}
+            signature = json.dumps(selected, sort_keys=True)
+            identifier = by_sources.get(signature) if selected else None
+            if identifier is None and selected:
+                wanted = {
+                    value.removeprefix("quay.io/") for value in selected.values()
+                } | set(selected.values())
+                candidates_ids = (
+                    [previous_container] if previous_container else []
+                ) + sorted(published)
+                identifier = next(
+                    (
+                        item
+                        for item in candidates_ids
+                        if item in published
+                        and _references(published[item]) & wanted
+                        and item not in by_sources.values()
+                    ),
+                    None,
+                )
+                if identifier is not None:
+                    reused += 1
+                else:
+                    primary = selected.get("docker") or next(iter(selected.values()))
+                    identifier = container_id(primary)
+                    if any(item["id"] == identifier for item in containers):
+                        identifier = container_id(signature)
+                by_sources[signature] = identifier
+                containers.append(
+                    {"id": identifier, "source_images": selected, "distribution": None}
+                )
+            if selected:
+                component["container_id"] = identifier
+        if candidate["conda_packages"]:
+            component["conda_packages"] = candidate["conda_packages"]
+        if unresolved:
+            component[UNRESOLVED] = unresolved
+        components.append(component)
+    origin = "modules.json" if (root / "modules.json").is_file() else "modules/"
+    notes = [
+        f"seeded {len(components)} component(s) and {len(containers)} distinct "
+        f"container(s) from {origin}"
+    ]
+    if published:
+        notes.append(
+            f"kept {reused} container ID(s) from the published splice/components.json"
+        )
+    open_items = sum(1 for item in components if item.get(UNRESOLVED))
+    if open_items:
+        notes.append(f"{open_items} component(s) have unresolved items to review")
+    return (
+        {
+            "require_downloadable_images": policy,
+            "containers": sorted(containers, key=lambda item: item["id"]),
+            "components": components,
+        },
+        notes,
+    )
+
+
 def discover_components(
     repository_root: str | Path,
 ) -> tuple[ComponentCandidateView, ...]:
-    """Seed the draft if absent and merge module candidates into the sidecar."""
+    """Seed a populated draft if absent; refresh the advisory module evidence.
+
+    The first run writes the whole inventory into ``components.draft.yaml``.
+    Later runs never change the draft: they only record evidence for modules
+    added since, which validation reports as not yet listed.
+    """
     root = Path(repository_root).resolve()
-    seed_draft(
+    discovered = _discover(root)
+    seed, _notes = seed_inventory(root, discovered)
+    created = seed_draft(
         root,
         LAYER,
-        {"require_downloadable_images": None, "containers": [], "components": []},
+        seed,
+        header=(
+            "nf-SPLICE components draft (authoritative, editable).",
+            "Seeded with every module and its runtime-specific container sources;",
+            "edit freely. 'unresolved' lists what still needs a decision.",
+        ),
     )
-    discovered = _discover(root)
 
     def merge(state: ReviewState) -> None:
         for candidate in discovered:
             existing = state.candidates.get(candidate["id"])
             if existing is None or existing.get("status") == PENDING:
                 state.candidates[candidate["id"]] = {
-                    "status": PENDING,
+                    "status": SEEDED if created else PENDING,
                     "candidate": candidate,
                 }
 
@@ -470,10 +706,47 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
     data = strip_marker(state.draft.data)
     review = load_review_state(root, LAYER)
     issues: list[DraftIssue] = []
-    for candidate_id, entry in sorted(review.candidates.items()):
-        if entry.get("status") == PENDING:
+    # Candidate review status never gates the inventory (ADR-0057). What
+    # matters is the content: unresolved items and modules left out.
+    listed_paths = {
+        str(item.get("path"))
+        for item in data.get("components") or []
+        if isinstance(item, dict)
+    }
+    missing = sorted(
+        str(entry["candidate"].get("path"))
+        for entry in review.candidates.values()
+        if isinstance(entry, dict)
+        and entry.get("status") != "rejected"
+        and isinstance(entry.get("candidate"), dict)
+        and str(entry["candidate"].get("path")) not in listed_paths
+        and (root / str(entry["candidate"].get("path")) / "main.nf").is_file()
+    )
+    if missing:
+        issues.append(
+            issue(
+                LAYER,
+                "/components",
+                "module_not_listed",
+                f"{len(missing)} module(s) in the repository are not in the "
+                f"inventory: {', '.join(missing[:10])}"
+                + (" ..." if len(missing) > 10 else "")
+                + "; add them, or remove them on purpose",
+                Severity.WARNING,
+            )
+        )
+    for index, component in enumerate(data.get("components") or []):
+        if not isinstance(component, dict):
+            continue
+        for item in component.get(UNRESOLVED) or []:
             issues.append(
-                issue(LAYER, "", "pending_candidate", f"{candidate_id} requires review")
+                issue(
+                    LAYER,
+                    f"/components/{index}/{UNRESOLVED}",
+                    "unresolved_component",
+                    f"{component.get('id')}: {item}; resolve it in the draft and "
+                    f"remove it from {UNRESOLVED}",
+                )
             )
     required = data.get("require_downloadable_images")
     if not isinstance(required, bool):
@@ -623,8 +896,12 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
         "require_downloadable_images": required,
         "containers": rendered_containers,
         "components": sorted(
-            (dict(item) for item in data.get("components") or []),
-            key=lambda item: item["id"],
+            (
+                {key: value for key, value in item.items() if key != UNRESOLVED}
+                for item in data.get("components") or []
+                if isinstance(item, dict)
+            ),
+            key=lambda item: str(item.get("id")),
         ),
     }
     report = validate_contract_document(document, COMPONENTS_FAMILY)

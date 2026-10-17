@@ -69,14 +69,19 @@ Claude, OpenAI (including your ChatGPT Plus or Pro plan), Codex and OpenCode
 
 ## Quick start
 
-From the root of your pipeline repository, either review it yourself:
+From the root of your pipeline repository, `init` writes six editable drafts
+already filled with what the repository supports. Edit them in any editor
+(or the wizard) and build:
 
 ```bash
-nf-splice init --accept-detected
-nf-splice tui
+nf-splice init
+code .splice-local/drafts/          # or: nf-splice tui
+nf-splice draft validate outputs
+nf-splice build all && nf-splice validate
 ```
 
-or let an agent propose each stage for your approval:
+or let an agent investigate the pipeline and propose each stage's revision
+for your approval:
 
 ```bash
 nf-splice --actor "Your Name" session start --mode assisted --provider claude --allow-remote-model

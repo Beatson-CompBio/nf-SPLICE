@@ -56,7 +56,7 @@ def test_layers_promote_independently_then_publish_coherently(tmp_path: Path) ->
         bundle["schema_id"] == "https://schemas.splice-data.io/workflow-bundle/bundle"
     )
     assert set(bundle["schemas"]) == {item.id for item in families()}
-    assert bundle["default_execution_profile"] == "profile-local-6c6f63616c"
+    assert bundle["default_execution_profile"] == "local"
     lock = json.loads((splice / "nf-splice.lock.json").read_text(encoding="utf-8"))
     assert lock["schema_version"] == "2.0"
     assert "nf-splice.lock.json" not in lock["managed_files"]

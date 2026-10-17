@@ -122,12 +122,57 @@
       "before_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
       "after_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
       "source_revision": null
+    },
+    {
+      "id": "event:96434a58b0fe6dc5",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/local.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "after_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "source_revision": null
+    },
+    {
+      "id": "event:e60c1fe2dedf664b",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/local.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "after_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "source_revision": null
     }
   ],
   "format": "0.3.0",
   "layer": "execution-profiles",
   "promoted": {
-    "execution-profiles.json": "3507e35f62947e4b4536d66969bc0b9623d71164ad6a8fd41034171848250fd3",
-    "configs/profile-local-6c6f63616c.config": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869"
+    "execution-profiles.json": "5d48db472a0859063fca9e9d74cd88178efb141fcf86402fcd844d1ef08099fc",
+    "configs/profile-local-6c6f63616c.config": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869",
+    "configs/local.config": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869"
   }
 }

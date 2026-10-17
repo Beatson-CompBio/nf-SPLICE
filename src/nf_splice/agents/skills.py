@@ -23,9 +23,22 @@ NAMES = (
     "nf-splice-agent-operations",
     "nf-splice-assay-capabilities",
     "nf-splice-authoring",
+    "nf-splice-components-images",
+    "nf-splice-execution-config",
+    "nf-splice-input-access",
     "nf-splice-output-discovery",
+    "nf-splice-provenance",
     "nf-splice-validation",
 )
+#: The procedure each layer stage follows, besides the two every turn gets.
+_STAGE_SKILLS = {
+    Stage.IDENTITY: "nf-splice-assay-capabilities",
+    Stage.INPUTS: "nf-splice-input-access",
+    Stage.OUTPUTS: "nf-splice-output-discovery",
+    Stage.COMPONENTS: "nf-splice-components-images",
+    Stage.PROFILES: "nf-splice-execution-config",
+    Stage.PROVENANCE: "nf-splice-provenance",
+}
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
 
 
@@ -73,13 +86,13 @@ def load(name: str) -> Skill:
 def skills_for(purpose: str, stage: Stage | None) -> tuple[Skill, ...]:
     """The skills a turn needs: operations and authoring always, plus specifics."""
     names = ["nf-splice-agent-operations", "nf-splice-authoring"]
-    if stage is Stage.IDENTITY or purpose == "help":
-        names.append("nf-splice-assay-capabilities")
-    if stage is Stage.OUTPUTS or purpose == "help":
-        names.append("nf-splice-output-discovery")
-    if stage in {Stage.VALIDATE, Stage.BUILD, Stage.VERIFY} or purpose == "help":
+    if purpose == "help":
+        names = list(NAMES)
+    elif stage in _STAGE_SKILLS:
+        names.append(_STAGE_SKILLS[stage])
+    if stage in {Stage.VALIDATE, Stage.BUILD, Stage.VERIFY}:
         names.append("nf-splice-validation")
-    return tuple(load(name) for name in names)
+    return tuple(load(name) for name in dict.fromkeys(names))
 
 
 def export(destination: Path) -> list[Path]:

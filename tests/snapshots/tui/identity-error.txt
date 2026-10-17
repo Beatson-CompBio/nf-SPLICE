@@ -12,8 +12,17 @@
   · Build
   · Done
 == identity
+
+<button Open YAML>
+<button Reload>
+<button Validate>
+<button Preview JSON>
+<button Explain errors>
+
 Detected evidence
 description: "Reference pipeline." (nextflow.config:5)
+description: "The reference pipeline." (ro-crate-metadata.json#./description)
+licence: "MIT" (ro-crate-metadata.json#./licence)
 name: "reference" (nextflow.config:2)
 name: "reference" (ro-crate-metadata.json#./name)
 repository_url: "https://github.com/org/reference" (nextflow.config:4)
@@ -24,13 +33,13 @@ version: "1.0.0" (ro-crate-metadata.json#./version)
 [version] 1.0.0
 [engine] nextflow
 [title] Reference Pipeline
-[description] Reference pipeline.
+[description]
 [long description]
 [readme]
 [repository url] not a url
 [project url]
 [release url]
-[licence]
+[licence] MIT
 [licence url]
 [documentation url]
 [support url]
@@ -54,8 +63,6 @@ I approve publishing maintainer contacts in bundle.json
 <button Save identity>
 <button Confirm detected values>
 ERROR /pipeline/assay_capabilities  no assay capability is declared; a pipeline is not ready for SPLICE ingestion without one. Assay discovery: no scientific domain could be established from the repository; declare the assays the pipeline processes. Review with `nf-splice catalogue recommend`, then declare with `nf-splice configure identity --add-assay CODE`
-ERROR /pipeline/description  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/description)
-ERROR /pipeline/id  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/id)
-ERROR /pipeline/name  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/name)
-ERROR /pipeline/version  detected value requires explicit confirmation or editing (nf-splice draft confirm bundle /pipeline/version)
+WARNING /pipeline/description  the repository disagrees about this value: "Reference pipeline." from nextflow.config:5; "The reference pipeline." from ro-crate-metadata.json#./description; write the correct one into the draft
+WARNING /pipeline/description  a concise description is recommended for platform display
 ERROR /pipeline/repository_url  String should match pattern '^https?://[^\s/@:]+(?::[0-9]+)?(?:/[^\s]*)?$'

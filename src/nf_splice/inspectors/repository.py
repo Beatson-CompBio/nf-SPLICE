@@ -16,6 +16,7 @@ from nf_splice.domain.inspection import (
     RepositoryInspection,
 )
 from nf_splice.inspectors.splice_tree import inspect_splice_tree
+from nf_splice.layout import PUBLISHED_DIR
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -27,7 +28,6 @@ _IGNORED_DIRECTORIES = {
     ".venv",
     "__pycache__",
     "node_modules",
-    "splice",
     "work",
 }
 _INCLUDED_CONFIG = re.compile(r"\bincludeConfig\s*\(?\s*['\"]([^'\"]+)['\"]")
@@ -58,7 +58,10 @@ def _repository_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for current, directory_names, file_names in os.walk(root, followlinks=False):
         directory_names[:] = sorted(
-            name for name in directory_names if name not in _IGNORED_DIRECTORIES
+            name
+            for name in directory_names
+            if name not in _IGNORED_DIRECTORIES
+            and not (name == PUBLISHED_DIR and Path(current) == root)
         )
         current_path = Path(current)
         files.extend(current_path / name for name in sorted(file_names))

@@ -6,15 +6,24 @@
   ✓ Outputs
 ▶ ✓ Components
   ! Execution profiles
-  ! Provenance
+  ✓ Provenance
   ✓ Drafts
   ○ Readiness
   · Build
   · Done
 == components
+
+<button Open YAML>
+<button Reload>
+<button Validate>
+<button Preview JSON>
+<button Explain errors>
+
+modules__local__tool | tool | 1.0 | container-<hash> | -
+Modules not yet in the draft (optional hints)
 <button Discover modules>
-<button Accept all unambiguous>
-<button Accept selected>
+<button Add all unambiguous>
+<button Add selected>
 (components-require) False
 Ingestion requires a verified downloadable image per container
 <button Save image policy>

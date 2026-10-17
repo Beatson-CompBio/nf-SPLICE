@@ -6,7 +6,14 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from nf_splice.agents.stages import ORDER, Stage, StageStatus, gate, spec
+from nf_splice.agents.stages import (
+    LAYER_FOR_STAGE,
+    ORDER,
+    Stage,
+    StageStatus,
+    gate,
+    spec,
+)
 from nf_splice.agents.state import SessionState, SessionStore
 
 
@@ -62,14 +69,38 @@ def _readiness(root: Path) -> dict[str, Any]:
     questions: list[str] = []
     if not declared:
         questions = list(assess_assays(root, rejected=rejected_assays(root)).questions)
+    from nf_splice.services.readiness import assess_readiness
+
+    dimensions = assess_readiness(root)
     return {
         "bundle_published": published,
         "structurally_valid": bool(report and report.structurally_valid),
         "scientifically_classified": bool(report and report.classified and declared),
-        "ingestion_ready": bool(report and report.valid and declared),
+        "ingestion_ready": bool(
+            report and report.valid and declared and dimensions.ingestion_ready
+        ),
+        "dimensions": dimensions.to_json()["dimensions"],
         "assay_capabilities": declared,
         "open_assay_questions": questions,
     }
+
+
+def _markers(state: SessionState, stage: Stage, root: Path) -> list[str]:
+    """Testable completion markers of one layer stage."""
+    if stage not in LAYER_FOR_STAGE:
+        return []
+    markers = []
+    if gate(stage, root).passed:
+        markers.append("draft-valid")
+    review = state.stages[stage].review
+    if review is not None and review.outcome in {"changed", "no_change"}:
+        markers.append(f"{review.kind}-review-complete")
+    return markers
+
+
+def _review(state: SessionState, stage: Stage) -> dict[str, Any] | None:
+    review = state.stages[stage].review
+    return review.model_dump(mode="json") if review is not None else None
 
 
 def build_report(
@@ -158,6 +189,9 @@ def build_report(
                 "attempts": state.stages[stage].attempts,
                 "summary": state.stages[stage].summary,
                 "issues": state.stages[stage].issues[:10],
+                "markers": _markers(state, stage, root),
+                "review": _review(state, stage),
+                "inspected": len(state.stages[stage].investigation),
             }
             for stage in ORDER
         ],
@@ -177,6 +211,12 @@ def build_report(
             + f"; inference {state.provider.inference}; billing "
             f"{state.provider.billing}"
         ),
+        "reasoning": {
+            "control": state.provider.reasoning_control,
+            "requested": state.provider.reasoning_requested,
+            "applied": state.provider.reasoning_applied,
+            "notice": state.provider.reasoning_notice,
+        },
         "providers_used": [
             {"provider": name, **values}
             for name, values in sorted(state.usage.by_provider.items())
@@ -227,11 +267,15 @@ def report_text(report: dict[str, Any]) -> str:
         lines += [
             f"  Open question: {item}" for item in readiness["open_assay_questions"]
         ]
+        for name, item in (readiness.get("dimensions") or {}).items():
+            lines.append(f"  {name.replace('_', ' ')}: {item['status']}")
+            lines += [f"    blocker: {text}" for text in item["blockers"][:5]]
         lines.append("")
     lines += ["Stages:"]
     for item in report["stages"]:
         lines.append(
             f"  {item['title']}: {item['status']}"
+            + (f" [{', '.join(item['markers'])}]" if item.get("markers") else "")
             + (f" - {item['summary']}" if item["summary"] else "")
         )
     if report["verified_artefacts"]:
@@ -272,6 +316,14 @@ def report_text(report: dict[str, Any]) -> str:
         )
     lines.append(f"Remote: {report.get('remote')}")
     lines.append(f"Provider: {report.get('provider_verification')}")
+    reasoning = report.get("reasoning") or {}
+    if reasoning.get("requested"):
+        lines.append(
+            f"Reasoning effort: requested {reasoning['requested']}, applied "
+            f"{reasoning.get('applied') or 'not applied'} "
+            f"({reasoning.get('control')})"
+            + (f"; {reasoning['notice']}" if reasoning.get("notice") else "")
+        )
     if report["blockers"]:
         lines += ["", "Blockers:"]
         for item in report["blockers"]:

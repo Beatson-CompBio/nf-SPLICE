@@ -282,27 +282,23 @@ def validate_bundle_draft(repository_root: str | Path) -> BundleValidation:
                     pointer, "placeholder", f"placeholder value {text!r} is not allowed"
                 )
             )
+    # Seeded values the author has not edited are the author's draft like any
+    # other: their review status is provenance, never a validation error.
     review = load_review_state(root, LAYER)
-    for pointer in review.pending(state.draft.data):
-        issues.append(
-            _issue(
-                pointer,
-                "unconfirmed_detected_value",
-                "detected value requires explicit confirmation or editing "
-                f"(nf-splice draft confirm bundle {pointer})",
-            )
-        )
     for pointer, candidates in sorted(review.conflicts.items()):
         if resolve(state.draft.data, pointer) in (ABSENT, None, []):
             options = "; ".join(
                 f"{_canonical(item['value'])} from {item['location']}"
                 for item in candidates
             )
+            required = pointer.removeprefix("/pipeline/") in REQUIRED_PIPELINE_FIELDS
             issues.append(
                 _issue(
                     pointer,
                     "conflicting_evidence",
-                    f"conflicting detected values: {options}",
+                    f"the repository disagrees about this value: {options}; "
+                    "write the correct one into the draft",
+                    Severity.ERROR if required else Severity.WARNING,
                 )
             )
     if not pipeline.get("description"):
@@ -420,6 +416,19 @@ def validate_bundle_draft(repository_root: str | Path) -> BundleValidation:
                 _issue(_pointer(location, "/pipeline"), "invalid_value", detail["msg"])
             )
     return BundleValidation(metadata, maintainers, tuple(issues))
+
+
+def unreviewed_detected_values(repository_root: str | Path) -> tuple[str, ...]:
+    """Pointers still holding a seeded value nobody has edited or confirmed.
+
+    Advisory provenance only: a seeded value left in the draft is the
+    author's value like any other and never blocks validation.
+    """
+    root = Path(repository_root).resolve()
+    state = read_layer(root, LAYER)
+    if state.draft is None:
+        return ()
+    return tuple(load_review_state(root, LAYER).pending(state.draft.data))
 
 
 def require_identity(repository_root: str | Path) -> PipelineMetadata:

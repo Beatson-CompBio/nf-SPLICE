@@ -34,13 +34,16 @@
             "binding": "params.input",
             "origin": "nextflow_schema.json#/$defs/input_output/properties/input"
           },
-          "x-splice-data": {
-            "kind": "file"
-          },
           "x-splice-access": {
             "editable_by": [
               "user"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
+          },
+          "x-splice-data": {
+            "kind": "file"
           }
         },
         "outdir": {
@@ -52,13 +55,16 @@
             "binding": "params.outdir",
             "origin": "nextflow_schema.json#/$defs/input_output/properties/outdir"
           },
-          "x-splice-data": {
-            "kind": "directory"
-          },
           "x-splice-access": {
             "editable_by": [
               "platform"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
+          },
+          "x-splice-data": {
+            "kind": "directory"
           }
         }
       }
@@ -84,6 +90,9 @@
             "editable_by": [
               "user"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
           }
         },
         "skip_qc": {
@@ -99,6 +108,9 @@
             "editable_by": [
               "user"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
           }
         },
         "run_salmon": {
@@ -114,6 +126,9 @@
             "editable_by": [
               "user"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
           }
         },
         "publish_dir_mode": {
@@ -129,6 +144,9 @@
             "editable_by": [
               "platform"
             ]
+          },
+          "x-splice-ui": {
+            "visibility": "hidden"
           }
         }
       }

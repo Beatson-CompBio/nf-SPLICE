@@ -31,6 +31,13 @@ permits `scope: run`.
 | **Contract registry** | The packaged mapping from each nf-splice release to the revision of every contract family it emits (`nf-splice schema list`). |
 | **Draft** | An editable, authoritative working file below `.splice-local/drafts/`, named `*.draft.*` and carrying a draft marker. |
 | **Final artefact** | A validated, draft-marker-free file at its published path below `splice/`. |
+| **Seeded draft** | A draft `init` filled from repository evidence. It is a first guess: people and agents edit it freely, and no candidate needs approving before it builds. |
+| **Published file** | A file below `splice/`, built only by nf-splice from the drafts; never edited by hand. |
+| **Discovery hint** | An advisory candidate in a `.review.json` sidecar. Hints never block validation or a build. |
+| **Readiness dimension** | One of the separately reported questions `nf-splice validate` answers: contracts, scientific classification, runtime parameters, deployment, provenance and publication. |
+| **Principal** | A role in the SPLICE platform that may set an input at run time: `user`, `platform` or `agent`. The runtime `agent` principal is unrelated to an AI that helps author a draft. |
+| **Image source** | The registry reference or URL a container runtime would pull an image from. |
+| **Image distribution** | A verified image file at an HTTPS address, with the SHA-256 nf-splice computed itself. |
 
 ## Reserved word: `manifest`
 

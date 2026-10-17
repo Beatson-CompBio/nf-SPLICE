@@ -28,7 +28,7 @@ Evidence items: 13
   workflow: 1
 Layers:
   bundle: incomplete
-  inputs: incomplete
+  inputs: ready
   outputs: incomplete
   components: incomplete
   execution-profiles: incomplete

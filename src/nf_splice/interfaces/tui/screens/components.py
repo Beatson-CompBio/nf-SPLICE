@@ -8,7 +8,7 @@ from textual.widgets import Button, DataTable, Input, Label, Static, Switch
 
 from nf_splice.interfaces.tui.screens._common import issue_lines
 from nf_splice.interfaces.tui.state import WizardSnapshot
-from nf_splice.interfaces.tui.widgets import StepView
+from nf_splice.interfaces.tui.widgets import FilePanel, StepView
 from nf_splice.layers.base import read_layer
 from nf_splice.layers.components import (
     accept_component,
@@ -23,19 +23,24 @@ from nf_splice.layers.components import (
 class ComponentsView(StepView):
     step_id = "components"
     explanation = (
-        "A registry (OCI/Docker) reference is not a downloadable image file. "
-        "Docker and Singularity/Apptainer sources are kept separately; a "
-        "downloadable image is recorded only after nf-splice has downloaded and "
-        "checksummed it (explicit network approval)."
+        "components.draft.yaml lists every module with its tool, version and "
+        "container, seeded from modules.json and the module sources; 'unresolved' "
+        "shows what still needs a decision. Edit it with Open YAML. A registry "
+        "(OCI/Docker) reference is not a downloadable image file: Docker and "
+        "Singularity/Apptainer sources are kept separately, and a downloadable "
+        "image is recorded only after nf-splice has downloaded and checksummed "
+        "it (explicit network approval). Modules added to the pipeline later "
+        "appear below as optional hints."
     )
 
     def compose(self) -> ComposeResult:
+        yield FilePanel("components")
+        yield DataTable(id="components-inventory")
+        yield Static("Modules not yet in the draft (optional hints)", classes="section")
         with Horizontal(classes="row"):
             yield Button("Discover modules", id="components-discover")
-            yield Button(
-                "Accept all unambiguous", id="components-accept-all", variant="primary"
-            )
-            yield Button("Accept selected", id="components-accept")
+            yield Button("Add all unambiguous", id="components-accept-all")
+            yield Button("Add selected", id="components-accept")
         yield DataTable(id="components-pending")
         with Horizontal(classes="row"):
             yield Switch(value=False, id="components-require")
@@ -54,6 +59,8 @@ class ComponentsView(StepView):
         yield Static("", id="components-issues", classes="issues")
 
     def setup(self) -> None:
+        inventory = self.query_one("#components-inventory", DataTable)
+        inventory.add_columns("component", "tool", "version", "container", "unresolved")
         pending = self.query_one("#components-pending", DataTable)
         pending.add_columns(
             "candidate", "versions", "proposed sources", "needs decision"
@@ -86,6 +93,20 @@ class ComponentsView(StepView):
             if state.draft is not None and isinstance(state.draft.data, dict)
             else {}
         )
+        inventory = self.query_one("#components-inventory", DataTable)
+        inventory.clear()
+        for item in data.get("components") or []:
+            if not isinstance(item, dict):
+                continue
+            tool = item.get("tool") or {}
+            inventory.add_row(
+                str(item.get("id")),
+                str(tool.get("name") or ""),
+                str(tool.get("version") or "?"),
+                str(item.get("container_id") or "-"),
+                "; ".join(item.get("unresolved") or []) or "-",
+                key=str(item.get("id")),
+            )
         self.query_one("#components-require", Switch).value = bool(
             data.get("require_downloadable_images")
         )

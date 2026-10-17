@@ -256,7 +256,10 @@ def test_assisted_objection_is_investigated_and_never_approval(
         asyncio.run(engine.approve(ADA))
     first = engine.state.pending
     assert first is not None
-    assert "reject_output" in " ".join(item.tool for item in first.operations)
+    # One coherent revision of the seeded catalogue, without HISAT2.
+    assert "replace_draft" in " ".join(item.tool for item in first.operations)
+    assert "-  - key: hisat2_align_bam" in first.diff
+    assert "+  - key: hisat2_alignment" not in first.diff
     before = drafts_fingerprint(root)
 
     asyncio.run(
@@ -422,6 +425,10 @@ def test_validators_decide_and_repairs_are_bounded(tmp_path: Path) -> None:
         from agent_scripts import identity
 
         identity(tools)  # the identity, and the documented assays
+        tools.call(
+            "complete_review",
+            {"summary": "Identity fixed.", "checked": ["nextflow.config"]},
+        )
         return ["Fixed the version."]
 
     engine = _engine(
@@ -459,7 +466,14 @@ def test_every_mode_transition_preserves_drafts_and_history(tmp_path: Path) -> N
     )
     engine = _engine(root, RouteAgent())
     asyncio.run(engine.advance())
+    # The manual identity is kept, and still reviewed: the agent proposes only
+    # what the evidence adds (the documented total RNA-seq assay).
+    review = engine.state.pending
+    assert review is not None and review.stage is Stage.IDENTITY
+    assert "total_rnaseq" in review.diff and "-  name:" not in review.diff
+    asyncio.run(engine.approve(ADA))
     assert engine.state.stages[Stage.IDENTITY].status is StageStatus.COMPLETED
+    assert engine.state.stages[Stage.IDENTITY].review is not None
     assert engine.state.pending is not None
     assert engine.state.pending.stage is Stage.INPUTS
 
@@ -493,7 +507,11 @@ def test_every_mode_transition_preserves_drafts_and_history(tmp_path: Path) -> N
     asyncio.run(engine.advance())
     assert engine.state.pending is not None
     assert engine.state.pending.stage is Stage.INPUTS
-    assert not any(item.stage is Stage.IDENTITY for item in engine.state.approvals)
+    # The reviewed identity is not reviewed again while it is unchanged.
+    assert (
+        len([item for item in engine.state.approvals if item.stage is Stage.IDENTITY])
+        == 1
+    )
     engine.switch_mode(InteractionMode.AUTONOMOUS, ADA)
     assert engine.state.pending is None
     asyncio.run(engine.advance())

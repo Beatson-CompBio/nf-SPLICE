@@ -6,7 +6,15 @@ Two scopes:
 - ``pipeline``: the integration copy's pipeline files plus ``splice/`` (in a
   Git copy, the files Git tracks; otherwise an explicit walk), never
   ``.splice-local/``, ``.git/``, run directories, caches, environment or
-  secrets files.
+  secrets files. Members sit at the archive root, and the archive's root
+  ``ro-crate-metadata.json`` is the published ``splice/ro-crate-metadata.json``
+  (its IDs are relative to the pipeline directory), so the ZIP is a
+  recognisable Workflow RO-Crate. A developer's own root crate on disk is
+  never changed; in the archive it is replaced by the reviewed one.
+
+The bundle-only archive holds ``splice/`` alone. Its crate references files
+(``main.nf``) that are not in it: it describes the pipeline but is not a
+self-contained Workflow RO-Crate. Neither archive embeds its own checksum.
 
 An archive is made only from a valid, current build. It is written to a
 temporary file and renamed, never overwrites an existing archive without
@@ -262,15 +270,19 @@ def export_archive(
                 "a pipeline archive inside the working copy would include itself; "
                 "write it outside the copy or under .splice-local/"
             )
-    prefix = (
-        ""
-        if scope is ExportScope.BUNDLE
-        else re.sub(r"[^A-Za-z0-9._-]+", "-", _identity(root)[0]) + "/"
-    )
+    prefix = ""
+    payloads: dict[str, bytes] = {
+        relative: path.read_bytes() for relative, path in members
+    }
+    replaced_root_crate = False
+    if scope is ExportScope.PIPELINE:
+        canonical = root / PUBLISHED_DIR / CRATE
+        if canonical.is_file():
+            replaced_root_crate = CRATE in payloads
+            payloads[CRATE] = canonical.read_bytes()
     expected: dict[str, str] = {}
     secrets_found = []
-    for relative, path in members:
-        payload = path.read_bytes()
+    for relative, payload in sorted(payloads.items()):
         if any(pattern.search(payload) for pattern in _SECRET_CONTENT):
             secrets_found.append(relative)
         expected[prefix + relative] = _digest(payload)
@@ -289,15 +301,20 @@ def export_archive(
         with zipfile.ZipFile(
             temporary, "w", compression=zipfile.ZIP_DEFLATED
         ) as archive:
-            for relative, path in members:
+            for relative, payload in sorted(payloads.items()):
                 info = zipfile.ZipInfo(prefix + relative, date_time=_FIXED_TIME)
                 info.external_attr = 0o644 << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
-                archive.writestr(info, path.read_bytes())
+                archive.writestr(info, payload)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
     checks = verify_archive(target, expected, scope)
+    if replaced_root_crate:
+        checks.append(
+            "the repository's own root ro-crate-metadata.json was replaced in the "
+            "archive by the reviewed crate; the file on disk is unchanged"
+        )
     payload = target.read_bytes()
     return ExportResult(
         path=str(target),
@@ -309,6 +326,52 @@ def export_archive(
         checks=checks,
         excluded=excluded,
     )
+
+
+CRATE = "ro-crate-metadata.json"
+
+
+def verify_crate_members(extracted: Path) -> list[str]:
+    """The archive-root crate is the published one and its local files exist."""
+    root_crate = extracted / CRATE
+    if not root_crate.is_file():
+        raise ExportError("the pipeline archive has no root ro-crate-metadata.json")
+    if root_crate.read_bytes() != (extracted / PUBLISHED_DIR / CRATE).read_bytes():
+        raise ExportError(
+            "the archive-root RO-Crate differs from splice/ro-crate-metadata.json"
+        )
+    try:
+        crate = json.loads(root_crate.read_text(encoding="utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as error:
+        raise ExportError(f"the archive-root RO-Crate is not JSON: {error}") from error
+    missing = []
+    for entity in crate.get("@graph") or []:
+        identifier = str(entity.get("@id", "")) if isinstance(entity, dict) else ""
+        if (
+            not identifier
+            or identifier in {"./", CRATE}
+            or identifier.startswith(("#", "_:"))
+            or "://" in identifier
+            or identifier.startswith("mailto:")
+        ):
+            continue
+        types = entity.get("@type")
+        types = types if isinstance(types, list) else [types]
+        if not {"File", "Dataset"} & {str(item) for item in types}:
+            continue
+        if not _safe_member(identifier.rstrip("/")):
+            missing.append(identifier)
+        elif not (extracted / identifier.rstrip("/")).exists():
+            missing.append(identifier)
+    if missing:
+        raise ExportError(
+            "the RO-Crate names files the archive does not contain: "
+            + ", ".join(sorted(missing)[:10])
+        )
+    return [
+        "the archive-root ro-crate-metadata.json is the published crate and every "
+        "local file it names is in the archive"
+    ]
 
 
 def verify_archive(
@@ -339,8 +402,7 @@ def verify_archive(
         with tempfile.TemporaryDirectory(prefix="nf-splice-verify-") as scratch:
             archive.extractall(scratch)
             extracted = Path(scratch)
-            roots = [item for item in extracted.iterdir()]
-            base = extracted if scope is ExportScope.BUNDLE else roots[0]
+            base = extracted
             report = validate_bundle(base)
             if not report.valid:
                 raise ExportError(
@@ -348,5 +410,7 @@ def verify_archive(
                     + "; ".join(item.message for item in report.issues[:3])
                 )
             checks.append("the extracted bundle validates")
+            if scope is ExportScope.PIPELINE:
+                checks.extend(verify_crate_members(extracted))
     checks.append("no .splice-local/ or .git/ content")
     return checks

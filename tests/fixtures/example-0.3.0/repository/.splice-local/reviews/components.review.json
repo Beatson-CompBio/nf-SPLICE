@@ -128,6 +128,48 @@
       "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
       "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
       "source_revision": null
+    },
+    {
+      "id": "event:d6b4c2cb12a431a1",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    },
+    {
+      "id": "event:74d5948f6e1ea37c",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
     }
   ],
   "format": "0.3.0",

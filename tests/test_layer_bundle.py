@@ -53,7 +53,7 @@ def _issues(root: Path) -> dict[str, set[str]]:
     return found
 
 
-def test_seeding_creates_a_real_incomplete_draft_with_unconfirmed_evidence(
+def test_seeding_creates_a_useful_draft_whose_seeded_values_count_as_authored(
     tmp_path: Path,
 ) -> None:
     _pipeline(tmp_path)
@@ -64,14 +64,15 @@ def test_seeding_creates_a_real_incomplete_draft_with_unconfirmed_evidence(
     assert "project_url: null" in text
     assert not (tmp_path / "splice" / "nf-splice.yaml").exists()
 
-    issues = _issues(tmp_path)
-    assert {"/pipeline/name", "/pipeline/version", "/pipeline/id"} <= issues[
-        "unconfirmed_detected_value"
-    ]
-    assert not validate_bundle_draft(tmp_path).ready
+    # Seeded values are provenance-tracked but never a validation gate.
+    from nf_splice.layers.bundle import unreviewed_detected_values
 
-    pending = sorted(issues["unconfirmed_detected_value"])
-    confirm_values(tmp_path, "bundle", pending, ADA)
+    assert {"/pipeline/name", "/pipeline/version", "/pipeline/id"} <= set(
+        unreviewed_detected_values(tmp_path)
+    )
+    assert "unconfirmed_detected_value" not in _issues(tmp_path)
+    confirm_values(tmp_path, "bundle", list(unreviewed_detected_values(tmp_path)), ADA)
+    assert unreviewed_detected_values(tmp_path) == ()
     # Confirmed identity alone is not enough: the assays must be classified.
     validation = validate_bundle_draft(tmp_path)
     assert {
@@ -124,9 +125,9 @@ def test_direct_edits_count_as_authored_and_survive_tool_patches(
         ),
         encoding="utf-8",
     )
-    assert "/pipeline/name" not in _issues(tmp_path).get(
-        "unconfirmed_detected_value", set()
-    )
+    from nf_splice.layers.bundle import unreviewed_detected_values
+
+    assert "/pipeline/name" not in unreviewed_detected_values(tmp_path)
 
     proposal = set_identity_fields(
         tmp_path,

@@ -3,10 +3,11 @@
 Each layer has exactly one authoritative editable draft below
 ``.splice-local/drafts/``. A layer's review sidecar
 (``.splice-local/reviews/<layer>.review.json``)
-records evidence-derived *seeded* values, explicit confirmations,
+records evidence-derived *seeded* values, optional confirmations, advisory
 discovery candidates, review events and the hashes of promoted final files.
-It never holds authoritative field values: readiness is always derived from
-the current draft bytes.
+It is provenance, never authority: it holds no field values, and a
+candidate's review status never blocks validation. Readiness is always
+derived from the current draft bytes (ADR-0057).
 """
 
 from __future__ import annotations
@@ -25,14 +26,19 @@ from nf_splice.drafts import (
     DRAFT_MARKER,
     DRAFTS_DIR,
     DraftConflictError,
+    DraftSyntaxError,
     PatchOp,
     YamlFileState,
     create_file,
     dump_yaml_data,
+    load_yaml_draft,
     patch_yaml,
     read_sidecar,
     read_yaml,
+    replace_file,
     resolve,
+    sha256,
+    text_diff,
     write_sidecar,
 )
 from nf_splice.layout import legacy_paths
@@ -313,7 +319,8 @@ def seed_draft(
             header=header
             or (
                 f"nf-SPLICE {spec.title.lower()} draft (authoritative, editable).",
-                "Fields left null are unresolved; detected values need confirmation.",
+                "Seeded from repository evidence: edit anything, in any editor.",
+                "Null fields are unresolved. nf-splice never overwrites this file.",
             ),
         ).encode("utf-8"),
     )
@@ -415,6 +422,137 @@ def edit_draft(
     return EditResult(
         layer, spec.draft, outcome.diff, outcome.wrote, event, outcome.data
     )
+
+
+def replace_draft(
+    root: Path,
+    layer: str,
+    context: ChangeContext,
+    *,
+    expected_sha256: str | None,
+    content: str | None = None,
+    data: Any = ABSENT,
+    section: str | None = None,
+    write: bool = True,
+) -> EditResult:
+    """Deliberately replace a whole draft, or one section of it.
+
+    This is authoring, not regeneration: the caller states the file hash it
+    read (``expected_sha256``), so an edit made on disk since then is never
+    overwritten. The new content only has to be *safe* (restricted YAML that
+    parses, the draft marker unchanged, an allowed path); it does not have to
+    pass the layer's semantic validation, so a person or an agent can save a
+    useful intermediate draft and repair it in later revisions.
+
+    - ``content``: complete YAML text of the draft (comments are kept as
+      written).
+    - ``data``: a JSON value; with ``section`` it replaces that JSON pointer
+      (comments outside the section survive), without it the whole document.
+    """
+    spec = layer_spec(layer)
+    if write and not context.approved:
+        raise LayerError(
+            f"{spec.draft}: change is only a proposal; explicit approval is required"
+        )
+    if (content is None) == (data is ABSENT):
+        raise LayerError("supply either the YAML content or the data, not both")
+    if content is not None and section is not None:
+        raise LayerError("a section is replaced with data, not YAML text")
+    if section is not None and (
+        not section.startswith("/")
+        or section == f"/{DRAFT_MARKER}"
+        or section.startswith(f"/{DRAFT_MARKER}/")
+    ):
+        raise LayerError(
+            "section must be a JSON pointer such as /outputs, and the draft "
+            "marker is managed by nf-splice"
+        )
+    state = read_layer(root, spec.name)
+    if state.file.sha256 != expected_sha256:
+        raise DraftConflictError(
+            spec.draft,
+            "the draft changed on disk since it was read (for example in an "
+            "editor); read it again and base the replacement on the current file",
+        )
+    marker = draft_marker(spec.name)
+    if section is not None:
+        if state.draft is None:
+            raise LayerError(
+                f"{spec.draft} cannot be edited by section until its syntax is "
+                f"fixed: {state.error}"
+            )
+        current = resolve(state.draft.data, section)
+        operation = (
+            PatchOp("add", section, data)
+            if current is ABSENT
+            else PatchOp("replace", section, data, expected=current)
+        )
+        outcome = patch_yaml(root, spec.draft, [operation], write=write)
+        before_sha, after_sha, rendered, written = (
+            outcome.before_sha256,
+            outcome.after_sha256,
+            outcome.diff,
+            outcome.wrote,
+        )
+        new_data = outcome.data
+        pointers: tuple[str, ...] = (section,)
+    else:
+        if content is None:
+            if not isinstance(data, Mapping):
+                raise LayerError("a draft is a mapping of top-level fields")
+            document = {DRAFT_MARKER: marker} | {
+                key: value for key, value in data.items() if key != DRAFT_MARKER
+            }
+            text = dump_yaml_data(
+                document,
+                header=(
+                    f"nf-SPLICE {spec.title.lower()} draft (authoritative, editable).",
+                ),
+            )
+        else:
+            text = content if content.endswith("\n") else content + "\n"
+        try:
+            parsed = load_yaml_draft(text)
+        except DraftSyntaxError as error:
+            raise LayerError(
+                f"{spec.draft}: unsafe or invalid YAML: {error}"
+            ) from error
+        if not isinstance(parsed.data, dict):
+            raise LayerError(f"{spec.draft}: a draft must be a mapping")
+        if parsed.data.get(DRAFT_MARKER) != marker:
+            raise LayerError(
+                f"{spec.draft}: keep the {DRAFT_MARKER} block exactly as nf-splice "
+                "wrote it"
+            )
+        before_text = state.file.text or ""
+        rendered = text_diff(spec.draft, before_text, text)
+        before_sha = state.file.sha256
+        after_sha = sha256(text.encode("utf-8"))
+        written = False
+        if write and text != before_text:
+            replace_file(
+                root, spec.draft, text.encode("utf-8"), expected_sha256=expected_sha256
+            )
+            written = True
+        new_data = parsed.data
+        pointers = ("",)
+    if not write:
+        return EditResult(spec.name, spec.draft, rendered, False, None, new_data)
+    event = _record(
+        root,
+        spec.name,
+        "replace_section" if section is not None else "replace_draft",
+        context,
+        pointers,
+        before_sha,
+        after_sha,
+    )
+
+    def mutate(review: ReviewState) -> None:
+        review.events.append(event.model_dump(mode="json"))
+
+    update_review_state(root, spec.name, mutate)
+    return EditResult(spec.name, spec.draft, rendered, written, event, new_data)
 
 
 def confirm_values(
@@ -544,6 +682,7 @@ __all__ = [
     "ops_for",
     "read_layer",
     "record_decision",
+    "replace_draft",
     "save_review_state",
     "seed_draft",
     "strip_marker",

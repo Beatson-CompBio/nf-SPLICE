@@ -31,8 +31,11 @@ _SECRET_ASSIGNMENT = re.compile(
     r"access[_-]?key)\b\s*=\s*(?!null\b|System\.getenv\b)([^\n]+)"
 )
 _PERSONAL_PATH = re.compile(r"(?:~[/\\]|/(?:Users|home)/[^/'\"\s]+)")
+#: A literal account in a config: ``--account=abc`` or ``budget = 'abc'``,
+#: but not a value taken from a parameter, the environment or null.
 _ACCOUNT_LITERAL = re.compile(
     r"(?i)(?:--account(?:=|\s+)|\b(?:account|project|budget)\s*=\s*)"
+    r"(?!params\.|null\b|System\.getenv|env\(|task\.)"
     r"['\"]?[A-Za-z0-9][A-Za-z0-9_.-]+"
 )
 _DEMO_TEST = re.compile(r"(?i)(?:test[_-]?data|testdata|demo(?:nstration)?)")

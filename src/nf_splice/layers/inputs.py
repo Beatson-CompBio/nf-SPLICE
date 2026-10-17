@@ -37,6 +37,7 @@ from nf_splice.drafts import (
     resolve,
 )
 from nf_splice.drafts.store import sha256
+from nf_splice.inspectors.parameters import parameter_usage
 from nf_splice.layers.base import (
     ChangeContext,
     DraftIssue,
@@ -171,6 +172,11 @@ def project_nextflow_schema(
             "binding": f"params.{parameter.name}",
             "origin": f"{SOURCE}#{parameter.pointer}",
         }
+        # Least privilege until an author decides otherwise (ADR-0057): nobody
+        # may override the value at run time, and forms do not show it. An
+        # empty list is a valid, deliberate policy, not a missing one.
+        target["x-splice-access"] = {"editable_by": []}
+        target["x-splice-ui"] = {"visibility": Visibility.HIDDEN.value}
         data_kind = {
             "file-path": "file",
             "directory-path": "directory",
@@ -219,9 +225,40 @@ def _load_upstream(root: Path) -> tuple[dict[str, Any], bytes]:
     return loaded, payload
 
 
+def _provisional_document(root: Path) -> dict[str, Any]:
+    """An empty, valid input contract for a pipeline with no nf-schema."""
+    reference, identifier = _identity_reference(root)
+    document: dict[str, Any] = {
+        "$schema": DIALECT,
+        "type": "object",
+        "x-splice-contract": contract_extension(INPUTS_FAMILY),
+        "x-splice-pipeline": dict(reference) if reference else None,
+        "properties": {},
+    }
+    if identifier is not None:
+        document = {"$schema": DIALECT, "$id": identifier, **document}
+    return document
+
+
 def import_inputs(repository_root: str | Path) -> bool:
-    """Create the input draft from ``nextflow_schema.json`` if absent."""
+    """Create the input draft from ``nextflow_schema.json`` if absent.
+
+    Every declared parameter is kept, with ``editable_by: []`` and hidden
+    presentation. A pipeline without ``nextflow_schema.json`` gets an empty
+    contract to author by hand: parameters are never invented from code.
+    """
     root = Path(repository_root).resolve()
+    if not (root / SOURCE).is_file():
+        return seed_draft(
+            root,
+            LAYER,
+            _provisional_document(root),
+            header=(
+                "nf-SPLICE input contract draft (JSON Schema 2020-12, authoritative).",
+                f"No {SOURCE} was found: declare each runnable parameter here, with",
+                "x-splice-access.editable_by ([] = nobody may change it at run time).",
+            ),
+        )
     upstream, payload = _load_upstream(root)
     reference, identifier = _identity_reference(root)
     document, notes = project_nextflow_schema(upstream, reference)
@@ -242,7 +279,8 @@ def import_inputs(repository_root: str | Path) -> bool:
         document,
         header=(
             "nf-SPLICE input contract draft (JSON Schema 2020-12, authoritative).",
-            "Every parameter needs x-splice-access.editable_by (user/platform/agent).",
+            "Every declared parameter is imported with editable_by: [] (nobody may",
+            "change it at run time) and hidden; grant user/platform/agent on purpose.",
         ),
         review=review,
     )
@@ -523,6 +561,20 @@ def validate_inputs_draft(repository_root: str | Path) -> LayerValidation:
                     "secret-like parameters must not carry default values",
                 )
             )
+    declared = {item.name for item in iter_parameters(document)}
+    for usage in parameter_usage(root).undeclared(declared)[:25]:
+        issues.append(
+            issue(
+                LAYER,
+                "/properties",
+                "undeclared_parameter",
+                f"workflow code reads params.{usage.name} "
+                f"({', '.join(usage.code[:3])}) but the contract does not "
+                "declare it; declare it if a job may set it, otherwise ignore "
+                "this (a value the pipeline sets for itself)",
+                Severity.WARNING,
+            )
+        )
     if any(item.severity is Severity.ERROR for item in issues):
         return LayerValidation(LAYER, tuple(issues))
     payload = canonical_json(document)

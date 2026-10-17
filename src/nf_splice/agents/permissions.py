@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -81,12 +82,16 @@ class Budgets(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    max_tool_calls: int = Field(default=300, ge=1, le=5000)
-    max_turns_per_step: int = Field(default=30, ge=1, le=200)
+    max_tool_calls: int = Field(default=1500, ge=1, le=20000)
+    max_turns_per_step: int = Field(default=80, ge=1, le=500)
     max_stage_attempts: int = Field(default=3, ge=1, le=10)
-    turn_timeout_seconds: float = Field(default=600.0, gt=0, le=7200)
+    turn_timeout_seconds: float = Field(default=1800.0, gt=0, le=14400)
     max_budget_usd: float | None = Field(default=None, gt=0)
     model: str | None = None
+    #: How hard the model reasons (provider-neutral; each adapter maps it to
+    #: its real control or reports that it cannot). Distinct from turns,
+    #: time, cost and context. ``None`` leaves the provider's default.
+    reasoning_effort: Literal["low", "medium", "high", "xhigh", "max"] | None = "high"
 
 
 class ExecutionPolicy(BaseModel):
@@ -100,6 +105,10 @@ class ExecutionPolicy(BaseModel):
     budgets: Budgets = Field(default_factory=Budgets)
     examples: list[str] = Field(default_factory=list)
     allow_remote_model: bool = False
+    #: ``always``: every layer stage gets an AI review, even when its draft
+    #: already validates. ``reuse_unchanged``: a completed review is reused
+    #: while the draft and the sources are byte-identical to when it ran.
+    review: Literal["always", "reuse_unchanged"] = "always"
     approved_by: str | None = None
     approved_at: str | None = None
 

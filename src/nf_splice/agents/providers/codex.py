@@ -53,6 +53,7 @@ from nf_splice.agents.protocol import (
     ProviderCapabilities,
     ProviderUnavailable,
     TurnRequest,
+    resolve_effort,
 )
 from nf_splice.agents.providers import openai as openai_provider
 from nf_splice.agents.providers import openai_auth, selected_model
@@ -67,6 +68,11 @@ from nf_splice.agents.providers.base import (
 #: Codex versions whose restrictions nf-splice's negative tests have verified.
 SUPPORTED = re.compile(r"^0\.162\.\d+$")
 PROVIDER_ID = "nf_splice_responses"
+#: The app-server's per-turn reasoning control (``turn/start`` ``effort``).
+#: ``xhigh`` is model-dependent; a model that refuses it fails the turn with
+#: a classified error rather than silently running at another level.
+REASONING_CONTROL = "Codex app-server turn/start effort"
+REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
 #: Codex features that would give the model a native capability.
 DISABLED_FEATURES = (
     "shell_tool",
@@ -277,6 +283,8 @@ class CodexProvider:
             continuation=False,
             inference="remote",
             billing="openai-api-usage" if mode == "api-key" else "chatgpt-plan",
+            reasoning_control=REASONING_CONTROL,
+            reasoning_efforts=REASONING_EFFORTS,
         )
 
     def open(self, repository: Path) -> CodexSession:
@@ -474,12 +482,21 @@ class CodexSession:
             timeout=60,
         )
         self._thread = str(started["thread"]["id"])
+        effort, notice = resolve_effort(
+            request.reasoning_effort,
+            REASONING_EFFORTS,
+            provider="codex",
+            control=REASONING_CONTROL,
+        )
+        if notice:
+            yield AgentEvent(EventKind.NOTICE, notice)
         begun = await self._call(
             "turn/start",
             {
                 "threadId": self._thread,
                 "input": [{"type": "text", "text": request.instruction}],
-            },
+            }
+            | ({"effort": effort} if effort else {}),
             timeout=60,
         )
         self._turn = str((begun or {}).get("turn", {}).get("id") or "") or None

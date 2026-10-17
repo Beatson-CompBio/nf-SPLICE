@@ -14,7 +14,7 @@ Point it at what you are looking at for a sharper answer:
 
 ```bash
 nf-splice ask "Why is this field an error?" --layer outputs --pointer /outputs/2/path_patterns --provider claude --allow-remote-model
-nf-splice ask "What does this mean?" --error "pending_candidate: output:08cff62b5636703d requires review" --provider claude --allow-remote-model
+nf-splice ask "What does this mean?" --error "route_not_covered: HISAT2_ALIGN publishes hisat2/*.bam" --provider claude --allow-remote-model
 ```
 
 | Option | Use |
@@ -41,19 +41,19 @@ You will review a pipeline yourself and ask AI two questions on the way.
 1. Create the drafts and open the wizard:
 
    ```bash
-   nf-splice init --accept-detected
+   nf-splice init
    nf-splice tui --provider claude --allow-remote-model
    ```
 
 2. Work through **Identity** and **Inputs** as usual (see
    [Getting started](getting-started.md)).
 
-3. On **Outputs**, you see a candidate from `HISAT2_ALIGN` that your test run
-   did not produce. Press Ctrl+A and ask *"Does HISAT2_ALIGN always run?"*.
+3. On **Outputs**, the catalogue has a `hisat2_align_bam` entry that your test
+   run did not produce. Press Ctrl+A and ask *"Does HISAT2_ALIGN always run?"*.
    The answer cites `main.nf`: HISAT2 runs only when `params.aligner` is not
    `star`, so it is an alternative route and belongs in the catalogue.
 
-4. Accept it with a description you choose. Ask AI did not change the draft;
+4. Keep it, with a description you choose. Ask AI did not change the draft;
    you did.
 
 5. On **Components**, ask *"Why is this container reference unresolved?"*,

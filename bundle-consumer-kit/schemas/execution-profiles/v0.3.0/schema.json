@@ -145,7 +145,7 @@
         "config_strategy": {
           "enum": [
             "adopted",
-            "generated"
+            "authored"
           ]
         },
         "site_parameters": {

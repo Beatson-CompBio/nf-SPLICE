@@ -34,6 +34,7 @@ from nf_splice.agents.protocol import (
     EventKind,
     ProviderCapabilities,
     TurnRequest,
+    resolve_effort,
 )
 from nf_splice.agents.providers import openai_auth
 from nf_splice.agents.providers.base import (
@@ -105,6 +106,12 @@ def _code(body: str) -> str | None:
     if isinstance(error, dict):
         return str(error.get("code") or error.get("type") or "") or None
     return None
+
+
+#: The Responses API's control. Values every reasoning model accepts; a model
+#: may reject one, which is reported as an incompatible-model error.
+REASONING_CONTROL = "Responses API reasoning.effort"
+REASONING_EFFORTS = ("low", "medium", "high")
 
 
 def classify(status: int, body: str, headers: Mapping[str, str]) -> ProviderError:
@@ -303,6 +310,8 @@ class OpenAIProvider:
             continuation=False,
             inference="remote",
             billing="openai-api-usage" if mode == "api-key" else "chatgpt-plan",
+            reasoning_control=REASONING_CONTROL,
+            reasoning_efforts=REASONING_EFFORTS,
         )
 
     def open(self, repository: Path) -> OpenAISession:
@@ -315,6 +324,7 @@ class OpenAISession:
     provider: OpenAIProvider
     history: list[dict[str, Any]] = field(default_factory=list)
     cancelled: bool = False
+    effort: str | None = None
 
     @property
     def conversation_ref(self) -> str | None:
@@ -344,7 +354,7 @@ class OpenAISession:
             "store": False,
             "stream": True,
             "include": ["reasoning.encrypted_content"],
-        }
+        } | ({"reasoning": {"effort": self.effort}} if self.effort else {})
 
     def _stream(
         self, credential: Credential, body: dict[str, Any], timeout: float
@@ -419,6 +429,14 @@ class OpenAISession:
             endpoints=self.provider.endpoints,
         )
         offered = {spec["name"] for spec in request.tools.schemas()}
+        self.effort, notice = resolve_effort(
+            request.reasoning_effort,
+            REASONING_EFFORTS,
+            provider="openai",
+            control=REASONING_CONTROL,
+        )
+        if notice:
+            yield AgentEvent(EventKind.NOTICE, notice)
         self.history.append(
             {
                 "role": "user",

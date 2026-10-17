@@ -1,14 +1,15 @@
 ---
 name: nf-splice-validation
-description: Validate nf-splice drafts and SPLICE bundles deterministically, interpret contract validity versus observed-output compatibility versus route coverage, and run optional nf-core checks only when available and permitted. Use before declaring any integration step done.
+description: Validate nf-splice drafts and SPLICE bundles deterministically; tell a safely saved draft from a publishable one, contract validity from scientific and operational readiness, and run optional external checks (nf-core lint, rocrate-validator, nextflow config) only when installed and permitted. Use before declaring any step done.
 ---
 
-# nf-splice validation
+# nf-splice validation and recovery
 
 ## When to use
 
-Use this skill before reporting any stage, build or integration as done, and
-whenever a person asks whether a bundle is valid or complete.
+Use this skill before reporting any stage, build or integration as done,
+when a person asks whether a bundle is valid or ready, and when recovering
+from an interrupted or failed step.
 
 ## Prerequisites
 
@@ -20,57 +21,60 @@ Drafts exist (`nf-splice init`). Building needs every layer ready.
 | --- | --- | --- |
 | One draft | `validate_layer` | `nf-splice draft validate outputs` |
 | Every draft | `workspace_status` | `nf-splice status` |
-| Cross-layer readiness and diff | `preview_build` | `nf-splice plan` |
+| Cross-layer plan and diff | `preview_build` | `nf-splice plan` |
 | Build | `build_bundle` | `nf-splice build all` |
-| Published bundle | `validate_bundle` | `nf-splice validate` |
-| Three separate results | `assess` | `nf-splice assess --example-output results/` |
-| Optional external checks | `run_optional_checks` | `nf-splice assess --allow external_tools --allow run_nextflow --allow network` |
-| Verified archive | (export stage) | `nf-splice export --archive-scope bundle` |
-| Local commit of the bundle | `git_commit` | `nf-splice git commit` |
+| Bundle and readiness dimensions | `validate_bundle` | `nf-splice validate` |
+| Contract, observed outputs, coverage | `assess` | `nf-splice assess --example-output results/` |
+| Optional external checks | `run_optional_checks` | `nf-splice assess --allow external_tools --allow network` |
+| Effective profile configuration | - | `nf-splice draft check-config default --allow run_nextflow` |
+| Archive with root RO-Crate | (export stage) | `nf-splice export --archive-scope pipeline` |
 
 ## Workflow
 
-1. Validate each draft you changed. Fix every error; warnings are reported
-   but do not block.
-2. Run the cross-layer preview. Publication is blocked while any layer has
-   errors.
-3. Build. The build is transactional: an interrupted build is recovered with
-   `nf-splice draft recover`, and existing published files are never
-   replaced silently.
-4. Validate the published bundle.
-5. Assess. Report the three results separately:
-   - **Contract validity**: the validators accept the bundle files and their
-     cross-file relationships.
-   - **Observed-output compatibility**: each example's paths are classified
-     and a real `analysis_output.json` is generated and validated (with a
-     placeholder job identity during assessment).
-   - **Coverage assessment**: published routes covered by the catalogue,
-     excluded by review, not covered or unresolved.
-6. Optional checks: nf-core lint runs only for nf-core pipelines, with
-   supported nf-core (3.x or 4.x) and Nextflow installed, and only with the
-   `external_tools`, `run_nextflow` and `network` permissions, because it
-   runs `nextflow config` and may contact the network. Otherwise it is
-   reported as `not_applicable` or `not_run` with the reason.
+1. **Saved is not ready.** A draft written safely (restricted YAML, its
+   marker kept, no conflicting edit) may still fail its contract. That is
+   expected while authoring; validate, read the issues, revise.
+2. Validate each draft you changed; errors block, warnings inform.
+3. Run the cross-layer plan; publication is blocked while any layer errs.
+4. Build. The build is transactional: interrupted builds are recovered with
+   `nf-splice draft recover`; published files are never replaced silently,
+   and configs nf-splice published earlier that nothing uses any more are
+   removed in the same transaction.
+5. Validate the published bundle. It reports *structurally valid*,
+   *scientifically classified* and *ready for ingestion*, and six readiness
+   dimensions: contracts, scientific classification, runtime parameters
+   (indispensable inputs someone can supply), deployment (images the default
+   profile needs, engine consistency), provenance (RO-Crate 1.1 and identity
+   agreement) and publication consistency.
+6. Assess: contract validity, observed-output compatibility and route
+   coverage are three separate results.
+7. Optional checks run only when installed, applicable and permitted;
+   otherwise they are `not_run` or `not_applicable` with the reason.
 
 ## Verification gates
 
 Only validator output counts. A model saying "valid" is not a validation.
-Report `not_run` and `not_applicable` exactly; never as passed. Warnings
-from nf-core are not errors, but report them.
+Report `not_run` and `not_applicable` exactly, never as passed. A validated
+draft has not therefore been reviewed scientifically.
 
 ## Failure handling
 
 - Never relax a schema or skip a validator to make a result pass.
-- If the build reports that a published file was edited by hand, the
-  `overwrite` permission or a person's explicit choice is needed to replace
+- A malformed draft is reported (`syntax`) and never rewritten: fix it in an
+  editor.
+- A hand-edited published file needs a person's explicit choice to replace
   it (`nf-splice build all --overwrite-edited splice/README.md`).
+- After an interrupted session, the latest safely written drafts remain;
+  validate them and continue in any mode.
 
 ## Evidence reporting
 
-Quote the validator's issue codes and JSON pointers. Distinguish
-"contract valid" from "outputs observed" from "routes covered".
+Quote the issue codes, files and JSON pointers. Keep "contract valid",
+"classified", "outputs observed", "routes covered" and "ready for ingestion"
+apart.
 
 ## Safety boundaries
 
 Validation is read-only, except building, which writes only `splice/`.
-Optional checks never install software and never run the pipeline.
+Optional checks never install software and never run the pipeline;
+`nextflow config` evaluates configuration code only with `run_nextflow`.

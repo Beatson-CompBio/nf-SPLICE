@@ -57,7 +57,30 @@ def _codes(root: Path) -> set[str]:
     return {item.code for item in validate_execution_draft(root).issues}
 
 
-def test_adopted_and_generated_profiles_with_one_reviewed_default(
+def _profiles(root: Path, profiles: list[dict[str, Any]], default: str | None) -> None:
+    from layer_fixtures import edit_draft_file
+
+    def change(data: dict[str, Any]) -> None:
+        data["profiles"] = profiles
+        data["default_profile"] = default
+
+    edit_draft_file(root, "execution-profiles", change)
+
+
+def _profile(identifier: str, **values: Any) -> dict[str, Any]:
+    return {
+        "id": identifier,
+        "name": identifier.title(),
+        "description": f"{identifier} profile.",
+        "type": "development",
+        "engine": "nextflow",
+        "executor": "local",
+        "container_engine": "singularity",
+        "config": {"draft": f"{identifier}.draft.config"},
+    } | values
+
+
+def test_init_seeds_a_usable_default_profile_and_native_config(
     tmp_path: Path,
 ) -> None:
     _repository(tmp_path)
@@ -65,49 +88,76 @@ def test_adopted_and_generated_profiles_with_one_reviewed_default(
         "profile:local",
         "profile:test",
     }
-    review_profile(
-        tmp_path,
-        "profile:local",
-        ADA,
-        profile_type="development",
-        description="Local development.",
-        executor="local",
-        container_engine="singularity",
-        config_source="conf/local.config",
-    )
-    reject_profile(tmp_path, "profile:test", "CI only", ADA)
-    add_slurm_default_candidate(tmp_path, ADA)
-    assert pending_profiles(tmp_path) == ()
-    assert "missing_default" in _codes(tmp_path)
+    config = tmp_path / config_draft_path("default")
+    text = config.read_text(encoding="utf-8")
+    assert USER_SECTION in text and PLATFORM_SECTION in text
+    assert "singularity {" in text and "executor = 'local'" in text
+    codes = _codes(tmp_path)
+    # Detected repository profiles are evidence; nothing waits for them.
+    assert "pending_candidate" not in codes
+    assert {"missing_required"} <= codes  # description and type are unknown
+    # Re-running never touches the YAML or the config.
+    draft = tmp_path / ".splice-local/drafts/execution-profiles.draft.yaml"
+    before = (draft.read_bytes(), config.read_bytes())
+    discover_execution(tmp_path)
+    assert (draft.read_bytes(), config.read_bytes()) == before
 
-    slurm = "profile-splice_splice_slurm-" + b"splice_splice_slurm".hex()
-    set_default_profile(tmp_path, slurm, ADA)
+
+def test_manually_authored_profiles_and_configs_publish_without_reviews(
+    tmp_path: Path,
+) -> None:
+    _repository(tmp_path)
+    discover_execution(tmp_path)
+    configs = tmp_path / ".splice-local/drafts/configs"
+    (configs / "default.draft.config").unlink()
+    (configs / "archer2.draft.config").write_text(
+        "// Archer2 profile written by hand\n"
+        "process {\n    executor = 'slurm'\n    withLabel: 'process_high' {\n"
+        "        cpus = 16\n    }\n}\n"
+        f"{USER_SECTION}\nparams {{\n    genome = 'GRCm39'\n}}\n"
+        f"{PLATFORM_SECTION}\nparams {{\n    max_cpus = 128\n}}\n",
+        encoding="utf-8",
+    )
+    (configs / "laptop.draft.config").write_text(
+        "process.executor = 'local'\n", encoding="utf-8"
+    )
+    _profiles(
+        tmp_path,
+        [
+            _profile("archer2", type="production", executor="slurm"),
+            _profile("laptop"),
+            _profile("repository", config={"adopt": "conf/local.config"}),
+        ],
+        "archer2",
+    )
     validation = validate_execution_draft(tmp_path)
     assert validation.ready, validation.issues
     catalogue = json.loads(validation.files["execution-profiles.json"])
-    assert catalogue["default_profile"] == slurm
-    assert [item["default"] for item in catalogue["profiles"]] == [False, True]
-    assert {item["config_strategy"] for item in catalogue["profiles"]} == {
-        "adopted",
-        "generated",
+    assert catalogue["default_profile"] == "archer2"
+    assert {item["id"]: item["config_strategy"] for item in catalogue["profiles"]} == {
+        "archer2": "authored",
+        "laptop": "authored",
+        "repository": "adopted",
     }
-    local_id = "profile-local-6c6f63616c"
-    assert validation.files[f"configs/{local_id}.config"] == LOCAL
-    generated = validation.files[f"configs/{slurm}.config"].decode("utf-8")
-    assert USER_SECTION in generated and PLATFORM_SECTION in generated
-    assert "executor = 'slurm'" in generated
-    assert "operator-managed: queue" in generated
-    assert "nf-SPLICE draft" not in generated
-    assert validate_execution_draft(tmp_path).files == validation.files
-    with pytest.raises(LayerError, match="unknown execution profile"):
-        set_default_profile(tmp_path, "profile-nope", ADA)
+    archer2 = validation.files["configs/archer2.config"].decode("utf-8")
+    assert "withLabel: 'process_high'" in archer2 and "cpus = 16" in archer2
+    assert "nf-SPLICE draft" not in archer2
+    assert validation.files["configs/repository.config"] == LOCAL
+    # The laptop config has no parameter sections: a warning, not a blocker.
+    assert "missing_sections" in _codes(tmp_path)
+    # A later edit in an editor is what validation reads next.
+    (configs / "archer2.draft.config").write_text(
+        archer2.replace("cpus = 16", "cpus = 32"), encoding="utf-8"
+    )
+    final = validate_execution_draft(tmp_path).files["configs/archer2.config"]
+    assert b"cpus = 32" in final
 
 
-def test_generated_sections_respect_input_policies(tmp_path: Path) -> None:
+def test_parameter_sections_are_checked_against_input_policies(
+    tmp_path: Path,
+) -> None:
     _repository(tmp_path)
     discover_execution(tmp_path)
-    reject_profile(tmp_path, "profile:local", "x", ADA)
-    reject_profile(tmp_path, "profile:test", "x", ADA)
     add_generated_profile(
         tmp_path,
         ADA,
@@ -121,41 +171,49 @@ def test_generated_sections_respect_input_policies(tmp_path: Path) -> None:
             "platform_params": {"max_cpus": 8, "genome": "x", "api_token": "s"},
         },
     )
-    identifier = "profile-splice_cluster-" + b"splice_cluster".hex()
-    set_default_profile(tmp_path, identifier, ADA)
-    issues = validate_execution_draft(tmp_path).issues
-    pointers = {item.pointer for item in issues if item.code == "section_policy"}
-    assert pointers == {
-        "/profiles/0/generated/user_params/max_cpus",
-        "/profiles/0/generated/platform_params/genome",
-        "/profiles/0/generated/platform_params/api_token",
-    }
-    assert "secret_literal" in {item.code for item in issues}
-    text = (tmp_path / config_draft_path(identifier)).read_text(encoding="utf-8")
+    text = (tmp_path / config_draft_path("cluster")).read_text(encoding="utf-8")
     assert "    genome = 'GRCm39'" in text and "    max_cpus = 8" in text
+    _profiles(tmp_path, [_profile("cluster", type="production")], "cluster")
+    issues = validate_execution_draft(tmp_path).issues
+    flagged = {
+        item.message.split("'")[1]
+        for item in issues
+        if item.code == "section_policy" and item.severity.value == "error"
+    }
+    assert flagged == {"max_cpus", "genome"}
+    assert "secret_literal" in {item.code for item in issues}
 
 
-def test_generated_config_drafts_are_editable_and_preserved(tmp_path: Path) -> None:
+def test_config_files_are_written_safely_and_conflicts_are_refused(
+    tmp_path: Path,
+) -> None:
+    from nf_splice.drafts import DraftConflictError
+    from nf_splice.layers.execution import read_config_draft, write_config_draft
+
     _repository(tmp_path)
     discover_execution(tmp_path)
-    reject_profile(tmp_path, "profile:local", "x", ADA)
-    reject_profile(tmp_path, "profile:test", "x", ADA)
-    add_slurm_default_candidate(tmp_path, ADA)
-    identifier = "profile-splice_splice_slurm-" + b"splice_splice_slurm".hex()
-    set_default_profile(tmp_path, identifier, ADA)
-    path = tmp_path / config_draft_path(identifier)
-    path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            "process {", "process {\n    // developer note\n    maxRetries = 2"
-        ),
-        encoding="utf-8",
+    current = read_config_draft(tmp_path, "default")
+    assert current["exists"] and USER_SECTION in current["text"]
+    edited = current["text"].replace("process {", "process {\n    maxRetries = 2")
+    result = write_config_draft(
+        tmp_path, "default", edited, ADA, expected_sha256=current["sha256"]
     )
-    final = validate_execution_draft(tmp_path).files[f"configs/{identifier}.config"]
-    assert b"maxRetries = 2" in final and b"// developer note" in final
-    path.write_text(
-        path.read_text(encoding="utf-8").replace(USER_SECTION, ""), encoding="utf-8"
-    )
-    assert "missing_sections" in _codes(tmp_path)
+    assert result.wrote and "+    maxRetries = 2" in result.diff
+    with pytest.raises(DraftConflictError, match="changed on disk"):
+        write_config_draft(
+            tmp_path, "default", edited, ADA, expected_sha256=current["sha256"]
+        )
+    with pytest.raises(LayerError, match="secret"):
+        write_config_draft(
+            tmp_path,
+            "extra",
+            "params { api_token = 'abc' }\npassword = 'hunter2'\n",
+            ADA,
+            expected_sha256=None,
+        )
+    assert not (tmp_path / config_draft_path("extra")).exists()
+    with pytest.raises(LayerError, match="config name"):
+        write_config_draft(tmp_path, "../escape", "x", ADA, expected_sha256=None)
 
 
 @pytest.mark.parametrize(
@@ -172,24 +230,35 @@ def test_unsafe_adopted_configs_are_reported(
 ) -> None:
     _repository(tmp_path, config)
     discover_execution(tmp_path)
-    reject_profile(tmp_path, "profile:test", "x", ADA)
-    review_profile(
+    _profiles(
         tmp_path,
-        "profile:local",
-        ADA,
-        profile_type="production",
-        description="Production.",
-        executor="local",
-        container_engine="singularity",
-        config_source="conf/local.config",
+        [_profile("local", type="production", config={"adopt": "conf/local.config"})],
+        "local",
     )
-    set_default_profile(tmp_path, "profile-local-6c6f63616c", ADA)
     validation = validate_execution_draft(tmp_path)
     assert not validation.ready
     assert any(message in item.message for item in validation.issues)
 
 
-def test_review_requires_one_explicit_route_and_detected_values(tmp_path: Path) -> None:
+def test_parameter_and_environment_accounts_are_not_literals(tmp_path: Path) -> None:
+    config = (
+        b'process { clusterOptions = { "--account=${params.budget}" } }\n'
+        b"params { budget = params.budget ?: null }\n"
+    )
+    _repository(tmp_path, config)
+    discover_execution(tmp_path)
+    _profiles(
+        tmp_path,
+        [_profile("local", config={"adopt": "conf/local.config"})],
+        "local",
+    )
+    assert not any(
+        "HPC account" in item.message
+        for item in validate_execution_draft(tmp_path).issues
+    )
+
+
+def test_optional_review_conveniences_check_detected_values(tmp_path: Path) -> None:
     _repository(tmp_path)
     discover_execution(tmp_path)
     common: dict[str, Any] = {
@@ -197,8 +266,6 @@ def test_review_requires_one_explicit_route_and_detected_values(tmp_path: Path) 
         "description": "x",
         "container_engine": "singularity",
     }
-    with pytest.raises(LayerError, match="exactly one config route"):
-        review_profile(tmp_path, "profile:local", ADA, executor="local", **common)
     with pytest.raises(LayerError, match="not in detected"):
         review_profile(
             tmp_path,
@@ -217,5 +284,21 @@ def test_review_requires_one_explicit_route_and_detected_values(tmp_path: Path) 
             config_source="../x.config",
             **common,
         )
+    review_profile(
+        tmp_path,
+        "profile:local",
+        ADA,
+        executor="local",
+        config_source="conf/local.config",
+        **common,
+    )
+    reject_profile(tmp_path, "profile:test", "CI only", ADA)
+    assert pending_profiles(tmp_path) == ()
+    add_slurm_default_candidate(tmp_path, ADA)
+    set_default_profile(tmp_path, "splice-slurm", ADA)
+    text = (tmp_path / config_draft_path("splice-slurm")).read_text(encoding="utf-8")
+    assert "executor = 'slurm'" in text and "deployment-managed: queue" in text
+    with pytest.raises(LayerError, match="unknown execution profile"):
+        set_default_profile(tmp_path, "profile-nope", ADA)
     assert groovy_literal("it's $HOME") == "'it\\'s \\$HOME'"
     assert groovy_literal([1, True, None, {"a": "b"}]) == "[1, true, null, [a: 'b']]"

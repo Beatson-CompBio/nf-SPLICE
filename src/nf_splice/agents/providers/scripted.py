@@ -53,6 +53,8 @@ class ScriptedProvider:
             cancellation=True,
             budgets=False,
             continuation=False,
+            reasoning_control="scripted (no model)",
+            reasoning_efforts=(),
         )
 
     def open(self, repository: Path) -> _ScriptedSession:

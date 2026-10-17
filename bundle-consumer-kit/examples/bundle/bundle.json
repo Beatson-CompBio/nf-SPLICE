@@ -13,6 +13,7 @@
     "engine": "nextflow",
     "description": "Aligns RNA-seq reads with STAR or HISAT2.",
     "repository_url": "https://github.com/org/multiroute",
+    "licence": "MIT",
     "assay_capabilities": [
       {
         "kind": "registered_assay",
@@ -84,7 +85,8 @@
           ]
         ]
       }
-    ]
+    ],
+    "released_at": "2026-10-15T10:00:00Z"
   },
   "assay_vocabulary": {
     "name": "SPLICE modality vocabulary",
@@ -121,5 +123,5 @@
     "components": "components.json",
     "execution_profiles": "execution-profiles.json"
   },
-  "default_execution_profile": "profile-local-6c6f63616c"
+  "default_execution_profile": "local"
 }

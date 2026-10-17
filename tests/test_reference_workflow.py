@@ -50,70 +50,38 @@ def author_with_cli(root: Path) -> None:
         "--set",
         "outdir=platform",
     )
-    exported = root / "pending.json"
-    pending = runner.invoke(
-        app,
-        [
-            "configure",
-            "outputs",
-            "--export-unresolved",
-            str(exported),
-            "--repository",
-            str(root),
-        ],
-    )
-    assert pending.exit_code == 2
-    candidates = json.loads(exported.read_text(encoding="utf-8"))
-    assignments: list[str] = []
-    for candidate in candidates:
-        if candidate["suggested_key"] == "report":
-            identifier = candidate["id"]
-            assignments += [
-                "--set",
-                f"{identifier}.key=report",
-                "--set",
-                f"{identifier}.title=Report",
-                "--set",
-                f"{identifier}.description=Job report.",
-                "--set",
-                f"{identifier}.category=job_report",
-                "--set",
-                f"{identifier}.scopes=job",
-                "--set",
-                f"{identifier}.path_patterns=^reports/report\\.html$",
-            ]
-        else:
-            assignments += [
-                "--set",
-                f"{candidate['id']}.action=reject",
-                "--set",
-                f"{candidate['id']}.reason=Not published",
-            ]
-    _ok(root, "configure", "outputs", *assignments)
+    # The seeded catalogue already holds the published route; finish it by key.
     _ok(
         root,
         "configure",
-        "components",
-        "--accept-detected",
-        "--require-downloadable",
-        "false",
+        "outputs",
+        "--set",
+        "report.description=Job report.",
+        "--set",
+        "report.category=job_report",
     )
+    _ok(root, "configure", "components", "--require-downloadable", "false")
     _ok(
         root,
         "configure",
         "execution-profiles",
         "--set",
-        "profile:local.type=development",
+        "default.type=development",
         "--set",
-        "profile:local.description=Local development.",
+        "default.description=Local development.",
         "--set",
-        "profile:local.executor=local",
-        "--set",
-        "profile:local.container_engine=singularity",
-        "--set",
-        "profile:local.config_source=conf/local.config",
+        "default.config_adopt=conf/local.config",
         "--default",
-        "profile-local-6c6f63616c",
+        "default",
+    )
+    _ok(
+        root,
+        "configure",
+        "identity",
+        "--set",
+        "licence=MIT",
+        "--set",
+        "released_at=2026-10-15T10:00:00Z",
     )
     _ok(root, "configure", "provenance", "--strategy", "generated")
 

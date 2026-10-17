@@ -373,6 +373,7 @@ def _route_catalogue_keys(
 
 
 def _rejected_patterns(root: Path) -> set[str]:
+    """Patterns of candidates rejected with the optional review tools."""
     try:
         state = load_review_state(root, "outputs")
     except (LayerError, OSError, ValueError):
@@ -384,6 +385,24 @@ def _rejected_patterns(root: Path) -> set[str]:
             if pattern:
                 patterns.add(str(pattern))
     return patterns
+
+
+def _excluded_routes(root: Path) -> tuple[set[str], set[str]]:
+    """(globs, processes) the author excluded in ``outputs.draft.yaml``."""
+    try:
+        state = read_layer(root, "outputs")
+    except (LayerError, OSError, ValueError):
+        return set(), set()
+    if state.draft is None or not isinstance(state.draft.data, dict):
+        return set(), set()
+    globs, processes = set(), set()
+    for item in state.draft.data.get("excluded_routes") or []:
+        if isinstance(item, dict) and str(item.get("reason") or "").strip():
+            if item.get("glob"):
+                globs.add(str(item["glob"]))
+            if item.get("process"):
+                processes.add(str(item["process"]))
+    return globs, processes
 
 
 @dataclass(frozen=True, slots=True)
@@ -420,6 +439,7 @@ def assess_coverage(
     analysis = analysis or analyse_routes(root)
     compiled = _compiled(catalogue.output_types) if catalogue else []
     rejected = _rejected_patterns(root)
+    excluded_globs, excluded_processes = _excluded_routes(root)
     observed_paths = [item.path for example in examples for item in example.entries]
     routes = []
     summary = {
@@ -447,7 +467,12 @@ def assess_coverage(
         if keys:
             document["catalogue"] = "covered"
             summary["in_catalogue"] += 1
-        elif pattern in rejected:
+        elif (
+            pattern in rejected
+            or route.published_glob in excluded_globs
+            or route.instance in excluded_processes
+            or route.process in excluded_processes
+        ):
             document["catalogue"] = "excluded_by_review"
             summary["excluded_by_review"] += 1
         else:
@@ -466,7 +491,7 @@ def assess_coverage(
     statement = (
         f"{summary['published_routes']} published route(s) were identified "
         f"statically: {summary['in_catalogue']} covered by the catalogue, "
-        f"{summary['excluded_by_review']} excluded by review, "
+        f"{summary['excluded_by_review']} excluded by the author, "
         f"{summary['not_in_catalogue']} not covered, {summary['unresolved']} "
         f"unresolved. {summary['observed_in_example']} were observed in example "
         "output. Static analysis cannot prove completeness: outputs named at run "

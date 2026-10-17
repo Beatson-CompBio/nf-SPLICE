@@ -11,44 +11,66 @@ citation. It is published as `bundle.json`.
 ## Where values come from
 
 `nf-splice init` reads the Nextflow metadata in `nextflow.config`, the Git
-remote, `CITATION.cff`, `README.md` and any root `ro-crate-metadata.json`.
-Values all sources agree on are filled in. Conflicting values are left empty
-for you to choose.
+remote, `CITATION.cff`, `README.md` and any root `ro-crate-metadata.json`,
+and fills every field the sources agree on. Every other authorable field is
+in the draft too, as `null` or an empty list, so you can see and fill all of
+them: `title`, `description`, `long_description`, `readme`, the URLs,
+`authors`, `funders`, `citation`, `licence`, `licence_url`, the Nextflow
+versions, `pipeline_type`, `keywords`, `released_at`, the assay
+capabilities, and `maintainers`. Values the build owns (the file index,
+`generated_by`, contract identifiers) are not in the draft.
 
-## Set values
+Where sources disagree, for example a version in `nextflow.config` that
+differs from `CITATION.cff`, the field stays empty and the conflict is
+reported with every value and where it came from: write the right one.
 
-```bash
-nf-splice configure identity \
-  --set id=rnaquant \
-  --set description="Quantifies RNA-seq reads." \
-  --set licence=MIT
+## Edit the identity
+
+Open `.splice-local/drafts/bundle.draft.yaml` and edit it; nested values
+are ordinary YAML:
+
+```yaml
+pipeline:
+  name: rnaquant
+  version: 1.2.0
+  licence: MIT
+  authors:
+    - name: Ada Lovelace
+      orcid: https://orcid.org/0000-0002-1825-0097
+    - name: Beatson Institute
+      type: organization
+  funders:
+    - name: Cancer Research UK
+      award_id: A12345
+  citation:
+    doi: 10.5281/zenodo.1234567
 ```
 
-List and object values are JSON:
+Or set fields from the command line (list and object values are JSON):
 
 ```bash
+nf-splice configure identity --set licence=MIT --set released_at=2026-10-15T10:00:00Z
 nf-splice configure identity \
   --set 'authors=[{"name": "Ada Lovelace", "orcid": "https://orcid.org/0000-0002-1825-0097"}]'
 ```
 
-Any field of the `pipeline` section can be set this way. The
-[`bundle.json` reference](../schemas/bundle/README.md#pipeline) lists them
-all. You can also edit `bundle.draft.yaml` directly.
+The [`bundle.json` reference](../schemas/bundle/README.md#pipeline) lists
+every field; `nf-splice draft contract identity` prints the full structure.
+A seeded value you leave as it is counts as yours: there is nothing to
+confirm. `nf-splice draft confirm bundle /pipeline/version` remains
+available if you want the review history to record that you checked one.
 
-## Confirm detected values
+A licence and a release date (`released_at`) are also needed for a
+standards-conformant RO-Crate; see [Provenance](provenance.md).
 
-A detected value counts only after you confirm it. Confirm everything the
-sources agree on:
+## With an assistant
 
-```bash
-nf-splice configure identity --accept-detected
-```
-
-Or confirm individual fields by their path in the draft:
-
-```bash
-nf-splice draft confirm bundle /pipeline/licence /pipeline/version
-```
+In an AI-assisted session you can paste what you know in one go, for
+example a paragraph from a grant or a README. The agent maps each fact to
+its field, checks it against the repository, says which claims the
+repository contradicts, and proposes all of it as one change for you to
+approve. If you have nothing more to add, say so: optional fields stay
+empty and the session moves on.
 
 ## Check the layer
 

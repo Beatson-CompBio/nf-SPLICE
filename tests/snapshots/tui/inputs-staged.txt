@@ -2,20 +2,26 @@
   ✓ Repository
   ✓ Identity
   ✓ Assay capabilities
-▶ ! Inputs
+▶ ✓ Inputs
   ! Outputs
   ! Components
   ! Execution profiles
-  ! Provenance
+  ✓ Provenance
   ✓ Drafts
   ○ Readiness
   · Build
   · Done
 == inputs
-threshold | analysis | "number" | 0.8 | agent,user | standard | *
-outdir | analysis | "string" |  | platform | standard | *
+
+<button Open YAML>
+<button Reload>
+<button Validate>
+<button Preview JSON>
+<button Explain errors>
+
+threshold | analysis | "number" | 0.8 | agent,user | hidden | *
+outdir | analysis | "string" |  | platform | hidden | *
 <button Save policies>
 <button Import nextflow_schema.json>
-
-ERROR /$defs/analysis/properties/threshold/x-splice-access  parameter 'threshold' needs a reviewed access policy
-ERROR /$defs/analysis/properties/outdir/x-splice-access  parameter 'outdir' needs a reviewed access policy
+User form preview:
+No issues: this layer is ready to promote.

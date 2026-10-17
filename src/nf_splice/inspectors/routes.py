@@ -25,6 +25,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from nf_splice.layout import PUBLISHED_DIR
+
 _IGNORED_DIRECTORIES = {
     ".git",
     ".mypy_cache",
@@ -37,7 +39,6 @@ _IGNORED_DIRECTORIES = {
     ".venv",
     "__pycache__",
     "node_modules",
-    "splice",
     "work",
 }
 _MAX_FILE_BYTES = 2_000_000
@@ -333,7 +334,10 @@ def _source_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
     files: list[Path] = []
     for current, directory_names, file_names in os.walk(root, followlinks=False):
         directory_names[:] = sorted(
-            name for name in directory_names if name not in _IGNORED_DIRECTORIES
+            name
+            for name in directory_names
+            if name not in _IGNORED_DIRECTORIES
+            and not (name == PUBLISHED_DIR and Path(current) == root)
         )
         for name in sorted(file_names):
             path = Path(current) / name
@@ -691,7 +695,13 @@ def _workflow_calls(
                         conditions.append(pending_line_condition[1])
                     location = f"{relative}:{_line(text, offset + index)}"
                     calls.append((name, location, tuple(conditions)))
-            index += len((call or pipe).group(0))  # type: ignore[union-attr]
+            # Step over the name only: the match may end with the line break,
+            # which must still be seen so a following ``main:`` label counts.
+            index += (
+                body.index(name, index) - index + len(name)
+                if call is not None
+                else len(pipe.group(0))  # type: ignore[union-attr]
+            )
             continue
         index += 1
     return calls
@@ -878,7 +888,13 @@ def analyse_routes(repository_root: str | Path) -> RouteAnalysis:
     """Trace declared process outputs to their publication rules and routes."""
     root = Path(repository_root).resolve()
     nf_files = _source_files(root, (".nf",))
-    config_files = _source_files(root, (".config",))
+    # nf-test configurations (``tests/nextflow.config``) configure test runs,
+    # not what the pipeline publishes.
+    config_files = [
+        path
+        for path in _source_files(root, (".config",))
+        if "tests" not in path.relative_to(root).parts[:-1]
+    ]
     processes = _parse_processes(root, nf_files)
     aliases = _aliases(nf_files)
     workflows_first = _parse_workflows(root, nf_files, set())

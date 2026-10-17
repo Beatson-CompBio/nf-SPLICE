@@ -5,8 +5,8 @@ images they need, so the platform can fetch images before a job starts. It is
 published as `components.json`.
 
 - **Draft:** `.splice-local/drafts/components.draft.yaml`
-- **Required:** a decision on every discovered module, and whether images
-  must be directly downloadable
+- **Required:** a resolved container for every component that has one, and
+  whether images must be directly downloadable
 
 ## Image references and image files
 
@@ -21,24 +21,44 @@ nf-splice keeps two things apart:
   marks an image as downloadable only after it has downloaded the file,
   checked it and recorded its SHA-256 itself.
 
-## 1. Review the discovered modules
+## 1. The seeded inventory
 
-Accept what was found in your modules:
+`nf-splice init` lists every module from `modules.json` (nf-core's `repos`
+layout or a flat `items` list, plus local modules; or the `modules/`
+folder when there is no `modules.json`) with:
 
-```bash
-nf-splice configure components --accept-detected
+- its tool name and version, from the module's metadata, its conda pin and
+  its image tag (software version, conda build, image tag and module
+  revision are kept apart);
+- one container per distinct image, with each runtime's own reference.
+  nf-core's `containerEngine in ['apptainer','singularity'] &&
+  !task.ext.singularity_pull_docker_container ? A : B` gives `A` to
+  Singularity and Apptainer and `B` to Docker; a `withName` override in the
+  configuration replaces a module's directive;
+- container IDs kept from an earlier `splice/components.json`.
+
+What cannot be resolved statically, such as a container built from
+parameters at run time or conflicting versions, is listed under the
+component's draft-only `unresolved` key, verbatim with its location, and
+blocks publication until you resolve it:
+
+```yaml
+components:
+  - id: modules__local__tool
+    name: tool
+    path: modules/local/tool
+    namespace: local
+    tool: {name: tool}
+    evidence: [modules.json, modules/local/tool/main.nf:6]
+    unresolved:
+      - "unresolved_expression reference at modules/local/tool/main.nf:6"
 ```
 
-Or review one module, correcting its image or tool version:
-
-```bash
-nf-splice configure components \
-  --set 'component:modules__local__multi.docker=quay.io/org/tool:1.0' \
-  --set 'component:modules__local__multi.version=1.0'
-```
-
-You can set `docker`, `singularity`, `apptainer` and `version`, or reject a
-module with `.action=reject` and `.reason=...`.
+Edit the file to fix it (add the container, set `tool.version`, then delete
+the `unresolved` entry). A module added to the pipeline after `init` is
+reported as `module_not_listed`; add it, or leave it out on purpose. The
+wizard's *Add all unambiguous* and `nf-splice configure components
+--accept-detected` add such modules for you; they are never required.
 
 ## 2. Decide whether images must be downloadable
 
@@ -83,20 +103,51 @@ the cache:
 nf-splice containers cache-name biocontainers/fastqc:0.12.1--hdfd78af_0 --registry quay.io
 ```
 
-## Building and uploading images
+## Deliver images to an object store
 
-Converting images and uploading them to object storage are available to
-platform integrations through the Python API, and are not part of the
-command-line workflow. Both need explicit approval, use an installed
-Apptainer or Singularity (never `sudo` or Docker), and upload only to a
-store the operator configures:
+For sites that need image files positioned in advance, nf-splice can fetch
+or build each image and upload it to an S3-compatible store you control.
+Each step needs your explicit approval; nothing happens during `init`,
+validation, builds or AI sessions.
 
-```bash
-export NF_SPLICE_IMAGE_STORE_URL=https://store.example.org/images
-export NF_SPLICE_IMAGE_STORE_ALLOWED_HOSTS=store.example.org
-```
+1. See what each container needs, offline:
 
-No storage address, account or credential is built into nf-splice or written
-into a bundle.
+   ```bash
+   nf-splice containers plan
+   ```
+
+   For the default profile's runtime, each container shows the source that
+   runtime selects and the file name Nextflow's cache uses for *that*
+   source: the Galaxy depot image
+   `https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0`
+   is cached as `depot.galaxyproject.org-singularity-fastqc-0.12.1--hdfd78af_0.img`,
+   the Quay reference `quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0` as
+   `quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img`.
+
+2. Configure the store once. No secret is stored: credentials come from your
+   normal AWS credential chain, or the named profile:
+
+   ```bash
+   python -m pip install "nf-splice[s3] @ git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
+   nf-splice containers store --endpoint https://s3.example.ac.uk --bucket images \
+     --prefix splice/ --profile images --public-base-url https://images.example.ac.uk
+   ```
+
+3. Deliver, approving network access and upload explicitly:
+
+   ```bash
+   nf-splice containers deliver --approve-network --approve-upload
+   ```
+
+   Native images are downloaded and checked; OCI images are converted with an
+   installed Apptainer or Singularity (never `sudo` or Docker). Each file is
+   uploaded under its cache name unless the same content is already there; a
+   different object is never overwritten. The upload is read back and
+   compared, then downloaded from its public HTTPS address and recorded as a
+   verified distribution. Without a public address nothing is recorded as
+   downloadable.
+
+Without credentials, network or Apptainer, the plan is still shown and the
+draft is unchanged.
 
 Field reference: [`components.json`](../schemas/components/README.md).

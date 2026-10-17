@@ -1,10 +1,18 @@
 # AI-assisted sessions
 
 In an AI-assisted session the agent does the integration work stage by
-stage, and you stay in charge. For each stage it shows you exactly what it
-will change, why, what it is unsure about and what the validation will say.
-Nothing changes until you approve. You can object, ask questions or answer
-its questions at any point.
+stage, and you stay in charge. For each stage it reads the current draft and
+the pipeline's own code, configs and documentation, works out what the draft
+should say, and shows you one coherent revision: what it will change, why,
+what it is unsure about and what the validation will say. Nothing changes
+until you approve, and one approval applies the whole revision, however many
+fields it touches. You can object, ask questions, paste information or edit
+the files yourself at any point.
+
+Even a draft that already validates is reviewed: validation checks the
+contract, not whether a category or a route is right. When the agent finds
+nothing to change after inspecting the sources, it records its review and
+moves on.
 
 ## Start a session
 
@@ -18,16 +26,20 @@ nf-splice --actor "Ada Lovelace" session start --mode assisted --provider claude
   `NF_SPLICE_ACTOR` to avoid typing it.
 - `--example-output` is optional: the results directory (or a saved listing)
   of one completed run, which the agent may read as evidence.
+- `--reasoning-effort` (default `high`) asks the provider to reason harder;
+  the report says what the provider actually applied.
+- `--review reuse-unchanged` reuses a completed review from an earlier
+  session while the draft and the sources are unchanged; the default,
+  `always`, reviews every layer.
 
 In a terminal, the session becomes a conversation:
 
 ```text
 Session session-20261015-101500-a1b2c3: assisted, awaiting approval
 Proposal proposal-4 (revision 1) for outputs:
-Review every published output route into the catalogue.
+Rewrite the seeded catalogue: describe the STAR outputs, drop the HISAT2 BAM.
 Operations:
-- accept_output {"candidate_id": "output:5c0e...", "output": {"key": "star_alignment", ...}}
-- reject_output {"candidate_id": "output:91aa...", "reason": "Not observed in the example run"}
+- replace_draft {"layer": "outputs", "section": "/outputs", "data": [...]}
 Evidence:
 - modules/local/star/main.nf:3 publishDir "${params.outdir}/star"
 Uncertainties:
@@ -60,6 +72,29 @@ or not.
 Questions and objections never count as approval, and neither does
 silence.
 
+## Telling the agent what you know
+
+Reply with whatever you know, in your own words, for example a paragraph
+about the pipeline, its authors, licence and funding:
+
+```bash
+nf-splice --actor "Ada Lovelace" session reply "Bulk RNA-seq quantification from the Beatson Institute, MIT licence, version 1.2.0, written by Ada Lovelace (ORCID 0000-0002-1825-0097), funded by CRUK award A123, supports human and mouse, cite 10.5281/zenodo.1234567."
+```
+
+The agent maps each fact to its field, checks it against the repository (and
+tells you which claims the repository contradicts), and shows all of it as
+one revision. It asks only about decisions that matter, such as whether the
+pipeline supports total RNA libraries as well as poly(A). If you have nothing
+more to add, say so: optional fields stay empty and the session continues.
+
+## Stopping and switching
+
+You can pause at any time, edit the drafts in your editor, and continue: the
+agent works from the files as they are, and a proposal made before your edit
+is withdrawn as stale rather than applied over it. Switch to autonomous mode
+with `nf-splice session resume --mode autonomous`, or stop and finish by
+hand: every applied change is already in the drafts.
+
 ## When you disagree
 
 When you object, the agent investigates your concern against the code, its
@@ -77,7 +112,7 @@ quantification and conditional QC. Your example run used STAR.
 1. Start the session as above and approve the drafts, identity and inputs
    proposals after reading each diff.
 
-2. The outputs proposal accepts the STAR outputs but rejects the HISAT2
+2. The outputs proposal rewrites the seeded catalogue but drops the HISAT2
    alignment because it was *"Not observed in the example run"*.
 
 3. Object:
@@ -96,7 +131,7 @@ quantification and conditional QC. Your example run used STAR.
    only took the STAR route.
    ```
 
-   It then shows revision 2 of the proposal, now accepting
+   It then shows revision 2 of the proposal, now keeping
    `hisat2_alignment`, with the new diff.
 
 5. Object to something the evidence does not support, for example *"Also

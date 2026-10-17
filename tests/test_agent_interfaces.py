@@ -16,7 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from agent_scripts import RouteAgent
-from layer_fixtures import ADA, ready_repository
+from layer_fixtures import ADA, ready_repository, review_turns
 from multi_route import EXAMPLE, copy_fixture
 from nf_splice.agents import (
     ExecutionPolicy,
@@ -62,10 +62,12 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
     script.write_text(
         json.dumps(
             [
+                *review_turns("identity", "inputs"),
                 {
                     "stage": "outputs",
                     "purpose": "plan",
                     "steps": [
+                        {"tool": "analyse_routes", "arguments": {}},
                         {"tool": "list_pending", "arguments": {"layer": "outputs"}},
                         {
                             "tool": "reject_output",
@@ -84,6 +86,7 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
                     "purpose": "question",
                     "steps": [{"message": "qc/summary.json is internal QC."}],
                 },
+                *review_turns("components", "profiles", "provenance"),
             ]
         ),
         encoding="utf-8",
@@ -143,7 +146,13 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
     assert "assisted" in listed.output and "completed" in listed.output
     tools = json.loads(_cli("session", "tools", "--stage", "outputs").output)
     names = {item["name"] for item in tools}
-    assert {"accept_output", "read_source", "submit_stage_proposal"} <= names
+    assert {
+        "replace_draft",
+        "accept_output",
+        "read_source",
+        "submit_stage_proposal",
+        "complete_review",
+    } <= names
     assert "build_bundle" not in names
 
     remote = _cli("ask", "x", "--provider", "claude", *repository)

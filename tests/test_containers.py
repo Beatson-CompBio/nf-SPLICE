@@ -21,7 +21,7 @@ from nf_splice.inspectors.containers import (
     nextflow_cache_filename,
 )
 from nf_splice.layers import LayerError
-from nf_splice.layers.base import edit_draft
+from nf_splice.layers.base import edit_draft, read_layer
 from nf_splice.layers.components import (
     accept_component,
     accept_unambiguous_components,
@@ -243,12 +243,15 @@ def test_components_layer_distinguishes_sources_and_verified_distributions(
     tmp_path: Path,
 ) -> None:
     _repository(tmp_path)
-    pending = discover_components(tmp_path)
-    assert {item.id for item in pending} == {
-        "component:modules__nf-core__fastqc",
-        "component:modules__local__bedtools",
+    # Every module is in the draft at once; nothing waits for acceptance.
+    assert discover_components(tmp_path) == ()
+    assert accept_unambiguous_components(tmp_path, ADA) == ()
+    draft = read_layer(tmp_path, "components").draft
+    assert draft is not None
+    assert {item["id"] for item in draft.data["components"]} == {
+        "modules__nf-core__fastqc",
+        "modules__local__bedtools",
     }
-    assert accept_unambiguous_components(tmp_path, ADA)
     set_image_policy(tmp_path, True, ADA)
     blocked = validate_components_draft(tmp_path)
     assert {item.code for item in blocked.errors} == {"needs_materialisation"}
@@ -281,13 +284,20 @@ def test_components_layer_distinguishes_sources_and_verified_distributions(
     }
     assert {item.code for item in validation.issues} == {"cache_reuse"}
 
+    index = next(
+        position
+        for position, item in enumerate(
+            read_layer(tmp_path, "components").draft.data["containers"]  # type: ignore[union-attr]
+        )
+        if item["id"] == bedtools
+    )
     edit_draft(
         tmp_path,
         "components",
         [
             PatchOp(
                 "replace",
-                "/containers/0/distribution/sha256",
+                f"/containers/{index}/distribution/sha256",
                 "f" * 64,
                 expected=hashlib.sha256(SIF).hexdigest(),
             )
@@ -557,9 +567,12 @@ def test_init_accepts_an_nf_core_modules_json(tmp_path: Path) -> None:
         ["--actor", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
     )
     assert result.exit_code == 0, result.output
-    from nf_splice.layers.components import pending_components
-
-    pending = {view.id: view for view in pending_components(tmp_path)}
-    fastqc = pending["component:modules__nf-core__fastqc"]
-    assert fastqc.versions == ("0.12.1",)
-    assert not any("conflicting versions" in problem for problem in fastqc.problems)
+    draft = read_layer(tmp_path, "components").draft
+    assert draft is not None
+    fastqc = next(
+        item
+        for item in draft.data["components"]
+        if item["id"] == "modules__nf-core__fastqc"
+    )
+    assert fastqc["tool"] == {"name": "fastqc", "version": "0.12.1"}
+    assert "unresolved" not in fastqc

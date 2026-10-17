@@ -65,8 +65,8 @@ From `execution-profiles.json`:
 - Pass the profile's `config` file (`configs/<profile id>.config`, from the
   bundle) to Nextflow with `-c`.
 - `config_strategy` `adopted` means a byte-identical copy of a
-  configuration from the workflow repository; `generated` means nf-splice
-  wrote it.
+  configuration from the workflow repository; `authored` means a native
+  Nextflow configuration written for the bundle. Use either as it is.
 - `site_parameters[]` (`name`, `description`) are settings the operator must
   supply for their site (accounts, queues, paths). Profiles never contain
   them; keep operator values in your platform's configuration and add them

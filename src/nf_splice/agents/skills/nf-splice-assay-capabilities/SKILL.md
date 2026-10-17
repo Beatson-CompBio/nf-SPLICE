@@ -1,6 +1,6 @@
 ---
 name: nf-splice-assay-capabilities
-description: Declare which assays a Nextflow pipeline can process, classified by the SPLICE modality vocabulary (modality, subtype, assay type, assay method), with evidence. Use at the identity stage, when a person asks about assays or modalities, or when capability evidence is ambiguous.
+description: Author a pipeline's identity (from the pipeline metadata block, CITATION.cff, README, Git and RO-Crate evidence and a person's free text) and declare every assay it can process, classified by the SPLICE modality vocabulary, with evidence. Use at the identity stage, for questions about assays or modalities, and when evidence is ambiguous.
 ---
 
 # Assay capabilities
@@ -36,6 +36,23 @@ modality and an assay.
 - The registration flag "current" says what one deployment ingests today. It
   never limits what a pipeline may declare.
 
+## Identity
+
+1. Read `bundle.draft.yaml` and `contract_reference` for layer `bundle`:
+   every authorable field is in the draft, null when unknown.
+2. Compare the evidence: `nextflow.config`'s pipeline metadata,
+   `CITATION.cff`, README, LICENSE, Git remote and tags, and the root
+   RO-Crate. Pipeline version, source tag, nf-splice's version and the
+   bundle schema version are different things. A recorded
+   `conflicting_evidence` needs the right value written, or one question.
+3. When the person gives free text, map each reliable fact to its nested
+   field (authors, funders, citation, licence, URLs, keywords), check it
+   against the repository and say which claims the evidence contradicts.
+   Never guess an ORCID, DOI, licence, address or authorship.
+4. Apply the identity as one revision (`set_identity` or `replace_draft`).
+   Maintainers are public contacts: only a person approves publishing them
+   (`maintainers_publication_approved`).
+
 ## Workflow
 
 Assay classification is required: a pipeline without a declared assay is not
@@ -46,7 +63,9 @@ repository never names an assay.
    sheet columns, outputs and documentation, applies nf-splice's evidence
    rules, and returns the scientific domains, candidate assays (each with
    vocabulary ids, classification level, status, confidence, evidence and
-   alternatives) and the questions the evidence cannot answer.
+   alternatives) and the questions the evidence cannot answer. The rules
+   are a starting point, not a ceiling: investigate every route yourself and
+   use `search_assay_catalogue` for assays they do not cover.
 2. Check the evidence yourself with `read_source` and `search_source`: does
    a route, parameter or document distinguish the alternatives (for example a
    library-type parameter, rRNA-depletion steps, a protocol section)?
@@ -71,7 +90,9 @@ repository never names an assay.
    ready only with at least one valid assay capability.
 
 Declare the union of assays the pipeline supports across its routes: a
-poly(A) example run does not mean total RNA-seq is unsupported.
+poly(A) example run does not mean total RNA-seq is unsupported. Review the
+declared assays for omissions even when the draft already validates, and
+tell technical compatibility from the assays the pipeline is intended for.
 
 ## Verification gates
 

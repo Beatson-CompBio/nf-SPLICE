@@ -25,7 +25,7 @@ Global options go before the command name, for example
 | [`nf-splice configure`](#nf-splice-configure) | Review one layer by targeted, attributed edits to its draft. |
 | [`nf-splice plan`](#nf-splice-plan) | Preview promotion/publication changes and blockers (read-only). |
 | [`nf-splice build`](#nf-splice-build) | Promote validated drafts to published files (whole bundle for 'all'). |
-| [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle, cross-file identity and lock (read-only). |
+| [`nf-splice validate`](#nf-splice-validate) | Validate the published bundle and assess ingestion readiness (read-only). |
 | [`nf-splice migrate`](#nf-splice-migrate) | Move drafts and sessions of an earlier layout into .splice-local/. |
 | [`nf-splice export`](#nf-splice-export) | Create and verify a ZIP of the validated bundle or pipeline copy. |
 | [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
@@ -47,7 +47,14 @@ Global options go before the command name, for example
 | [`nf-splice draft edit`](#nf-splice-draft-edit) | Plan (default) or apply a JSON-pointer patch to one draft. |
 | [`nf-splice draft sync-identity`](#nf-splice-draft-sync-identity) | Update the inputs draft's identity envelope from bundle.draft.yaml. |
 | [`nf-splice draft promote`](#nf-splice-draft-promote) | Promote one ready layer, or publish the whole ready bundle. |
+| [`nf-splice draft contract`](#nf-splice-draft-contract) | Show every authorable field of a layer's draft (read-only). |
+| [`nf-splice draft parameters`](#nf-splice-draft-parameters) | Where workflow code reads params.*, against the input contract (read-only). |
+| [`nf-splice draft resources`](#nf-splice-draft-resources) | Resource selectors, task.memory uses and one config's memory settings. |
+| [`nf-splice draft check-config`](#nf-splice-draft-check-config) | Ask Nextflow for the effective configuration of one profile (opt-in). |
 | [`nf-splice draft recover`](#nf-splice-draft-recover) | Restore the previous release after an interrupted publication. |
+| [`nf-splice containers plan`](#nf-splice-containers-plan) | Which image each container needs and how it would be obtained (offline). |
+| [`nf-splice containers store`](#nf-splice-containers-store) | Configure the image store (no secrets; kept in your config folder). |
+| [`nf-splice containers deliver`](#nf-splice-containers-deliver) | Fetch or convert, upload, verify and record images (explicitly approved). |
 | [`nf-splice containers classify`](#nf-splice-containers-classify) | Classify a container reference without network access. |
 | [`nf-splice containers cache-name`](#nf-splice-containers-cache-name) | Print the Nextflow Singularity/Apptainer cache file name. |
 | [`nf-splice containers verify`](#nf-splice-containers-verify) | Download and verify an image, then record its distribution (network). |
@@ -168,7 +175,8 @@ nf-splice configure [OPTIONS] LAYER
 | `--require-downloadable` | `<str>` |  | Components: true/false whether images must be downloadable. |
 | `--default` | `<str>` |  | Execution profiles: the reviewed default profile ID. |
 | `--slurm-default` |  |  | Execution profiles: add the generated SPLICE Slurm candidate. |
-| `--strategy` | `<str>` |  | Provenance: include, enriched or generated. |
+| `--strategy` | `<str>` |  | Provenance shortcut: include (adopt the root crate), enriched (correct a copy from the identity) or generated (rebuild from the identity). Editing the YAML does the same. |
+| `--with-nf-core` |  |  | Provenance: replace the crate with nf-core's generator output, run on an isolated copy (needs nf-core installed; never touches the pipeline). |
 | `--reimport` |  |  | Inputs: apply a conflict-free nextflow_schema.json re-import. |
 | `--add-assay` | `<str>` |  | Identity: declare an assay the pipeline can process, by registered code (polya_rnaseq) or entity:<id>. Repeatable. |
 | `--remove-assay` | `<str>` |  | Identity: remove a declared assay. Repeatable. |
@@ -217,7 +225,7 @@ nf-splice build [OPTIONS] TARGET
 
 ### nf-splice validate
 
-Validate the published bundle, cross-file identity and lock (read-only).
+Validate the published bundle and assess ingestion readiness (read-only).
 
 ```text
 nf-splice validate [OPTIONS]
@@ -571,6 +579,63 @@ nf-splice draft promote [OPTIONS] [LAYER]
 | `--overwrite-edited` | `<str>` |  | Published path whose external edit may be overwritten. |
 | `--json` |  |  | Emit stable JSON. |
 
+### nf-splice draft contract
+
+Show every authorable field of a layer's draft (read-only).
+
+```text
+nf-splice draft contract LAYER
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `LAYER` | yes | Layer: bundle, inputs, outputs, components, execution-profiles, provenance. |
+
+### nf-splice draft parameters
+
+Where workflow code reads params.*, against the input contract (read-only).
+
+```text
+nf-splice draft parameters [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice draft resources
+
+Resource selectors, task.memory uses and one config's memory settings.
+
+```text
+nf-splice draft resources [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--config` | `<str>` |  | An execution profile's config name (default, cirrus, ...). |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice draft check-config
+
+Ask Nextflow for the effective configuration of one profile (opt-in).
+
+```text
+nf-splice draft check-config [OPTIONS] PROFILE
+```
+
+| Argument | Required | Description |
+| --- | --- | --- |
+| `PROFILE` | yes | Execution profile ID. |
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--allow` | `<str>` |  | run_nextflow: let `nextflow config` evaluate the configuration. |
+| `--json` |  |  | Emit stable JSON. |
+
 ### nf-splice draft recover
 
 Restore the previous release after an interrupted publication.
@@ -582,6 +647,53 @@ nf-splice draft recover [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+
+### nf-splice containers plan
+
+Which image each container needs and how it would be obtained (offline).
+
+```text
+nf-splice containers plan [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--runtime` | `<str>` |  | singularity or apptainer (default: the default profile's). |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice containers store
+
+Configure the image store (no secrets; kept in your config folder).
+
+```text
+nf-splice containers store [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--endpoint` | `<str>` |  | https:// S3-compatible endpoint. |
+| `--bucket` | `<str>` |  | Bucket for images. |
+| `--prefix` | `<str>` |  | Key prefix, e.g. images/. |
+| `--region` | `<str>` |  | Region, if the store needs one. |
+| `--profile` | `<str>` |  | AWS credential profile to use (credentials are never stored). |
+| `--public-base-url` | `<str>` |  | https:// URL that serves the bucket's objects for download. |
+
+### nf-splice containers deliver
+
+Fetch or convert, upload, verify and record images (explicitly approved).
+
+```text
+nf-splice containers deliver [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--container` | `<str>` |  | Only these container IDs. Repeatable. |
+| `--approve-network` |  |  | Approve fetching or converting the planned images. |
+| `--approve-upload` |  |  | Approve uploading them to the configured store. |
+| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice containers classify
 
@@ -647,11 +759,13 @@ nf-splice session start [OPTIONS]
 | `--objective` | `<str>` | `Integrate this Nextflow pipeline with SPLICE.` | What to achieve. |
 | `--example-output` | `<path>` |  | Results of one completed run (directory, saved listing or output index) the agent may read as evidence. Repeatable. |
 | `--allow` | `<str>` |  | Grant an extra permission: overwrite, external_tools, run_nextflow or network. Repeatable. |
-| `--max-tool-calls` | `<int>` | `300` | Tool calls for the whole session. |
+| `--max-tool-calls` | `<int>` | `1500` | Tool calls for the whole session. |
 | `--max-stage-attempts` | `<int>` | `3` | Attempts per stage. |
 | `--max-budget-usd` | `<float>` |  | Provider spending cap. |
-| `--turn-timeout` | `<float>` | `600.0` | Seconds per provider turn. |
+| `--turn-timeout` | `<float>` | `1800.0` | Seconds per provider turn. |
 | `--model` | `<str>` |  | Explicit provider model. |
+| `--reasoning-effort` | `<str>` | `high` | Reasoning effort: low, medium, high, xhigh, max, or default (the provider's own). Each provider applies its real control or says it cannot. |
+| `--review` | `<str>` | `always` | always: every layer gets an AI review, even when it validates; reuse-unchanged: reuse a completed review while the draft and sources are unchanged. |
 | `--interactive` |  |  | Converse in this terminal (default when it is a terminal). |
 | `--json` |  |  | Emit stable JSON. |
 

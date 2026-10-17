@@ -23,38 +23,49 @@ and produces one or more published files.
 
 ## Drafts
 
-Drafts are ordinary YAML files under `.splice-local/drafts/` and are the source of
-truth while you work. `.splice-local/` is your private workspace: nf-splice
-adds it to the repository's `.gitignore`, and it is never published,
-committed or archived. Only the finished files in `splice/` are shared.
+Drafts are ordinary YAML files under `.splice-local/drafts/` and are the
+source of truth while you work; execution profiles also name native
+Nextflow config files in `.splice-local/drafts/configs/`. `.splice-local/` is
+your private workspace: nf-splice adds it to the repository's `.gitignore`,
+and it is never published, committed or archived. Only the finished files in
+`splice/` are shared.
 
-- Edit them with nf-splice commands, the wizard or any text editor.
-  nf-splice changes only the fields it is asked to change, keeps your
-  comments, and reports a conflict instead of overwriting an edit you made
-  at the same time.
-- Unknown values are written as `null`. Nothing is guessed.
-- Status is always worked out from the current file contents, so an edit in
-  your editor is picked up immediately.
+- `nf-splice init` fills every draft once with what the repository supports.
+  Unknown values are `null` and first guesses are marked; nothing is
+  invented. Running `init` again never changes a draft or a config.
+- Edit them in any editor, in the wizard or with nf-splice commands; all
+  count equally. nf-splice's own edits change only what they are asked to,
+  keep your comments, and refuse to overwrite an edit made at the same time.
+- A saved draft does not have to be valid yet. Validation reads the current
+  file, reports exactly what is wrong, and never rewrites it.
 
-Review history (evidence, candidates and decisions) is kept next to the
-drafts in `.splice-local/reviews/`, and AI sessions in
+History is kept next to the drafts in `.splice-local/reviews/` (who changed
+what, discovery hints, verified images) and AI sessions in
 `.splice-local/sessions/`. Because the folder is not in Git, back it up, or
-keep working in the same copy, until the bundle is finished; session
-checkpoints let you undo changes while you work.
+keep working in the same copy, until the bundle is finished.
 
-## Evidence and review
+## Evidence
 
 nf-splice finds information in your repository, such as a version in
-`nextflow.config` or an output path in a `publishDir`. What it finds is a
-suggestion until a person accepts or changes it:
+`nextflow.config` or an output path in a `publishDir`, and uses it to seed
+the drafts. A seeded value is your value until you change it; it is not
+waiting for approval. Where sources disagree, the field is left empty and
+the conflict is reported.
 
-- **Detected values** fill draft fields but stay unconfirmed. Confirm them
-  with `nf-splice draft confirm`, edit them, or use `--accept-detected` where
-  the sources agree.
-- **Candidates** are discovered items, such as an output or a profile, that
-  need an explicit decision: accept, reject, merge or split.
+Discovery also records *candidates* (an output it found, a module added
+since `init`, a profile in `nextflow.config`). They are hints: the wizard
+and `nf-splice configure` can turn one into a draft entry for you, but
+nothing waits for them, and a valid draft builds with every candidate
+untouched. What blocks is the draft's content: a missing required value, a
+published route no output covers (a warning), an unresolved container.
 
-A layer is `ready` only when nothing is left unreviewed.
+## Readiness
+
+A layer is `ready` when its draft passes validation. A *published* bundle is
+ready for ingestion only when every dimension is: valid contracts,
+scientifically classified assays, runtime parameters someone can supply,
+deployable images for the default profile, a standards-conformant RO-Crate
+and a consistent publication. `nf-splice validate` reports each one.
 
 ## Draft and published files
 

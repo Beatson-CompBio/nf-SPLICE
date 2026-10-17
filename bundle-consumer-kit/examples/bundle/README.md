@@ -21,7 +21,7 @@ Workflow `multiroute` version `1.0.0` (https://github.com/org/multiroute). Gener
 | `README.md` | This description. |
 | `bundle.json` | Bundle index: identity, contract revisions, file index. |
 | `components.json` | Components, container sources and image distributions. |
-| `configs/profile-local-6c6f63616c.config` | Reviewed execution configuration. |
+| `configs/local.config` | Reviewed execution configuration. |
 | `execution-profiles.json` | Reviewed execution profiles and the default profile. |
 | `inputs.schema.json` | Workflow input contract (JSON Schema 2020-12). |
 | `nf-splice.lock.json` | Generator, source and managed-file hashes. |

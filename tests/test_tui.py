@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -68,65 +67,28 @@ def _author_with_cli(root: Path) -> None:
         "--set",
         "outdir=platform",
     )
-    exported = root.parent / f"{root.name}-pending.json"
-    runner.invoke(
-        cli,
-        [
-            "configure",
-            "outputs",
-            "--export-unresolved",
-            str(exported),
-            "--repository",
-            str(root),
-        ],
-    )
-    assignments: list[str] = []
-    for candidate in json.loads(exported.read_text(encoding="utf-8")):
-        identifier = candidate["id"]
-        if candidate["suggested_key"] == "report":
-            for field, value in (
-                ("key", "report"),
-                ("title", "Report"),
-                ("description", "Job report."),
-                ("category", "job_report"),
-                ("formats", "html"),
-                ("scopes", "job"),
-                ("entity_types", "file"),
-                ("path_patterns", r"^reports/report\.html$"),
-            ):
-                assignments += ["--set", f"{identifier}.{field}={value}"]
-        else:
-            assignments += [
-                "--set",
-                f"{identifier}.action=reject",
-                "--set",
-                f"{identifier}.reason=Not published",
-            ]
-    _cli(root, "configure", "outputs", *assignments)
     _cli(
         root,
         "configure",
-        "components",
-        "--accept-detected",
-        "--require-downloadable",
-        "false",
+        "outputs",
+        "--set",
+        "report.description=Job report.",
+        "--set",
+        "report.category=job_report",
     )
+    _cli(root, "configure", "components", "--require-downloadable", "false")
     _cli(
         root,
         "configure",
         "execution-profiles",
         "--set",
-        "profile:local.type=development",
+        "default.type=development",
         "--set",
-        "profile:local.description=Local development.",
+        "default.description=Local development.",
         "--set",
-        "profile:local.executor=local",
-        "--set",
-        "profile:local.container_engine=singularity",
-        "--set",
-        "profile:local.config_source=conf/local.config",
+        "default.config_adopt=conf/local.config",
         "--default",
-        "profile-local-6c6f63616c",
+        "default",
     )
     _cli(root, "configure", "provenance", "--strategy", "include")
     _cli(root, "build", "all")
@@ -173,41 +135,19 @@ async def _author_with_tui(root: Path, snapshots: bool = False) -> None:
 
         app.show_step("outputs")
         await settle(app, pilot)
-        app.query_one("#outputs-version", Input).value = "1.0.0"
-        await press(app, pilot, "#outputs-set-version")
-        candidates = app.query_one("#outputs-candidates", DataTable)
         view = app.current_view()
         assert isinstance(view, OutputsView)
-        rows = [str(key.value) for key in candidates.rows]
-        for identifier in rows:
-            candidates.move_cursor(row=candidates.get_row_index(identifier))
-            await pilot.pause()
-            suggested = candidates.get_row(identifier)[2]
-            if suggested == "report":
-                for selector, value in (
-                    ("#output-key", "report"),
-                    ("#output-title", "Report"),
-                    ("#output-description", "Job report."),
-                    ("#output-category", "job_report"),
-                    ("#output-pattern", r"^reports/report\.html$"),
-                ):
-                    app.query_one(selector, Input).value = value
-                app.query_one("#output-format", Select).value = "html"
-                app.query_one("#output-scope", Select).value = "job"
-                app.query_one("#output-entity", Select).value = "file"
-                candidates.focus()
-                await pilot.press("a")
-            else:
-                app.query_one("#output-reason", Input).value = "Not published"
-                candidates.focus()
-                await pilot.press("r")
-            await settle(app, pilot)
+        catalogue = app.query_one("#outputs-catalogue", DataTable)
+        catalogue.move_cursor(row=catalogue.get_row_index("report"))
+        await settle(app, pilot)
+        app.query_one("#output-description", Input).value = "Job report."
+        app.query_one("#output-category", Input).value = "job_report"
+        await press(app, pilot, "#outputs-save")
         if snapshots:
             check_snapshot("outputs-reviewed", screen_text(app))
 
         app.show_step("components")
         await settle(app, pilot)
-        await press(app, pilot, "#components-accept-all")
         app.query_one("#components-require", Switch).value = False
         await press(app, pilot, "#components-policy")
         if snapshots:
@@ -215,17 +155,15 @@ async def _author_with_tui(root: Path, snapshots: bool = False) -> None:
 
         app.show_step("profiles")
         await settle(app, pilot)
-        profiles = app.query_one("#profiles-pending", DataTable)
-        profiles.move_cursor(row=0)
+        profiles = app.query_one("#profiles-table", DataTable)
+        profiles.move_cursor(row=profiles.get_row_index("default"))
+        await settle(app, pilot)
         app.query_one("#profile-type", Select).value = "development"
         app.query_one("#profile-description", Input).value = "Local development."
-        app.query_one("#profile-executor", Select).value = "local"
-        app.query_one("#profile-engine", Select).value = "singularity"
         app.query_one("#profile-route", Select).value = "adopt"
         app.query_one("#profile-source", Input).value = "conf/local.config"
-        await press(app, pilot, "#profiles-review")
-        app.query_one("#profiles-default", Select).value = "profile-local-6c6f63616c"
-        await press(app, pilot, "#profiles-set-default")
+        await press(app, pilot, "#profiles-save")
+        await press(app, pilot, "#profiles-make-default")
         if snapshots:
             check_snapshot("profiles", screen_text(app))
 
@@ -401,7 +339,7 @@ async def test_sessions_resume_but_state_derives_from_files(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_candidate_identity_survives_rediscovery_reordering(
+async def test_selection_survives_external_edits_and_rediscovery(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "repo"
@@ -414,11 +352,26 @@ async def test_candidate_identity_survives_rediscovery_reordering(
         await settle(app, pilot)
         app.show_step("outputs")
         await settle(app, pilot)
-        table = app.query_one("#outputs-candidates", DataTable)
-        target = next(
-            str(key.value) for key in table.rows if table.get_row(key)[2] == "report"
+        table = app.query_one("#outputs-catalogue", DataTable)
+        table.move_cursor(row=table.get_row_index("report"))
+        # Someone edits the YAML in an editor and discovery runs again.
+        draft = root / ".splice-local" / "drafts" / "outputs.draft.yaml"
+        draft.write_text(
+            draft.read_text(encoding="utf-8").replace(
+                "outputs:\n",
+                "outputs:\n"
+                "  - key: aaa_first\n"
+                "    title: First\n"
+                "    description: Written in an editor.\n"
+                "    category: summaries\n"
+                "    formats: [txt]\n"
+                "    scopes: [job]\n"
+                "    entity_types: [file]\n"
+                "    path_patterns: ['^aaa/first\\.txt$']\n",
+                1,
+            ),
+            encoding="utf-8",
         )
-        table.move_cursor(row=table.get_row_index(target))
         tree = tmp_path / "tree"
         (tree / "aaa").mkdir(parents=True)
         (tree / "aaa" / "first.txt").write_text("x", encoding="utf-8")
@@ -427,11 +380,14 @@ async def test_candidate_identity_survives_rediscovery_reordering(
         await settle(app, pilot)
         view = app.current_view()
         assert isinstance(view, OutputsView)
-        assert view.selected() == target
-        app.query_one("#output-reason", Input).value = "Not published"
-        table.focus()
-        await pilot.press("r")
-        await settle(app, pilot)
-    candidates = load_review_state(root, "outputs").candidates
-    assert candidates[target]["status"] == "rejected"
-    assert sum(entry["status"] == "rejected" for entry in candidates.values()) == 1
+        assert view.selected_output() == "report"
+        app.query_one("#output-description", Input).value = "Job report."
+        app.query_one("#output-category", Input).value = "job_report"
+        await press(app, pilot, "#outputs-save")
+    text = draft.read_text(encoding="utf-8")
+    assert "Written in an editor." in text and "description: Job report." in text
+    statuses = {
+        entry["status"]
+        for entry in load_review_state(root, "outputs").candidates.values()
+    }
+    assert "rejected" not in statuses and "accepted" not in statuses

@@ -20,21 +20,26 @@ By starting the run you approve its scope:
 | Build the bundle into `splice/` | Allowed | — |
 | Replace hand-edited published files | Not allowed | `--allow overwrite` |
 | Run nf-core lint if installed | Not allowed | `--allow external_tools --allow run_nextflow --allow network` |
-| Tool calls, attempts per stage, time per turn, spending | 300, 3, 600 s, no cap | `--max-tool-calls`, `--max-stage-attempts`, `--turn-timeout`, `--max-budget-usd` |
+| Tool calls, attempts per stage, time per turn, spending | 1500, 3, 1800 s, no cap | `--max-tool-calls`, `--max-stage-attempts`, `--turn-timeout`, `--max-budget-usd` |
+| Reasoning effort | `high` | `--reasoning-effort` |
+| Review layers that already validate | always | `--review reuse-unchanged` |
 
 The agent never runs your pipeline, installs software, uploads data, reads
 secrets or changes your pipeline's code, whatever the scope.
 
 ## How the run works
 
-For each stage (discover, identity, inputs, outputs, components, execution
-profiles, provenance, cross-layer validation, build, verify), the agent
-makes the routine decisions and nf-splice validates the stage. A stage is
-complete only when its validation passes. If it does not, the agent tries
-again with the remaining issues, but only while it is making progress. If
-it still cannot finish, it records a blocker: the decision it could not
-make, the file affected, the checks it tried and a suggestion. Stages that
-do not depend on the blocked one continue.
+For each layer (identity, inputs, outputs, components, execution profiles,
+provenance), the agent investigates the pipeline's code, configs and
+documentation, authors the draft (often rewriting what `init` seeded),
+validates it, and revises while it makes progress. A layer is complete only
+when its validation passes **and** the agent has recorded a review based on
+sources it actually read; a draft that already validated is still reviewed.
+If it cannot decide something from the evidence, it records a blocker: the
+decision, the alternatives and the evidence for each, the checks it tried
+and what would decide it. The latest useful draft stays in place, even if it
+does not validate yet, and stages that do not depend on the blocked one
+continue. Then cross-layer validation, build and verification run.
 
 Every change is recorded as the agent's decision under your approved scope,
 never as your review, and a checkpoint is saved before each stage.

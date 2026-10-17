@@ -18,6 +18,8 @@ IDENTITY = {
     "version": "1.0.0",
     "repository_url": "https://github.com/org/multiroute",
     "description": "Aligns RNA-seq reads with STAR or HISAT2.",
+    "licence": "MIT",
+    "released_at": "2026-10-15T10:00:00Z",
 }
 ACCESS = {
     "input": ["user"],
@@ -106,26 +108,22 @@ def reviewed_output(candidate: Any) -> dict[str, Any] | None:
 
 
 def author_all(root: Path, context: ChangeContext = ADA) -> None:
-    """Review every layer of the fixture to readiness."""
-    from nf_splice.layers.bundle import seed_bundle_draft
-    from nf_splice.layers.components import (
-        accept_unambiguous_components,
-        discover_components,
-        set_image_policy,
-    )
-    from nf_splice.layers.execution import (
-        discover_execution,
-        review_profile,
-        set_default_profile,
-    )
-    from nf_splice.layers.inputs import import_inputs, set_access
-    from nf_splice.layers.outputs import accept_output, discover_outputs, reject_output
-    from nf_splice.layers.provenance import generate_minimal
+    """Initialise the fixture, then author every draft directly.
 
-    seed_bundle_draft(root, explicit=IDENTITY)
-    set_identity_fields(root, {}, context)
+    Only the assay capabilities go through a tool (they are resolved
+    against the vocabulary); everything else is written into the files as a
+    person would in an editor. No candidate is accepted or rejected.
+    """
+    from layer_fixtures import edit_draft_file
+    from nf_splice.inspectors.outputs import discover_output_candidates
     from nf_splice.layers.bundle import add_assay_capability
+    from nf_splice.layers.execution import CONFIGS_DIR
+    from nf_splice.layers.inputs import iter_parameters
+    from nf_splice.layers.provenance import generate_minimal
+    from nf_splice.services.workspace import initialise
 
+    initialise(root, context, identity=IDENTITY, contract_version="1.0.0")
+    set_identity_fields(root, {}, context)
     for code in ("polya_rnaseq", "total_rnaseq"):
         add_assay_capability(
             root,
@@ -134,34 +132,57 @@ def author_all(root: Path, context: ChangeContext = ADA) -> None:
             evidence="asserted",
             rationale="The pipeline aligns poly(A)-selected and total RNA libraries.",
         )
-    import_inputs(root)
-    for name, principals in ACCESS.items():
-        set_access(root, [name], principals, context)
-    discovery = discover_outputs(root, schema_version="1.0.0")
-    for candidate in discovery.pending:
-        output = reviewed_output(candidate)
-        if output is None:
-            reject_output(root, candidate.id, "Not a platform output", context)
-        else:
-            accept_output(root, candidate.id, output, context)
-    discover_components(root)
-    accept_unambiguous_components(root, context)
-    set_image_policy(root, False, context)
-    discover_execution(root)
-    review_profile(
-        root,
-        "profile:local",
-        context,
-        profile_type="development",
-        description="Local development.",
-        executor="local",
-        container_engine="singularity",
-        config_source="conf/local.config",
-    )
-    from nf_splice.layers.execution import pending_profiles, profile_id
 
-    assert not pending_profiles(root)
-    set_default_profile(root, profile_id("local"), context)
+    def inputs(data: dict[str, Any]) -> None:
+        from nf_splice.drafts import resolve
+
+        for parameter in iter_parameters(data):
+            if parameter.name in ACCESS:
+                target = resolve(data, parameter.pointer)
+                target["x-splice-access"] = {"editable_by": ACCESS[parameter.name]}
+
+    outputs: list[dict[str, Any]] = []
+    excluded: list[dict[str, str]] = []
+    for item in discover_output_candidates(root):
+        output = reviewed_output(item.candidate)
+        if output is not None:
+            if output["key"] not in {entry["key"] for entry in outputs}:
+                outputs.append(output)
+        else:
+            for process in item.candidate.processes:
+                if process not in {entry.get("process") for entry in excluded}:
+                    excluded.append(
+                        {"process": process, "reason": "Not a platform output"}
+                    )
+
+    def catalogue(data: dict[str, Any]) -> None:
+        data["outputs"] = outputs
+        data["categories"] = {}
+        data["excluded_routes"] = excluded
+
+    def components(data: dict[str, Any]) -> None:
+        data["require_downloadable_images"] = False
+
+    def profiles(data: dict[str, Any]) -> None:
+        data["profiles"] = [
+            {
+                "id": "local",
+                "name": "Local",
+                "description": "Local development.",
+                "type": "development",
+                "engine": "nextflow",
+                "executor": "local",
+                "container_engine": "singularity",
+                "config": {"adopt": "conf/local.config"},
+            }
+        ]
+        data["default_profile"] = "local"
+
+    edit_draft_file(root, "inputs", inputs)
+    edit_draft_file(root, "outputs", catalogue)
+    edit_draft_file(root, "components", components)
+    edit_draft_file(root, "execution-profiles", profiles)
+    (root / CONFIGS_DIR / "default.draft.config").unlink()
     generate_minimal(root, context, at="2026-10-15T10:00:00Z")
 
 

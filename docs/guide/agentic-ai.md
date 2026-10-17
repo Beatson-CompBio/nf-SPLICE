@@ -47,12 +47,17 @@ uses. Every change is validated by nf-splice, never by the model's word.
 | `draft_edit` | Edit drafts in `.splice-local/drafts/` | Granted |
 | `build` | Publish validated drafts into `splice/` | Granted |
 | `overwrite` | Replace published files that were edited by hand | Ask with `--allow overwrite` |
-| `external_tools`, `run_nextflow`, `network` | Run nf-core lint, which runs `nextflow config` and may use the network | Ask with `--allow` |
+| `external_tools`, `run_nextflow`, `network` | Run optional checks: nf-core lint, `rocrate-validator`, `nextflow config` (which may use the network) | Ask with `--allow` |
 
 An agent can never run your pipeline, install software, upload data, read
 credentials or secrets files, change your pipeline's code, or decide to
 publish people's contact details. Text in your repository that tries to
 instruct the agent is treated as data, not instructions.
+
+Every layer stage ends with a review of the pipeline's own code, even when
+the seeded draft already validates; the agent cannot finish a stage by
+reading only the draft. Sessions ask for `high` reasoning effort by default
+(`--reasoning-effort`); see [AI providers](providers.md#reasoning-effort).
 
 In an assisted session, every change also needs your approval. In an
 autonomous run, changes are recorded as the agent's decisions under the

@@ -1,80 +1,154 @@
 # Execution profiles
 
-The execution-profiles layer lists the reviewed ways to run the pipeline,
-each with its own Nextflow configuration file, and names one default. It is
-published as `execution-profiles.json` and `configs/<profile>.config`.
+The execution-profiles layer lists the ways to run the pipeline on the
+platform, each with its own Nextflow configuration, and names one default.
+It is published as `execution-profiles.json` and `configs/<profile>.config`.
 
-- **Draft:** `.splice-local/drafts/execution-profiles.draft.yaml`, plus
-  `.splice-local/drafts/configs/<profile>.draft.config` for generated configurations
-- **Required:** at least one supported profile and exactly one default
+- **Draft:** `.splice-local/drafts/execution-profiles.draft.yaml` (profile
+  metadata and references) and the native config files in
+  `.splice-local/drafts/configs/` (the configuration itself)
+- **Required:** at least one profile, exactly one default, and a config for
+  each profile
 
-## 1. Review the detected profiles
+## Metadata in YAML, configuration in Nextflow
 
-`nf-splice init` detects the `profiles` in your Nextflow configuration. Each
-becomes a candidate such as `profile:local`. Support a profile by describing
-it and choosing where its configuration comes from:
+The YAML describes each profile and points at its configuration; it never
+holds configuration settings:
+
+```yaml
+default_profile: default
+profiles:
+  - id: default
+    name: Default
+    description: Local development on one machine.
+    type: development          # test, development or production
+    engine: nextflow
+    executor: local
+    container_engine: singularity
+    config:
+      draft: default.draft.config     # .splice-local/drafts/configs/default.draft.config
+  - id: cluster
+    name: Cluster
+    description: Production on the department's Slurm cluster.
+    type: production
+    engine: nextflow
+    executor: slurm
+    container_engine: apptainer
+    config:
+      adopt: conf/cluster.config      # a repository config, published unchanged
+```
+
+`init` creates a `default` profile and its config scaffold (or carries over
+the profiles and configs of an earlier `splice/` bundle). The scaffold is an
+ordinary Nextflow config with two conventional sections:
+
+```groovy
+process {
+    executor = 'local'
+}
+
+singularity {
+    enabled    = true
+    autoMounts = true
+}
+
+// ***** User Pipeline Input Params *****
+params {
+}
+
+// ***** SPLICE Pipeline Input Params *****
+params {
+}
+```
+
+Put values users may change in the first `params` block and values the
+deployment sets or fixes in the second. Add any other valid configuration:
+`process` selectors, `executor`, `env`, `singularity`, `report`, `trace`,
+`profiles`. nf-splice publishes the file as you wrote it (without its first
+comment line) and never regenerates it.
+
+To add a profile, create another `.draft.config` file and register it in
+the YAML, or use the wizard's *New profile*. From the command line:
 
 ```bash
 nf-splice configure execution-profiles \
-  --set profile:local.type=development \
-  --set profile:local.description="Local development." \
-  --set profile:local.executor=local \
-  --set profile:local.container_engine=singularity \
-  --set profile:local.config_source=conf/local.config
+  --set default.type=development \
+  --set default.description="Local development." \
+  --set default.config_adopt=conf/local.config \
+  --default default
 ```
 
-| Field | Values |
-| --- | --- |
-| `type` | `test`, `development` or `production` |
-| `description` | What the profile is for |
-| `executor` | A Nextflow executor, such as `local`, `slurm`, `pbspro` or `awsbatch` |
-| `container_engine` | `singularity`, `apptainer`, `docker`, `podman`, `conda` and others |
-| `config_source` | A configuration file to adopt unchanged |
-| `generate` | `true` to have nf-splice write the configuration instead |
+Profiles detected in your `nextflow.config` appear in the wizard as
+optional hints.
 
-Reject a profile the platform should not offer with `.action=reject` and a
-`.reason=...`.
+## Checks
 
-## 2. Adopted or generated configuration
+```bash
+nf-splice draft validate execution-profiles
+```
 
-- **Adopted** (`config_source`): nf-splice publishes your file byte for byte.
-  When the file changes, the next build publishes the new version; review
-  the difference with `nf-splice draft diff execution-profiles` first.
-- **Generated** (`generate=true`): nf-splice writes an editable draft
-  configuration with two marked sections for parameter overrides:
+checks one default and unique IDs, that every config exists, that no config
+contains a secret, a personal path, a literal account or a test setting in a
+production profile, and that the parameter sections agree with the
+[input access policy](inputs.md): a value in the user section must be one
+users may change, and a value users may change must not be fixed in the
+SPLICE section. Configs no profile uses are reported.
+
+`nf-splice draft check-config <profile> --allow run_nextflow` asks Nextflow
+for the effective configuration (it evaluates the configuration code, so it
+needs your permission; no job is submitted) and reports memory requests that
+would reach the scheduler.
+
+## A cluster that rejects memory requests
+
+Some Slurm sites, such as EPCC Cirrus for the CRUK deployment, reject jobs
+with `#SBATCH --mem` and allot memory per CPU (about 2 GB per core). A
+profile for such a site needs care, and `nf-splice draft resources` shows
+what the pipeline asks for:
+
+```bash
+nf-splice draft resources --config cirrus
+```
+
+It reads the pipeline's `withLabel` and `withName` resources, the processes
+using each label, every module that uses `task.memory` and whether it is
+guarded, and, for the named config, whether memory is null for every
+process and the memory per core. With both known it computes the CPUs each
+label needs for its intended memory:
 
 ```text
-// ***** User Pipeline Input Params *****
-// ***** SPLICE Pipeline Input Params *****
+withLabel: process_medium: 18 CPU(s) give 36 GB (intended 36 GB, declared 6)
+UNGUARDED task.memory in QUALIMAP_RNASEQ at modules/local/qualimap/rnaseq/main.nf:25
 ```
 
-Edit the generated draft in `.splice-local/drafts/configs/` like any other draft.
+The configuration then:
 
-## 3. Add the SPLICE Slurm profile (optional)
-
-For the SPLICE cluster, add a ready-made production profile:
-
-```bash
-nf-splice configure execution-profiles --slurm-default
+```groovy
+process {
+    executor = 'slurm'
+    withName: '.*' {
+        memory = null                   // no --mem reaches Slurm
+    }
+    withLabel: process_medium {
+        cpus = 18                       // 36 GB at 2 GB per core
+    }
+}
+env {
+    NXF_EXECUTOR_MEM_GIGA_PER_CORE = 2
+}
 ```
 
-It uses the Slurm executor and Singularity. It contains no site values:
-the queue and account options are listed as `site_parameters` for the
-platform operator to supply.
-
-## 4. Choose the default
-
-Exactly one profile is the default. Profile identifiers are listed under
-`profiles` in the draft:
-
-```bash
-nf-splice configure execution-profiles --default profile-local-6c6f63616c
-```
+Check every module the analysis lists: an unguarded `task.memory` use fails
+when memory is null, and a guarded one falls back to a default (FastQC then
+uses its minimum, 100 MB per thread). Keep the account, partition, QoS and
+paths as values the deployment supplies (from parameters or the
+environment), and confirm the effective configuration before relying on it.
+Cirrus is one deployment, not a default for every user of nf-splice.
 
 ## What never goes into a profile
 
 Accounts, queues, private paths, credentials and organisation addresses are
-operator configuration. nf-splice blocks configurations that contain them.
+deployment configuration. nf-splice blocks configurations that contain them.
 
 Field reference:
 [`execution-profiles.json`](../schemas/execution-profiles/README.md).

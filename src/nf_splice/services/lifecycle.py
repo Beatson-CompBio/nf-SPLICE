@@ -42,11 +42,15 @@ from nf_splice.layers.base import (
 )
 from nf_splice.layers.bundle import validate_bundle_draft
 from nf_splice.layers.components import validate_components_draft
-from nf_splice.layers.execution import validate_execution_draft
+from nf_splice.layers.execution import (
+    ADOPTED,
+    profile_config,
+    validate_execution_draft,
+)
 from nf_splice.layers.inputs import SOURCE as INPUT_SOURCE
 from nf_splice.layers.inputs import validate_inputs_draft
 from nf_splice.layers.outputs import validate_outputs_draft
-from nf_splice.layers.provenance import validate_provenance_draft
+from nf_splice.layers.provenance import crate_origin, validate_provenance_draft
 from nf_splice.renderers.bundle_index import BUNDLE_FILES, render_bundle_index
 
 SPLICE = "splice"
@@ -314,24 +318,23 @@ def _sources(root: Path) -> dict[str, dict[str, str]]:
         }
     crate = root / "ro-crate-metadata.json"
     provenance = read_layer(root, "provenance")
-    strategy = None
+    source = None
     if provenance.draft is not None and isinstance(provenance.draft.data, dict):
-        strategy = provenance.draft.data.get("strategy")
-    if crate.is_file() and strategy in {"include", "enriched"}:
+        source = provenance.draft.data.get("source")
+    if crate.is_file() and isinstance(source, dict) and source.get("sha256"):
         sources["ro-crate-metadata.json"] = {
             "sha256": sha256(crate.read_bytes()),
-            "role": f"ro-crate-source:{strategy}",
+            "role": f"ro-crate-source:{crate_origin(root) or 'adopted'}",
         }
     execution = read_layer(root, "execution-profiles")
     if execution.draft is not None and isinstance(execution.draft.data, dict):
         for profile in execution.draft.data.get("profiles") or []:
-            config = (profile or {}).get("config") or {}
-            if (
-                config.get("strategy") == "adopted"
-                and (root / str(config.get("source"))).is_file()
-            ):
-                sources[str(config["source"])] = {
-                    "sha256": sha256((root / str(config["source"])).read_bytes()),
+            if not isinstance(profile, dict):
+                continue
+            strategy, path, _problem = profile_config(root, profile)
+            if strategy == ADOPTED and path is not None and (root / path).is_file():
+                sources[path] = {
+                    "sha256": sha256((root / path).read_bytes()),
                     "role": "adopted-config",
                 }
     return sources
@@ -369,12 +372,7 @@ def _whole_bundle(
     if blockers or identity.metadata is None:
         return payloads, layer_of, blockers
     profiles = json.loads(payloads["execution-profiles.json"])
-    provenance = read_layer(root, "provenance")
-    strategy = (
-        provenance.draft.data.get("strategy")
-        if provenance.draft is not None and isinstance(provenance.draft.data, dict)
-        else None
-    )
+    strategy = crate_origin(root)
     crate_source = _sources(root).get("ro-crate-metadata.json")
     rendered = render_bundle_index(
         identity.metadata,
@@ -433,7 +431,56 @@ def plan_promotion(
         target = name
     if blockers:
         return PromotionPlan(target, (), tuple(blockers))
-    return PromotionPlan(target, _changes(root, layer_of, payloads), (), payloads)
+    changes = _changes(root, layer_of, payloads)
+    if target in {"bundle", "execution-profiles"}:
+        changes = (*changes, *_obsolete_configs(root, payloads))
+    return PromotionPlan(target, changes, (), payloads)
+
+
+def _obsolete_configs(root: Path, payloads: Mapping[str, bytes]) -> list[FileChange]:
+    """Published profile configs nf-splice made earlier that nothing uses now.
+
+    Only files the previous lock lists as managed are removed, so a file a
+    person placed in ``splice/configs/`` by hand is never deleted.
+    """
+    lock = _final(root, "nf-splice.lock.json")
+    try:
+        managed = json.loads(lock.read_text(encoding="utf-8")).get("managed_files", {})
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+        return []
+    found = []
+    for relative in sorted(managed):
+        path = _final(root, relative)
+        if (
+            relative.startswith("configs/")
+            and relative not in payloads
+            and path.is_file()
+            and not path.is_symlink()
+        ):
+            current = path.read_bytes()
+            recorded = (
+                managed[relative].get("sha256")
+                if isinstance(managed[relative], dict)
+                else None
+            )
+            state = (
+                FinalState.OUTDATED
+                if recorded is None or recorded == sha256(current)
+                else FinalState.DRIFTED
+            )
+            found.append(
+                FileChange(
+                    relative,
+                    "remove",
+                    text_diff(
+                        f"splice/{relative}",
+                        current.decode("utf-8", errors="replace"),
+                        "",
+                    ),
+                    state,
+                )
+            )
+    return found
 
 
 def _require_no_journal(root: Path) -> None:
@@ -470,7 +517,7 @@ def _check_targets(
                 f"splice/{change.path} was edited after it was published; reconcile "
                 "the edit into the draft or pass --overwrite-edited explicitly"
             )
-        if change.kind == "update" and not replace_existing:
+        if change.kind in {"update", "remove"} and not replace_existing:
             raise LifecycleError(
                 "review the displayed diff, then pass --replace-existing to update "
                 "published files"
@@ -485,8 +532,10 @@ class PromotionResult:
     wrote: tuple[str, ...]
 
 
-def _write_transaction(root: Path, writes: Mapping[str, bytes]) -> None:
-    """Stage, back up and atomically replace files; roll back on failure."""
+def _write_transaction(
+    root: Path, writes: Mapping[str, bytes], removals: Sequence[str] = ()
+) -> None:
+    """Stage, back up and atomically replace (or remove) files; roll back on failure."""
     splice = root / SPLICE
     splice.mkdir(exist_ok=True)
     token = secrets.token_hex(6)
@@ -514,13 +563,20 @@ def _write_transaction(root: Path, writes: Mapping[str, bytes]) -> None:
                 os.fsync(handle.fileno())
             if sha256(target.read_bytes()) != sha256(writes[relative]):
                 raise LifecycleError(f"staged copy of {relative} failed verification")
-        existing = [item for item in order if _final(root, item).is_file()]
+        existing = [
+            item for item in [*order, *removals] if _final(root, item).is_file()
+        ]
         for relative in existing:
             (backup / relative).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(_final(root, relative), backup / relative)
         journal.write_text(
             json.dumps(
-                {"token": token, "files": order, "existing": existing}, indent=2
+                {
+                    "token": token,
+                    "files": [*order, *removals],
+                    "existing": existing,
+                },
+                indent=2,
             ),
             encoding="utf-8",
         )
@@ -529,12 +585,17 @@ def _write_transaction(root: Path, writes: Mapping[str, bytes]) -> None:
             final.parent.mkdir(parents=True, exist_ok=True)
             replace_file(staging / relative, final)
             replaced.append(relative)
+        for relative in removals:
+            _final(root, relative).unlink(missing_ok=True)
+            replaced.append(relative)
     except BaseException:
         _restore(
             root,
             token,
             replaced,
-            existing_names=set(item for item in order if (backup / item).is_file()),
+            existing_names={
+                item for item in [*order, *removals] if (backup / item).is_file()
+            },
         )
         raise
     else:
@@ -639,10 +700,11 @@ def promote(
     writes = {
         item.path: plan.payloads[item.path]
         for item in plan.changes
-        if item.kind != "unchanged"
+        if item.kind in {"create", "update"}
     }
-    if writes:
-        _write_transaction(root, writes)
+    removals = [item.path for item in plan.changes if item.kind == "remove"]
+    if writes or removals:
+        _write_transaction(root, writes, removals)
     layer_of = (
         {path: _layer_for_final(path) for path in plan.payloads}
         if plan.target == "bundle"
@@ -653,7 +715,7 @@ def promote(
         for path, payload in plan.payloads.items()
     ):
         _record_promoted(root, plan.payloads, layer_of, context)
-    return PromotionResult(plan, tuple(sorted(writes)))
+    return PromotionResult(plan, tuple(sorted([*writes, *removals])))
 
 
 def _layer_for_final(relative: str) -> str:

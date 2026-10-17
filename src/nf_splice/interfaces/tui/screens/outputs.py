@@ -1,4 +1,4 @@
-"""Master-detail output candidate review."""
+"""The output catalogue: edit the draft directly; discovery hints are optional."""
 
 from __future__ import annotations
 
@@ -22,33 +22,38 @@ from nf_splice.domain import (
 )
 from nf_splice.interfaces.tui.screens._common import issue_lines
 from nf_splice.interfaces.tui.state import WizardSnapshot
-from nf_splice.interfaces.tui.widgets import StepView
+from nf_splice.interfaces.tui.widgets import FilePanel, StepView
 from nf_splice.layers.base import load_review_state, read_layer
 from nf_splice.layers.outputs import (
     accept_output,
+    add_output,
     candidate_evidence,
     discover_outputs,
     merge_outputs,
     pending_candidates,
     preview_outputs,
     reject_output,
+    remove_output,
     set_contract_version,
     split_output,
+    update_output,
 )
 
 
 class OutputsView(StepView):
     step_id = "outputs"
     explanation = (
-        "Select a candidate (row keys are stable candidate IDs), complete its "
-        "meaning and accept (a), reject (r), mark for merge (space) then merge "
-        "(m), or split (s) one pattern per output. Scope: job = whole workflow "
-        "execution, sample = one sample, run = one platform file-level run. "
-        "Categories and stages are free text."
+        "The catalogue below is outputs.draft.yaml, seeded from the pipeline's "
+        "published routes: select an output, correct its meaning and Save, or Add "
+        "and Remove outputs. Edit the whole file with Open YAML at any time. "
+        "Scope: job = whole workflow execution, sample = one sample, run = one "
+        "platform file-level run. Categories and stages are free text. Discovery "
+        "hints at the bottom are optional: accept (a) or reject (r) one, mark "
+        "(space) then merge (m), or split (s)."
     )
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("a", "accept", "Accept"),
-        Binding("r", "reject", "Reject"),
+        Binding("a", "accept", "Accept hint"),
+        Binding("r", "reject", "Reject hint"),
         Binding("space", "mark", "Mark"),
         Binding("m", "merge", "Merge"),
         Binding("s", "split", "Split"),
@@ -60,6 +65,8 @@ class OutputsView(StepView):
         self.example_paths: list[str] = []
 
     def compose(self) -> ComposeResult:
+        yield FilePanel("outputs")
+        yield DataTable(id="outputs-catalogue")
         with Horizontal(classes="row"):
             yield Input(
                 placeholder="Example output tree directory (optional)",
@@ -71,7 +78,6 @@ class OutputsView(StepView):
                 placeholder="analysis-output schema version X.Y.Z", id="outputs-version"
             )
             yield Button("Set version", id="outputs-set-version")
-        yield DataTable(id="outputs-candidates")
         yield Static("", id="outputs-evidence", classes="section")
         yield Input(placeholder="stable key", id="output-key")
         yield Input(placeholder="title", id="output-title")
@@ -105,6 +111,12 @@ class OutputsView(StepView):
             placeholder="anchored path pattern(s), comma separated", id="output-pattern"
         )
         yield Static("", id="outputs-regex", classes="section")
+        with Horizontal(classes="row"):
+            yield Button("Save output", id="outputs-save", variant="success")
+            yield Button("Add as new output", id="outputs-add")
+            yield Button("Remove output", id="outputs-remove", variant="error")
+        yield Static("Discovery hints (optional)", classes="section")
+        yield DataTable(id="outputs-candidates")
         yield Input(placeholder="reject reason", id="output-reason")
         with Horizontal(classes="row"):
             yield Button("Accept", id="outputs-accept", variant="success")
@@ -117,11 +129,83 @@ class OutputsView(StepView):
         yield Static("", id="outputs-issues", classes="issues")
 
     def setup(self) -> None:
+        catalogue = self.query_one("#outputs-catalogue", DataTable)
+        catalogue.add_columns("key", "title", "category", "scopes", "pattern", "open")
+        catalogue.cursor_type = "row"
         table = self.query_one("#outputs-candidates", DataTable)
         table.add_columns("", "candidate", "suggested key", "pattern", "scope")
         table.cursor_type = "row"
 
+    def entries(self) -> list[dict[str, Any]]:
+        state = read_layer(self.wizard.repository, "outputs")
+        if state.draft is None or not isinstance(state.draft.data, dict):
+            return []
+        return [
+            item
+            for item in state.draft.data.get("outputs") or []
+            if isinstance(item, dict)
+        ]
+
+    def selected_output(self) -> str | None:
+        table = self.query_one("#outputs-catalogue", DataTable)
+        if not table.row_count:
+            return None
+        value = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        return str(value) if value is not None else None
+
+    def _refresh_catalogue(self) -> None:
+        table = self.query_one("#outputs-catalogue", DataTable)
+        selected = self.selected_output()
+        table.clear()
+        for item in self.entries():
+            missing = [
+                name
+                for name in ("title", "description", "category", "formats", "scopes")
+                if item.get(name) in (None, "", [])
+            ]
+            table.add_row(
+                str(item.get("key")),
+                str(item.get("title") or ""),
+                str(item.get("category") or ""),
+                ",".join(item.get("scopes") or []),
+                ",".join(item.get("path_patterns") or []),
+                ",".join(missing),
+                key=str(item.get("key")),
+            )
+        if selected is not None and selected in table.rows:
+            table.move_cursor(row=table.get_row_index(selected))
+
+    def show_output(self) -> None:
+        key = self.selected_output()
+        entry = next((item for item in self.entries() if item.get("key") == key), None)
+        if entry is None:
+            return
+        for selector, field in (
+            ("#output-key", "key"),
+            ("#output-title", "title"),
+            ("#output-description", "description"),
+            ("#output-category", "category"),
+            ("#output-stage", "stage"),
+        ):
+            self.query_one(selector, Input).value = str(entry.get(field) or "")
+        self.query_one("#output-pattern", Input).value = ",".join(
+            entry.get("path_patterns") or []
+        )
+        for selector, field in (
+            ("#output-format", "formats"),
+            ("#output-scope", "scopes"),
+            ("#output-entity", "entity_types"),
+        ):
+            values = entry.get(field) or []
+            select = self.query_one(selector, Select)
+            if values:
+                select.value = str(values[0])
+            else:
+                select.clear()
+        self._regex_preview()
+
     def refresh_view(self, snapshot: WizardSnapshot) -> None:
+        self._refresh_catalogue()
         table = self.query_one("#outputs-candidates", DataTable)
         selected = self.selected()
         table.clear()
@@ -159,8 +243,12 @@ class OutputsView(StepView):
         for entry in review.values():
             tally[entry.get("status", "?")] = tally.get(entry.get("status", "?"), 0) + 1
         self.query_one("#outputs-tally", Static).update(
-            f"Reviewed outputs in draft: {len(data.get('outputs') or [])}. Candidates: "
-            + ", ".join(f"{key}={value}" for key, value in sorted(tally.items()))
+            f"Outputs in the catalogue: {len(data.get('outputs') or [])}. "
+            "Discovery hints: "
+            + (
+                ", ".join(f"{key}={value}" for key, value in sorted(tally.items()))
+                or "none"
+            )
         )
         self.query_one("#outputs-issues", Static).update(
             issue_lines(snapshot.repository, "outputs")
@@ -173,8 +261,11 @@ class OutputsView(StepView):
         value = table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
         return str(value) if value is not None else None
 
-    def on_data_table_row_highlighted(self, _event: DataTable.RowHighlighted) -> None:
-        self.show_candidate()
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.data_table.id == "outputs-catalogue":
+            self.show_output()
+        else:
+            self.show_candidate()
 
     def show_candidate(self) -> None:
         identifier = self.selected()
@@ -355,8 +446,42 @@ class OutputsView(StepView):
             ),
         )
 
+    def save_output(self, *, new: bool = False) -> None:
+        app = self.wizard
+        output = self.collected()
+        output = {
+            key: value for key, value in output.items() if value not in ("", [""], [])
+        }
+        if new:
+            app.perform(
+                f"Adding {output.get('key')}",
+                lambda: add_output(app.repository, output, app.change_context()),
+            )
+            return
+        key = self.selected_output()
+        if key is None:
+            app.set_status("Select an output in the catalogue first.", error=True)
+            return
+        app.perform(
+            f"Saving {key}",
+            lambda: update_output(app.repository, key, output, app.change_context()),
+        )
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         app = self.wizard
+        if event.button.id in {"outputs-save", "outputs-add"}:
+            event.stop()
+            self.save_output(new=event.button.id == "outputs-add")
+            return
+        if event.button.id == "outputs-remove":
+            event.stop()
+            key = self.selected_output()
+            if key is not None:
+                app.perform(
+                    f"Removing {key}",
+                    lambda: remove_output(app.repository, key, app.change_context()),
+                )
+            return
         handlers = {
             "outputs-accept": self.action_accept,
             "outputs-reject": self.action_reject,

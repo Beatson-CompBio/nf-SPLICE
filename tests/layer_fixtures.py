@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from nf_splice.domain import Actor
 from nf_splice.layers import ChangeContext
@@ -15,6 +16,8 @@ IDENTITY = {
     "version": "1.2.0",
     "repository_url": "https://github.com/org/rnaquant",
     "description": "Quantifies RNA-seq reads.",
+    "licence": "MIT",
+    "released_at": "2026-10-15T10:00:00Z",
 }
 
 
@@ -91,65 +94,74 @@ def write_pipeline(root: Path) -> None:
     )
 
 
+def edit_draft_file(root: Path, layer: str, mutate: Any) -> None:
+    """Edit a draft as a person would in an editor: read, change, save.
+
+    No nf-splice service is involved, so nothing is confirmed or approved;
+    the next validation reads the file from disk.
+    """
+    from nf_splice.drafts import dump_yaml_data, load_yaml_draft
+    from nf_splice.layers.base import layer_spec
+
+    path = root / layer_spec(layer).draft
+    data = load_yaml_draft(path.read_text(encoding="utf-8")).data
+    mutate(data)
+    path.write_text(dump_yaml_data(data), encoding="utf-8")
+
+
+REPORT_OUTPUT = {
+    "key": "report",
+    "title": "Report",
+    "description": "Job report.",
+    "category": "job_report",
+    "formats": ["html"],
+    "scopes": ["job"],
+    "entity_types": ["file"],
+    "path_patterns": [r"^reports/report\.html$"],
+}
+LOCAL_PROFILE = {
+    "id": "local",
+    "name": "Local",
+    "description": "Local development.",
+    "type": "development",
+    "engine": "nextflow",
+    "executor": "local",
+    "container_engine": "singularity",
+    "config": {"adopt": "conf/local.config"},
+}
+
+
 def ready_repository(root: Path) -> None:
-    """Author every layer to readiness through the shared services."""
-    from nf_splice.layers.components import (
-        accept_unambiguous_components,
-        discover_components,
-        set_image_policy,
-    )
-    from nf_splice.layers.execution import (
-        discover_execution,
-        review_profile,
-        set_default_profile,
-    )
-    from nf_splice.layers.inputs import import_inputs, set_access
-    from nf_splice.layers.outputs import accept_output, discover_outputs
-    from nf_splice.layers.provenance import generate_minimal
+    """Initialise, then author every draft directly (no candidate decisions)."""
+    from nf_splice.layers.execution import CONFIGS_DIR
+    from nf_splice.services.workspace import initialise
 
     write_pipeline(root)
     ready_identity(root)
-    import_inputs(root)
-    set_access(root, ["threshold"], ["user", "agent"], ADA)
-    set_access(root, ["outdir"], ["platform"], ADA)
-    discovery = discover_outputs(root, schema_version="1.0.0")
-    for candidate in discovery.pending:
-        if candidate.suggested_key == "report":
-            accept_output(
-                root,
-                candidate.id,
-                {
-                    "key": "report",
-                    "title": "Report",
-                    "description": "Job report.",
-                    "category": "job_report",
-                    "formats": ["html"],
-                    "scopes": ["job"],
-                    "entity_types": ["file"],
-                    "path_patterns": [r"^reports/report\.html$"],
-                },
-                ADA,
-            )
-        else:
-            from nf_splice.layers.outputs import reject_output
+    initialise(root, ADA, contract_version="1.0.0")
 
-            reject_output(root, candidate.id, "Not a platform output", ADA)
-    discover_components(root)
-    accept_unambiguous_components(root, ADA)
-    set_image_policy(root, False, ADA)
-    discover_execution(root)
-    review_profile(
-        root,
-        "profile:local",
-        ADA,
-        profile_type="development",
-        description="Local development.",
-        executor="local",
-        container_engine="singularity",
-        config_source="conf/local.config",
-    )
-    set_default_profile(root, "profile-local-6c6f63616c", ADA)
-    generate_minimal(root, ADA, at="2026-10-15T10:00:00Z")
+    def inputs(data: dict[str, Any]) -> None:
+        group = data["$defs"]["analysis"]["properties"]
+        group["threshold"]["x-splice-access"] = {"editable_by": ["agent", "user"]}
+        group["threshold"]["x-splice-ui"] = {"visibility": "standard"}
+        group["outdir"]["x-splice-access"] = {"editable_by": ["platform"]}
+
+    def outputs(data: dict[str, Any]) -> None:
+        data["outputs"] = [dict(REPORT_OUTPUT)]
+        data["categories"] = {}
+
+    def components(data: dict[str, Any]) -> None:
+        data["require_downloadable_images"] = False
+
+    def profiles(data: dict[str, Any]) -> None:
+        data["profiles"] = [dict(LOCAL_PROFILE)]
+        data["default_profile"] = "local"
+
+    edit_draft_file(root, "inputs", inputs)
+    edit_draft_file(root, "outputs", outputs)
+    edit_draft_file(root, "components", components)
+    edit_draft_file(root, "execution-profiles", profiles)
+    (root / CONFIGS_DIR / "default.draft.config").unlink()
 
 
 def write_root_crate(root: Path, name: str, version: str) -> None:
@@ -170,6 +182,9 @@ def write_root_crate(root: Path, name: str, version: str) -> None:
                 "@type": "Dataset",
                 "name": name,
                 "version": version,
+                "description": f"The {name} pipeline.",
+                "license": "MIT",
+                "datePublished": "2026-10-15",
                 "mainEntity": {"@id": "main.nf"},
             },
             {
@@ -183,3 +198,29 @@ def write_root_crate(root: Path, name: str, version: str) -> None:
     (root / "ro-crate-metadata.json").write_text(
         json.dumps(crate, indent=2) + "\n", encoding="utf-8"
     )
+
+
+def review_turn(stage: str, purpose: str = "plan") -> dict[str, Any]:
+    """A scripted review turn: inspect a source file, then complete the review.
+
+    Orchestration only; it proves the engine records and requires reviews,
+    not that any model reasoned about the pipeline.
+    """
+    return {
+        "stage": stage,
+        "purpose": purpose,
+        "steps": [
+            {"tool": "read_source", "arguments": {"path": "main.nf"}},
+            {
+                "tool": "complete_review",
+                "arguments": {
+                    "summary": f"The {stage} draft matches the pipeline.",
+                    "checked": ["main.nf"],
+                },
+            },
+        ],
+    }
+
+
+def review_turns(*stages: str, purpose: str = "plan") -> list[dict[str, Any]]:
+    return [review_turn(stage, purpose) for stage in stages]

@@ -22,9 +22,19 @@
       "mainEntity": {
         "@id": "main.nf"
       },
+      "hasPart": [
+        {
+          "@id": "main.nf"
+        },
+        {
+          "@id": "splice/"
+        }
+      ],
       "name": "rnaquant",
       "version": "1.2.0",
-      "description": "Quantifies RNA-seq reads."
+      "description": "Quantifies RNA-seq reads.",
+      "license": "MIT",
+      "datePublished": "2026-10-15T10:00:00Z"
     },
     {
       "@id": "main.nf",
@@ -33,10 +43,10 @@
         "SoftwareSourceCode",
         "ComputationalWorkflow"
       ],
-      "name": "rnaquant",
       "programmingLanguage": {
         "@id": "#nextflow"
       },
+      "name": "rnaquant",
       "version": "1.2.0",
       "url": "https://github.com/org/rnaquant"
     },
@@ -72,6 +82,107 @@
       "@id": "#reviewer-Ada",
       "@type": "Person",
       "name": "Ada"
+    },
+    {
+      "@id": "splice/",
+      "@type": "Dataset",
+      "name": "SPLICE workflow bundle",
+      "description": "The pipeline's SPLICE integration: versioned contracts (bundle, inputs, outputs, components, execution profiles) and this RO-Crate metadata, produced by nf-splice.",
+      "hasPart": [
+        {
+          "@id": "splice/README.md"
+        },
+        {
+          "@id": "splice/bundle.json"
+        },
+        {
+          "@id": "splice/components.json"
+        },
+        {
+          "@id": "splice/configs/local.config"
+        },
+        {
+          "@id": "splice/execution-profiles.json"
+        },
+        {
+          "@id": "splice/inputs.schema.json"
+        },
+        {
+          "@id": "splice/nf-splice.lock.json"
+        },
+        {
+          "@id": "splice/outputs.schema.json"
+        },
+        {
+          "@id": "splice/outputs.yaml"
+        }
+      ],
+      "about": {
+        "@id": "main.nf"
+      }
+    },
+    {
+      "@id": "splice/README.md",
+      "@type": "File",
+      "name": "README.md",
+      "encodingFormat": "text/markdown",
+      "description": "Human-readable summary of the bundle"
+    },
+    {
+      "@id": "splice/bundle.json",
+      "@type": "File",
+      "name": "bundle.json",
+      "encodingFormat": "application/json",
+      "description": "SPLICE workflow bundle index: identity, assay capabilities and the bundle's files"
+    },
+    {
+      "@id": "splice/components.json",
+      "@type": "File",
+      "name": "components.json",
+      "encodingFormat": "application/json",
+      "description": "Software components and container images"
+    },
+    {
+      "@id": "splice/configs/local.config",
+      "@type": "File",
+      "name": "configs/local.config",
+      "encodingFormat": "text/plain",
+      "description": "Nextflow configuration of an execution profile"
+    },
+    {
+      "@id": "splice/execution-profiles.json",
+      "@type": "File",
+      "name": "execution-profiles.json",
+      "encodingFormat": "application/json",
+      "description": "Execution profiles and their configurations"
+    },
+    {
+      "@id": "splice/inputs.schema.json",
+      "@type": "File",
+      "name": "inputs.schema.json",
+      "encodingFormat": "application/json",
+      "description": "Runtime input contract (JSON Schema 2020-12)"
+    },
+    {
+      "@id": "splice/nf-splice.lock.json",
+      "@type": "File",
+      "name": "nf-splice.lock.json",
+      "encodingFormat": "application/json",
+      "description": "nf-splice build lock: hashes of the published files"
+    },
+    {
+      "@id": "splice/outputs.schema.json",
+      "@type": "File",
+      "name": "outputs.schema.json",
+      "encodingFormat": "application/json",
+      "description": "Output catalogue as a JSON Schema for one job's analysis_output.json"
+    },
+    {
+      "@id": "splice/outputs.yaml",
+      "@type": "File",
+      "name": "outputs.yaml",
+      "encodingFormat": "application/yaml",
+      "description": "Developer-readable output catalogue"
     }
   ]
 }

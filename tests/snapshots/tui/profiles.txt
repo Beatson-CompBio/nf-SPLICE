@@ -6,19 +6,27 @@
   ✓ Outputs
   ✓ Components
 ▶ ✓ Execution profiles
-  ! Provenance
+  ✓ Provenance
   ✓ Drafts
-  ○ Readiness
-  · Build
+  ✓ Readiness
+  ○ Build
   · Done
 == profiles
-<button Discover profiles>
-<button Add SPLICE Slurm candidate>
+
+<button Open YAML>
+<button Open config>
+<button Reload>
+<button Validate>
+<button Preview JSON>
+<button Explain errors>
+
+default | Default | development | local | singularity | conf/local.config
+[name] Default
+[description] Local development.
 <profile-type> development
 development
 ▼
 ▲
-[description] Local development.
 <profile-executor> local
 local
 ▼
@@ -28,17 +36,28 @@ singularity
 ▼
 ▲
 <profile-route> adopt
-adopt existing config
+adopt a repository config
 ▼
 ▲
-[config source for adopt (e.g. conf/local.config)] conf/local.config
-<button Support selected>
-[reject reason]
-<button Reject selected>
-<profiles-default> profile-local-6c6f63616c
-Local (profile-local-6c6f63616c)
+[config name (default) or repository path (conf/x.config)] conf/local.config
+<button Save profile>
+<button New profile>
+<button Make default>
+<button Open this config>
+<profiles-default> default
+Default (default)
 ▼
 ▲
 <button Set default>
+--- conf/local.config
+process { executor = 'local' }
+singularity.enabled = true
 
-No issues: this layer is ready to promote.
+Detected repository profiles (optional hints)
+<button Discover profiles>
+<button Add a Slurm scaffold>
+profile:local | local | singularity | conf/local.config
+<button Add detected>
+[reject reason]
+<button Not supported>
+WARNING /profiles  .splice-local/drafts/configs/default.draft.config is not used by any profile; register it in a profile or delete it

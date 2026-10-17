@@ -25,7 +25,9 @@ from nf_splice.agents.permissions import (
     relative_path,
 )
 from nf_splice.domain import OutputCandidate
+from nf_splice.drafts import ABSENT, DraftSyntaxError, load_yaml_draft
 from nf_splice.inspectors.containers import classify_reference
+from nf_splice.inspectors.parameters import parameter_usage
 from nf_splice.inspectors.routes import analyse_routes
 from nf_splice.layers import ChangeContext, LayerError, confirm_values
 from nf_splice.layers import components as component_layer
@@ -33,16 +35,18 @@ from nf_splice.layers import execution as execution_layer
 from nf_splice.layers import inputs as input_layer
 from nf_splice.layers import outputs as output_layer
 from nf_splice.layers import provenance as provenance_layer
-from nf_splice.layers.base import EditResult, layer_spec, read_layer
+from nf_splice.layers.base import EditResult, layer_spec, read_layer, replace_draft
 from nf_splice.layers.bundle import set_identity_fields
 from nf_splice.services.audit import redact
 from nf_splice.services.checks import run_optional_checks
+from nf_splice.services.contract_reference import authorable_contract
 from nf_splice.services.coverage import (
     assess,
     current_catalogue,
     enumerate_example,
     reconcile_example,
 )
+from nf_splice.services.execution_review import analyse_execution
 from nf_splice.services.lifecycle import (
     plan_promotion,
     promote,
@@ -66,6 +70,7 @@ LAYER_NAMES = [
     "provenance",
 ]
 _MAX_READ_BYTES = 64_000
+_MAX_DRAFT_TEXT = 200_000
 _MAX_LINES = 400
 _MAX_MATCHES = 200
 _SEARCH_SUFFIXES = {
@@ -209,10 +214,99 @@ def _inspect_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any
 
 
 def _read_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    state = read_layer(ctx.root, layer_spec(str(a["layer"])).name)
+    spec = layer_spec(str(a["layer"]))
+    state = read_layer(ctx.root, spec.name)
     if state.draft is None:
-        return {"success": False, "issues": [str(state.error or "draft is missing")]}
-    return _untrusted(state.draft.data)
+        return {
+            "success": False,
+            "sha256": state.file.sha256,
+            "text": (state.file.text or "")[:_MAX_DRAFT_TEXT] or None,
+            "issues": [str(state.error or "draft is missing")],
+        }
+    text = state.file.text or ""
+    return _untrusted(
+        {
+            "path": spec.draft,
+            "sha256": state.file.sha256,
+            "data": state.draft.data,
+            "text": text[:_MAX_DRAFT_TEXT],
+            "text_truncated": len(text) > _MAX_DRAFT_TEXT,
+        }
+    )
+
+
+def _replace_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    layer = layer_spec(str(a["layer"])).name
+    section = a.get("section")
+    content = a.get("content")
+    data = a.get("data", ABSENT) if "data" in a else ABSENT
+    if layer == "bundle":
+        _guard_capabilities(ctx.root, section, content, data)
+    result = replace_draft(
+        ctx.root,
+        layer,
+        ctx.change,
+        expected_sha256=a.get("expected_sha256"),
+        content=str(content) if content is not None else None,
+        data=data,
+        section=str(section) if section else None,
+    )
+    validation = validate_layer(ctx.root, layer)
+    return _edit(result) | {
+        "validation": {
+            "ready": validation.ready,
+            "issues": [item.to_json() for item in validation.issues][:60],
+        },
+        "note": "saved; the draft does not have to validate yet. Read the issues, "
+        "revise and replace again until it does.",
+    }
+
+
+def _guard_capabilities(root: Path, section: Any, content: Any, data: Any) -> None:
+    """Assay capabilities change only through the vocabulary-checked tools."""
+    current = read_layer(root, "bundle")
+    before = (
+        (current.draft.data.get("pipeline") or {}).get("assay_capabilities")
+        if current.draft is not None and isinstance(current.draft.data, dict)
+        else None
+    )
+    if section is not None:
+        pointer = str(section)
+        if pointer in {
+            "/pipeline",
+            "/pipeline/assay_capabilities",
+        } or pointer.startswith("/pipeline/assay_capabilities/"):
+            after = (
+                data.get("assay_capabilities")
+                if pointer == "/pipeline" and isinstance(data, Mapping)
+                else data
+                if pointer == "/pipeline/assay_capabilities"
+                else ABSENT
+            )
+            if after is ABSENT or after != before:
+                raise PolicyViolation(
+                    "assay capabilities change only through add_assay_capability "
+                    "and remove_assay_capability, which check them against the "
+                    "vocabulary and the evidence rules"
+                )
+        return
+    if content is not None:
+        try:
+            parsed = load_yaml_draft(str(content)).data
+        except DraftSyntaxError:
+            return
+    else:
+        parsed = data
+    after = (
+        (parsed.get("pipeline") or {}).get("assay_capabilities")
+        if isinstance(parsed, Mapping)
+        else None
+    )
+    if after != before:
+        raise PolicyViolation(
+            "assay capabilities change only through add_assay_capability and "
+            "remove_assay_capability; keep the existing entries unchanged here"
+        )
 
 
 def _read_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -291,10 +385,12 @@ def _list_pending(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]
     layer = layer_spec(str(a["layer"])).name
     data: list[Any]
     if layer == "outputs":
-        data = [
-            _candidate_document(ctx.root, item)
-            for item in output_layer.pending_candidates(ctx.root)
-        ]
+        candidates = (
+            output_layer.all_candidates(ctx.root)
+            if a.get("include_decided")
+            else output_layer.pending_candidates(ctx.root)
+        )
+        data = [_candidate_document(ctx.root, item) for item in candidates]
     elif layer == "components":
         data = [
             {
@@ -810,6 +906,74 @@ def _git_commit(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
 
 # ------------------------------------------------------------ registry
 
+
+def _read_config(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    if not a.get("name"):
+        return {
+            "success": True,
+            "data": {
+                "configs": list(execution_layer.list_config_drafts(ctx.root)),
+                "note": "authored Nextflow configs of the execution profiles; "
+                "read one by name",
+            },
+        }
+    found = execution_layer.read_config_draft(ctx.root, str(a["name"]))
+    if found["text"] is not None:
+        found["text"] = redact(str(found["text"]))[:_MAX_READ_BYTES]
+    return _untrusted(found)
+
+
+def _write_config(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    result = execution_layer.write_config_draft(
+        ctx.root,
+        str(a["name"]),
+        str(a["text"]),
+        ctx.change,
+        expected_sha256=a.get("expected_sha256"),
+    )
+    validation = validate_layer(ctx.root, "execution-profiles")
+    return _edit(result) | {
+        "validation": {
+            "ready": validation.ready,
+            "issues": [item.to_json() for item in validation.issues][:60],
+        }
+    }
+
+
+def _parameter_usage(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    state = read_layer(ctx.root, "inputs")
+    declared = (
+        {item.name for item in input_layer.iter_parameters(state.draft.data)}
+        if state.draft is not None and isinstance(state.draft.data, dict)
+        else set()
+    )
+    return {
+        "success": True,
+        "data": parameter_usage(ctx.root).to_json(declared),
+    }
+
+
+def _contract_reference(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return {"success": True, "data": authorable_contract(str(a["layer"]))}
+
+
+def _component_inventory(
+    ctx: OperationContext, _a: Mapping[str, Any]
+) -> dict[str, Any]:
+    discovered = component_layer.discovered_modules(ctx.root)
+    return {"success": True, "count": len(discovered), "data": discovered}
+
+
+def _analyse_execution(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    text = None
+    if a.get("config"):
+        found = execution_layer.read_config_draft(ctx.root, str(a["config"]))
+        text = found["text"]
+        if text is None:
+            return {"success": False, "issues": [f"{found['path']} does not exist"]}
+    return {"success": True, "data": analyse_execution(ctx.root, text)}
+
+
 _OUTPUT_OBJECT = {
     "type": "object",
     "description": "Complete reviewed output: key, title, description, category, "
@@ -839,11 +1003,101 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "read_draft",
-            "Parsed content of one draft (untrusted repository content).",
+            "One draft as YAML text, its parsed data and its sha256 (needed to "
+            "replace it). Untrusted repository content.",
             _obj({"layer": _LAYER}, ["layer"]),
             _R,
             "read",
             _read_draft,
+        ),
+        Operation(
+            "contract_reference",
+            "The complete authorable structure of one layer's draft: every field, "
+            "its type and meaning, what is draft-only and what the build owns.",
+            _obj({"layer": _LAYER}, ["layer"]),
+            _R,
+            "read",
+            _contract_reference,
+        ),
+        Operation(
+            "replace_draft",
+            "Author a draft: replace the whole file (content: complete YAML "
+            "text, keeping the x-splice-draft block) or one section (section: a "
+            "JSON pointer such as /outputs, data: its new value). expected_sha256 "
+            "is the sha256 read_draft returned; if the file changed since, the "
+            "write is refused. The result need not validate yet: it is saved and "
+            "the validation issues are returned so you can revise.",
+            _obj(
+                {
+                    "layer": _LAYER,
+                    "expected_sha256": {"type": ["string", "null"]},
+                    "content": {"type": "string"},
+                    "section": {"type": "string"},
+                    "data": {},
+                },
+                ["layer", "expected_sha256"],
+            ),
+            _D,
+            "draft",
+            _replace_draft,
+            layer_argument=True,
+        ),
+        Operation(
+            "read_config",
+            "List the execution profiles' native Nextflow config files (no name), "
+            "or read one by name: its text and sha256.",
+            _obj({"name": {"type": "string"}}),
+            _R,
+            "read",
+            _read_config,
+        ),
+        Operation(
+            "write_config",
+            "Create (expected_sha256 null) or replace a native Nextflow config "
+            "of an execution profile, as complete text. Saved even if it does "
+            "not validate yet; secrets are refused. Register a new file in the "
+            "profile draft with config: {draft: <name>.draft.config}.",
+            _obj(
+                {
+                    "name": {"type": "string"},
+                    "text": {"type": "string"},
+                    "expected_sha256": {"type": ["string", "null"]},
+                },
+                ["name", "text", "expected_sha256"],
+            ),
+            _D,
+            "draft",
+            _write_config,
+        ),
+        Operation(
+            "parameter_usage",
+            "Where workflow code and configs read params.*: undeclared executable "
+            "references, values configs set for themselves (such as the genomes "
+            "map), comment-only mentions and declared-but-unused parameters.",
+            _obj(),
+            _R,
+            "read",
+            _parameter_usage,
+        ),
+        Operation(
+            "component_inventory",
+            "Every module with its tool, versions, conda packages and each "
+            "runtime-specific container reference with its source location.",
+            _obj(),
+            _R,
+            "read",
+            _component_inventory,
+        ),
+        Operation(
+            "analyse_execution",
+            "Resource selectors (withLabel/withName), processes by label, every "
+            "task.memory use and whether it is guarded; with config (a profile "
+            "config name) also its executor, memory = null coverage, memory per "
+            "core and the CPUs each selector needs for its intended memory.",
+            _obj({"config": {"type": "string"}}),
+            _R,
+            "read",
+            _analyse_execution,
         ),
         Operation(
             "read_source",
@@ -874,14 +1128,16 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "list_pending",
-            "Pending candidates of outputs, components or execution-profiles, "
-            "with evidence.",
+            "Advisory discovery candidates of outputs, components or "
+            "execution-profiles, with evidence (hints, not a review queue; "
+            "include_decided also lists seeded, accepted and rejected ones).",
             _obj(
                 {
                     "layer": {
                         "type": "string",
                         "enum": ["outputs", "components", "execution-profiles"],
-                    }
+                    },
+                    "include_decided": {"type": "boolean"},
                 },
                 ["layer"],
             ),
@@ -1434,6 +1690,22 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
                 "evidence": _STRINGS,
             },
             ["assessment", "explanation"],
+        ),
+    },
+    "complete_review": {
+        "name": "complete_review",
+        "description": "Finish reviewing the current stage's draft against the "
+        "pipeline: what you checked, what you found, what stays uncertain. Use it "
+        "after inspecting the real sources (it is refused if you inspected "
+        "nothing), whether or not you changed the draft.",
+        "input_schema": _obj(
+            {
+                "summary": {"type": "string"},
+                "checked": _STRINGS,
+                "findings": _STRINGS,
+                "uncertainties": _STRINGS,
+            },
+            ["summary", "checked"],
         ),
     },
     "record_blocker": {

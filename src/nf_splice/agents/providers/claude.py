@@ -26,6 +26,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import typing
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,7 @@ from nf_splice.agents.protocol import (
     ProviderCapabilities,
     ProviderUnavailable,
     TurnRequest,
+    resolve_effort,
 )
 from nf_splice.agents.providers.base import (
     Check,
@@ -112,6 +114,25 @@ def _sdk() -> ModuleType:
             "the Claude provider needs the optional extra: "
             "pip install 'nf-splice[claude]'"
         ) from error
+
+
+def sdk_efforts(sdk: ModuleType | None = None) -> tuple[str, ...]:
+    """Effort values the installed Claude Agent SDK accepts (empty: none)."""
+    try:
+        module = sdk or importlib.import_module("claude_agent_sdk")
+    except ImportError:
+        return ()
+    options = getattr(module, "ClaudeAgentOptions", None)
+    fields = getattr(options, "__dataclass_fields__", {})
+    if "effort" not in fields:
+        return ()
+    types = importlib.import_module(f"{module.__name__}.types")
+    level = getattr(types, "EffortLevel", None)
+    values = typing.get_args(level) if level is not None else ()
+    return tuple(str(item) for item in values) or ("low", "medium", "high")
+
+
+REASONING_CONTROL = "Claude Agent SDK effort with adaptive thinking"
 
 
 def classify(status: int, body: str, headers: dict[str, str] | Any) -> ProviderError:
@@ -276,6 +297,8 @@ class ClaudeProvider:
             continuation=True,
             inference="remote",
             billing="anthropic-console-credits",
+            reasoning_control=REASONING_CONTROL,
+            reasoning_efforts=sdk_efforts(),
         )
 
     def open(self, repository: Path) -> ClaudeSession:
@@ -292,6 +315,8 @@ class ClaudeSession:
     _reference: str | None = None
     _client: Any = None
     _reported_cost: float = 0.0
+    notice: str | None = None
+    applied_effort: str | None = None
 
     @property
     def conversation_ref(self) -> str | None:
@@ -364,6 +389,22 @@ class ClaudeSession:
             "max_budget_usd": request.max_budget_usd,
             "model": request.model,
         }
+        effort, notice = resolve_effort(
+            request.reasoning_effort,
+            sdk_efforts(sdk),
+            provider="claude",
+            control=REASONING_CONTROL,
+        )
+        self.notice = notice
+        if effort is not None:
+            # Effort guides adaptive thinking depth; the model decides when
+            # and how much to think within it.
+            options["effort"] = effort
+            if "thinking" in getattr(
+                sdk.ClaudeAgentOptions, "__dataclass_fields__", {}
+            ):
+                options["thinking"] = {"type": "adaptive"}
+            self.applied_effort = effort
         reference = request.conversation_ref or self._reference
         if reference:
             options["resume"] = reference
@@ -385,10 +426,11 @@ class ClaudeSession:
             )
         # Each turn is a new CLI process, whose reported cost starts at zero.
         self._reported_cost = 0.0
+        options = self.options(sdk, request, key)
+        if self.notice:
+            yield AgentEvent(EventKind.NOTICE, self.notice)
         try:
-            async with sdk.ClaudeSDKClient(
-                options=self.options(sdk, request, key)
-            ) as client:
+            async with sdk.ClaudeSDKClient(options=options) as client:
                 self._client = client
                 await client.query(request.instruction)
                 async for message in client.receive_response():

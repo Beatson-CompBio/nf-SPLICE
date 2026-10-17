@@ -12,7 +12,7 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | Page | What you will learn |
 | --- | --- |
 | [Getting started](guide/getting-started.md) | Install nf-splice and publish your first bundle |
-| [Core concepts](guide/concepts.md) | Layers, drafts, review, and job/sample/run |
+| [Core concepts](guide/concepts.md) | Layers, seeded drafts, review, readiness, and job/sample/run |
 
 ## Review the bundle, layer by layer
 

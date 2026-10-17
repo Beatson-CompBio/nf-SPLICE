@@ -23,7 +23,7 @@
       "container_engine": "singularity",
       "config": "configs/profile-slurm-736c75726d.config",
       "default": true,
-      "config_strategy": "generated",
+      "config_strategy": "authored",
       "site_parameters": [
         {
           "name": "queue",

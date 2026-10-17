@@ -29,7 +29,7 @@ a file is published only if a publication rule copies it to the results:
 
 It follows these rules, including `pattern` filters, `enabled` flags and
 `saveAs`, and records the `if`/`else` conditions under which each process
-runs. Only published outputs become candidates for review. Intermediates,
+runs. Only published outputs are seeded into the catalogue. Intermediates,
 such as a sorting step whose output nothing publishes, are listed
 separately and never offered.
 
@@ -53,7 +53,7 @@ nf-splice configure outputs --example-output-tree ../results
 nf-splice configure outputs --publish-directory ../results
 ```
 
-Examples improve candidates (for example, per-sample file names) and reveal
+Examples add evidence (for example, per-sample file names) and reveal
 mistakes, but never remove supported routes that the run did not take.
 nf-splice never follows symbolic links in an example or reads outside it.
 
@@ -95,15 +95,16 @@ skip QC. You have results from one STAR run with QC.
 1. Create drafts and discover outputs with the example:
 
    ```bash
-   nf-splice init --accept-detected
-   nf-splice configure outputs --example-output-tree ../results-star --export-unresolved -
+   nf-splice init
+   nf-splice configure outputs --example-output-tree ../results-star
    ```
 
-   Candidates include both `star_align_bam` and `hisat2_align_bam`, Salmon's
-   `quant` and MultiQC's `report`, but no samtools sorted BAM.
+   The seeded catalogue has both `star_align_bam` and `hisat2_align_bam`,
+   Salmon's `quant` and MultiQC's `report`, but no samtools sorted BAM.
 
-2. Accept every supported route, including HISAT2 and Salmon, and reject
-   anything that is not a platform output (see [Outputs](outputs.md)).
+2. Edit `outputs.draft.yaml`: describe each output, keep every supported
+   route (HISAT2 and Salmon included), and remove or exclude anything that is
+   not a platform output (see [Outputs](outputs.md)).
 
 3. Build, then check:
 
@@ -127,16 +128,15 @@ skip QC. You have results from one STAR run with QC.
 You can integrate a pipeline without any results:
 
 ```bash
-nf-splice init --accept-detected
-nf-splice configure outputs --export-unresolved -
+nf-splice init
+nf-splice draft validate outputs
 nf-splice assess
 ```
 
-Candidates come from the code alone. `assess` reports observed-output
+The seeded catalogue comes from the code alone. `assess` reports observed-output
 compatibility as *not assessed*: that is not a failure, only less evidence.
 Path patterns for per-sample files are derived from the code; check the ones
-marked `inferred_unverified` against the module source before accepting
-them.
+marked `inferred_unverified` against the module source.
 
 ## Tutorial: optional nf-core checks
 

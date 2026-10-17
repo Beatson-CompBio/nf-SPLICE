@@ -174,6 +174,28 @@ References: [providers](https://opencode.ai/docs/providers/),
 [models](https://opencode.ai/docs/models/),
 [permissions](https://dev.opencode.ai/v2/docs/permissions/).
 
+## Reasoning effort
+
+Sessions ask for `high` reasoning effort by default
+(`--reasoning-effort low|medium|high|xhigh|max|default`). Effort is not a
+token, time or cost budget, and providers control it differently:
+
+| Provider | Control nf-splice sets | Notes |
+| --- | --- | --- |
+| Claude | Claude Agent SDK `effort`, with adaptive thinking | Values come from the installed SDK |
+| OpenAI | Responses API `reasoning.effort` | low, medium, high; a model may still refuse a value |
+| Codex | `effort` on each `turn/start` | low to xhigh; xhigh depends on the model |
+| OpenCode | the model's variant (`provider/model#high`) | Only models that list variants; local models often have none |
+
+When the provider cannot apply what you asked for, nf-splice says so in the
+session and uses the nearest lower value, or the provider's default when
+there is no control at all. The session report shows what was requested and
+what was applied. Which model and how much reasoning your account gets is
+decided by your provider plan, not by nf-splice.
+
+Scripted sessions in nf-splice's own tests prove that tools, approvals and
+validation work; they say nothing about how well a real model reasons.
+
 ## When a provider stops
 
 A session is saved before every provider request. If a provider stops (a

@@ -12,10 +12,13 @@ from textual.widgets import Button, DataTable, Input, Label, Static, Switch
 from nf_splice.domain.identity import PIPELINE_FIELD_ORDER
 from nf_splice.interfaces.tui.screens._common import issue_lines
 from nf_splice.interfaces.tui.state import WizardSnapshot
-from nf_splice.interfaces.tui.widgets import StepView
+from nf_splice.interfaces.tui.widgets import FilePanel, StepView
 from nf_splice.layers import confirm_values
 from nf_splice.layers.base import load_review_state, read_layer
-from nf_splice.layers.bundle import set_identity_fields, validate_bundle_draft
+from nf_splice.layers.bundle import (
+    set_identity_fields,
+    unreviewed_detected_values,
+)
 
 #: Scalar fields edited with one input each, driven by the domain field order.
 SCALAR_FIELDS = tuple(
@@ -35,6 +38,7 @@ class IdentityView(StepView):
     )
 
     def compose(self) -> ComposeResult:
+        yield FilePanel("bundle")
         yield Static("Detected evidence", classes="heading")
         yield Static("", id="identity-evidence", classes="section")
         for name in SCALAR_FIELDS:
@@ -211,11 +215,7 @@ class IdentityView(StepView):
             )
         elif button == "identity-confirm":
             event.stop()
-            pending = [
-                item.pointer
-                for item in validate_bundle_draft(app.repository).issues
-                if item.code == "unconfirmed_detected_value"
-            ]
+            pending = list(unreviewed_detected_values(app.repository))
             if not pending:
                 app.set_status("No detected values await confirmation.")
                 return

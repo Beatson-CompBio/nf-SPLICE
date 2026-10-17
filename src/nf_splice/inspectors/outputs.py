@@ -21,6 +21,7 @@ from nf_splice.domain import (
     OutputScope,
 )
 from nf_splice.inspectors.routes import CoverageStatus, analyse_routes, glob_to_regex
+from nf_splice.layout import PUBLISHED_DIR
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -34,7 +35,6 @@ _IGNORED_DIRECTORIES = {
     ".venv",
     "__pycache__",
     "node_modules",
-    "splice",
     "work",
 }
 _WORKFLOW_OUTPUT = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*.+\.out\b")
@@ -146,7 +146,10 @@ def _source_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for current, directory_names, file_names in os.walk(root, followlinks=False):
         directory_names[:] = sorted(
-            name for name in directory_names if name not in _IGNORED_DIRECTORIES
+            name
+            for name in directory_names
+            if name not in _IGNORED_DIRECTORIES
+            and not (name == PUBLISHED_DIR and Path(current) == root)
         )
         current_path = Path(current)
         files.extend(
@@ -162,8 +165,9 @@ def _meta_descriptions(root: Path) -> dict[tuple[str, str], str]:
     found: dict[tuple[str, str], str] = {}
     for name in ("meta.yml", "meta.yaml"):
         for path in sorted(root.rglob(name)):
-            if any(
-                part in _IGNORED_DIRECTORIES for part in path.relative_to(root).parts
+            parts = path.relative_to(root).parts
+            if parts[0] == PUBLISHED_DIR or any(
+                part in _IGNORED_DIRECTORIES for part in parts
             ):
                 continue
             try:
@@ -417,57 +421,141 @@ def _catalogue_scope(value: str | None) -> OutputScope | None:
         return None
 
 
-def _existing_outputs(root: Path) -> list[_RawCandidate]:
+#: Scopes of earlier, pre-0.3.0 catalogues mapped to 0.3.0 scopes. A
+#: ``cohort`` output there belonged to one whole job (ADR-0027).
+_LEGACY_SCOPES = {"cohort": "job", "job": "job", "sample": "sample", "run": "run"}
+
+
+@dataclass(frozen=True, slots=True)
+class PublishedCatalogue:
+    """A previously published ``splice/outputs.yaml``, read as evidence.
+
+    ``outputs`` are in the shape of ``outputs.draft.yaml`` entries; values the
+    0.3.0 contract cannot hold (an unknown format or scope) are dropped and
+    listed in ``notes`` rather than guessed.
+    """
+
+    location: str
+    format: str
+    outputs: tuple[dict[str, object], ...]
+    categories: dict[str, dict[str, str]]
+    notes: tuple[str, ...]
+
+
+def _listed(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if item is not None]
+    return [str(value)] if value is not None else []
+
+
+def published_catalogue(root: Path) -> PublishedCatalogue | None:
+    """Read ``splice/outputs.yaml`` (0.3.0 or an earlier layout) as evidence."""
     path = root / "splice" / "outputs.yaml"
     if not path.is_file() or path.is_symlink():
-        return []
+        return None
     try:
         loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
-        return []
-    if (
-        not isinstance(loaded, dict)
-        or "catalogue_format_version" not in loaded
-        or not isinstance(loaded.get("outputs"), list)
-    ):
-        return []
-    found: list[_RawCandidate] = []
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return None
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("outputs"), list):
+        return None
+    layout = "0.3.0" if "catalogue_format_version" in loaded else "earlier (pre-0.3.0)"
+    known_formats = {item.value for item in OutputFormat}
+    notes: list[str] = []
+    outputs: list[dict[str, object]] = []
     for index, output in enumerate(loaded["outputs"]):
         if not isinstance(output, dict) or not output.get("key"):
             continue
-        patterns = output.get("path_patterns")
-        pattern = patterns[0] if isinstance(patterns, list) and patterns else None
-        formats = output.get("format")
-        output_format = None
-        if isinstance(formats, list) and formats:
-            try:
-                output_format = OutputFormat(str(formats[0]))
-            except ValueError:
-                pass
-        scopes = output.get("scope")
-        scope = _catalogue_scope(
-            str(scopes[0]) if isinstance(scopes, list) and scopes else None
+        where = f"splice/outputs.yaml outputs[{index}]"
+        formats = [item for item in _listed(output.get("format")) if item]
+        dropped = [item for item in formats if item not in known_formats]
+        if dropped:
+            notes.append(f"{where}: format(s) {dropped} are not 0.3.0 formats")
+        scopes = []
+        for item in _listed(output.get("scope")):
+            mapped = _LEGACY_SCOPES.get(item)
+            if mapped is None:
+                notes.append(f"{where}: scope {item!r} has no 0.3.0 equivalent")
+            elif mapped not in scopes:
+                scopes.append(mapped)
+        labels = output.get("labels")
+        entry: dict[str, object] = {
+            "key": _safe_key(str(output["key"])),
+            "title": output.get("title"),
+            "description": output.get("description"),
+            "category": output.get("category"),
+            "formats": [item for item in formats if item in known_formats],
+            "scopes": scopes,
+            "entity_types": [
+                item
+                for item in _listed(output.get("entity_type")) or ["file"]
+                if item in {"file", "directory"}
+            ],
+            "path_patterns": _listed(output.get("path_patterns")),
+        }
+        if output.get("stage"):
+            entry["stage"] = str(output["stage"])
+        label_items = (
+            [{"name": str(k), "value": str(v)} for k, v in sorted(labels.items())]
+            if isinstance(labels, dict)
+            else []
         )
-        entities = output.get("entity_type")
-        entity = None
-        if isinstance(entities, list) and entities:
-            try:
-                entity = OutputEntityType(str(entities[0]))
-            except ValueError:
-                pass
+        if output.get("aligner") and not any(
+            item["name"] == "aligner" for item in label_items
+        ):
+            label_items.append({"name": "aligner", "value": str(output["aligner"])})
+        if label_items:
+            entry["labels"] = label_items
+        outputs.append(entry)
+    categories: dict[str, dict[str, str]] = {}
+    raw_categories = loaded.get("categories")
+    items: list[tuple[object, object]] = []
+    if isinstance(raw_categories, dict):
+        items = list(raw_categories.items())
+    elif isinstance(raw_categories, list):
+        items = [
+            (item.get("key"), item) for item in raw_categories if isinstance(item, dict)
+        ]
+    for key, details in items:
+        if isinstance(key, str) and isinstance(details, dict):
+            categories[key] = {
+                name: str(details[name])
+                for name in ("title", "description")
+                if details.get(name)
+            }
+    return PublishedCatalogue(
+        "splice/outputs.yaml", layout, tuple(outputs), categories, tuple(notes)
+    )
+
+
+def _existing_outputs(root: Path) -> list[_RawCandidate]:
+    published = published_catalogue(root)
+    if published is None:
+        return []
+    found: list[_RawCandidate] = []
+    for index, output in enumerate(published.outputs):
+        if not output.get("path_patterns"):
+            continue
+        formats = output.get("formats")
+        scopes = output.get("scopes")
+        entities = output.get("entity_types")
         found.append(
             _RawCandidate(
-                key=_safe_key(str(output["key"])),
-                path_pattern=str(pattern) if pattern else None,
+                key=str(output["key"]),
+                path_pattern=str(output["path_patterns"][0]),  # type: ignore[index]
                 location=f"splice/outputs.yaml:outputs[{index}]",
                 source="existing_integration",
                 title=str(output["title"]) if output.get("title") else None,
                 description=(
                     str(output["description"]) if output.get("description") else None
                 ),
-                output_format=output_format,
-                scope=scope,
-                entity_type=entity,
+                output_format=OutputFormat(formats[0])  # type: ignore[index]
+                if formats
+                else None,
+                scope=OutputScope(scopes[0]) if scopes else None,  # type: ignore[index]
+                entity_type=OutputEntityType(entities[0])  # type: ignore[index]
+                if entities
+                else None,
                 confidence=0.9,
             )
         )

@@ -1,7 +1,7 @@
 # Getting started
 
 This page takes you from installation to your first published SPLICE bundle,
-reviewing it yourself. Allow about thirty minutes for a typical Nextflow
+authoring it yourself. Allow about thirty minutes for a typical Nextflow
 pipeline. To let an agent do the work with you or for you instead, see
 [Agentic AI](agentic-ai.md).
 
@@ -46,88 +46,105 @@ See [Working copy and Git](working-copy.md) for Git URLs and other options.
 From the root of the working copy:
 
 ```bash
-nf-splice init --accept-detected
+nf-splice init
 ```
 
-`init` reads your repository (Nextflow configuration, `nextflow_schema.json`,
-modules, Git, `CITATION.cff`, `README.md`) and writes one draft file per part
-of the bundle under `.splice-local/drafts/`. Nothing outside `splice/` is changed,
-and running it again never replaces a draft you already have.
+`init` reads your repository and writes six draft files, already filled in
+with what the evidence supports:
 
-`--accept-detected` accepts the identity values that all sources agree on.
-Anything ambiguous is left empty for you to decide.
+| Draft (in `.splice-local/drafts/`) | Seeded from |
+| --- | --- |
+| `bundle.draft.yaml` | `nextflow.config`, `CITATION.cff`, `README.md`, Git, a root RO-Crate |
+| `inputs.draft.yaml` | every parameter in `nextflow_schema.json`, nobody allowed to change it yet |
+| `outputs.draft.yaml` | an earlier `splice/outputs.yaml`, or one entry per published route |
+| `components.draft.yaml` | every module in `modules.json` with its container per runtime |
+| `execution-profiles.draft.yaml` and `configs/default.draft.config` | a default profile and a native Nextflow config, or an earlier bundle's profiles |
+| `provenance.draft.yaml` | a copy of your root `ro-crate-metadata.json`, or one built from the identity |
 
-## 3. See what is left to do
+Seeded values are a starting point, not a verdict: unknown values are empty
+and first guesses are marked as such. Nothing outside `.splice-local/` is
+changed, and running `init` again never touches a draft you already have.
+
+## 3. Edit the files
+
+The drafts are yours. Open them in any editor, for example VS Code:
 
 ```bash
-nf-splice status
+code .splice-local/drafts/
 ```
 
-```text
-Layers:
-  bundle: incomplete; errors=4; warnings=1; finals: bundle.json=absent
-  inputs: incomplete; errors=3; warnings=0; finals: inputs.schema.json=absent
-  outputs: incomplete; errors=5; warnings=0; ...
-Bundle ready to publish: no
+Edit anything, add what discovery missed, delete what is wrong. The
+profile's actual Nextflow configuration is the native file
+`.splice-local/drafts/configs/default.draft.config`; edit it like any other
+Nextflow config. Check a layer at any time:
+
+```bash
+nf-splice draft validate outputs
+nf-splice draft validate execution-profiles
 ```
 
-Each part of the bundle (a *layer*) is `missing`, `malformed`, `incomplete`
-or `ready`. `nf-splice plan` lists every open item with the draft field it
-refers to.
+Validation reads the file on disk and never changes it. Errors give the file,
+the field (a JSON pointer such as `/outputs/3/scopes`) and what to do; a file
+that does not parse is reported and left as it is. You never have to accept
+or reject discovery candidates: a valid draft builds as it is.
 
-## 4. Review each layer
-
-The quickest route is the guided wizard. It walks through every layer in
-order and shows what is still needed:
+If you prefer forms, the wizard shows the same files with tables, Open YAML,
+Reload, Validate and Preview buttons:
 
 ```bash
 nf-splice tui
 ```
 
-If you prefer commands or scripts, review each layer with
-`nf-splice configure`, or edit the draft files in your editor. All three
+`nf-splice configure <layer>` makes targeted edits from the command line. All
 routes write the same files and can be mixed freely. The layer guides
-describe each step:
+describe each one:
 
-1. [Identity](identity.md): name, version, description, authors. When it
-   is ready, run `nf-splice draft sync-identity`. Then declare the
-   [assay capabilities](assays.md): which assays the pipeline can process.
+1. [Identity](identity.md) and [assay capabilities](assays.md)
 2. [Inputs](inputs.md): who may change each parameter
-3. [Outputs](outputs.md): what the pipeline produces
+3. [Outputs](outputs.md): what the pipeline publishes
 4. [Components](components.md): modules and container images
 5. [Execution profiles](execution-profiles.md): how the pipeline runs
 6. [Provenance](provenance.md): the RO-Crate
 
-## 5. Publish
-
-When `nf-splice status` reports every layer as `ready`:
+## 4. See what is left to do
 
 ```bash
-nf-splice build all --check
+nf-splice status
+nf-splice plan
+```
+
+`status` shows each layer as `missing`, `malformed`, `incomplete` or
+`ready`; `plan` lists every blocker with the draft field it refers to.
+
+## 5. Publish
+
+When `nf-splice plan` reports no blockers:
+
+```bash
 nf-splice build all
 nf-splice validate
 ```
 
-`--check` shows what would be written without writing it. The published
-bundle is in `splice/`. Commit `splice/` and the updated `.gitignore`. Your
-drafts stay in the private `.splice-local/` folder, which is not committed;
-keep it to make later updates from the same reviewed decisions.
+`validate` reports whether the bundle is structurally valid, scientifically
+classified and ready for ingestion, with each readiness dimension separately
+(contracts, classification, runtime parameters, deployment, provenance,
+publication). The published bundle is in `splice/`. Commit `splice/` and the
+updated `.gitignore`; your drafts stay in the private `.splice-local/` folder.
 
 ```bash
 nf-splice git commit
-nf-splice export --archive-scope bundle
+nf-splice export --archive-scope pipeline
 ```
 
-`git commit` records the validated bundle on your local branch;
-`export` writes a verified ZIP (see [Export a ZIP archive](export.md)).
+`export` writes a verified ZIP; the pipeline archive is a standard Workflow
+RO-Crate (see [Export a ZIP archive](export.md)).
 
 ## Next steps
 
-- [Agentic AI](agentic-ai.md) shows how an agent can do this work with you,
-  or for you.
-- [Output routes and evidence](output-coverage.md) explains how to check
-  outputs across alternative routes with `nf-splice assess`.
-- [Publishing and updating](publishing.md) explains releasing a new version.
-- [Job outputs](job-outputs.md) explains what happens after each job runs.
-- [Core concepts](concepts.md) explains drafts, layers and review in more
-  depth.
+- [Agentic AI](agentic-ai.md): an agent investigates the pipeline and
+  improves the drafts with you, or for you.
+- [Output routes and evidence](output-coverage.md): outputs across
+  alternative routes with `nf-splice assess`.
+- [Publishing and updating](publishing.md): releasing a new version.
+- [Job outputs](job-outputs.md): what happens after each job runs.
+- [Core concepts](concepts.md): drafts, layers, evidence and readiness.

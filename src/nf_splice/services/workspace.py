@@ -25,15 +25,18 @@ from nf_splice.layers.base import (
     edit_draft,
     layer_spec,
     read_layer,
-    seed_draft,
 )
-from nf_splice.layers.bundle import SeedResult, seed_bundle_draft, validate_bundle_draft
+from nf_splice.layers.bundle import (
+    SeedResult,
+    seed_bundle_draft,
+    unreviewed_detected_values,
+)
 from nf_splice.layers.components import discover_components
 from nf_splice.layers.execution import discover_execution
 from nf_splice.layers.inputs import SOURCE as INPUT_SOURCE
 from nf_splice.layers.inputs import import_inputs
 from nf_splice.layers.outputs import discover_outputs
-from nf_splice.layers.provenance import LAYER as PROVENANCE
+from nf_splice.layers.provenance import seed_provenance
 from nf_splice.services.lifecycle import (
     JOURNAL,
     ArtifactStatus,
@@ -130,33 +133,35 @@ def initialise(
     seeded = seed_bundle_draft(root, explicit=identity)
     confirmed: tuple[str, ...] = ()
     if accept_detected:
-        pending = [
-            item.pointer
-            for item in validate_bundle_draft(root).issues
-            if item.code == "unconfirmed_detected_value"
-        ]
+        pending = list(unreviewed_detected_values(root))
         if pending:
             confirm_values(root, "bundle", pending, context)
             confirmed = tuple(pending)
-    if (root / INPUT_SOURCE).is_file():
-        import_inputs(root)
-    else:
-        notes.append(f"{INPUT_SOURCE} not found; inputs draft not created")
-    discover_outputs(
+    if not (root / INPUT_SOURCE).is_file():
+        notes.append(
+            f"{INPUT_SOURCE} not found: the inputs draft is an empty contract to "
+            "complete by hand"
+        )
+    import_inputs(root)
+    outputs = discover_outputs(
         root,
         example_output_tree=example_output_tree,
         publish_directory=publish_directory,
         schema_version=contract_version,
     )
-    if (root / "modules.json").is_file():
-        discover_components(root)
-    else:
-        notes.append("modules.json not found; components draft not created")
-    if (root / "nextflow.config").is_file():
-        discover_execution(root)
-    else:
-        notes.append("nextflow.config not found; execution-profiles draft not created")
-    seed_draft(root, PROVENANCE, {"strategy": None, "source": None, "crate": None})
+    notes.extend(outputs.notes)
+    if not (root / "modules.json").is_file():
+        notes.append(
+            "modules.json not found: components were seeded from modules/ on disk"
+        )
+    discover_components(root)
+    if not (root / "nextflow.config").is_file():
+        notes.append(
+            "nextflow.config not found: execution profiles start from a default "
+            "scaffold"
+        )
+    discover_execution(root)
+    notes.extend(seed_provenance(root))
     after = {spec.name for spec in LAYERS if (root / spec.draft).exists()}
     return InitialisationReport(
         created=tuple(sorted(after - before)),

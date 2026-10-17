@@ -55,15 +55,35 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
 
     reject_output(manual, candidate, "Internal QC only", ADA)
 
+    def review(stage: str) -> dict[str, object]:
+        """A scripted review: inspect the source, find nothing to change."""
+        return {
+            "stage": stage,
+            "purpose": "plan",
+            "steps": [
+                {"tool": "read_source", "arguments": {"path": "main.nf"}},
+                {
+                    "tool": "complete_review",
+                    "arguments": {
+                        "summary": f"The {stage} draft matches the pipeline.",
+                        "checked": ["main.nf"],
+                    },
+                },
+            ],
+        }
+
     engine = SessionEngine.create(
         assisted,
         mode=InteractionMode.ASSISTED,
         provider=ScriptedProvider(
             [
+                review("identity"),
+                review("inputs"),
                 {
                     "stage": "outputs",
                     "purpose": "plan",
                     "steps": [
+                        {"tool": "analyse_routes", "arguments": {}},
                         {"tool": "list_pending", "arguments": {"layer": "outputs"}},
                         {
                             "tool": "reject_output",
@@ -77,7 +97,10 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
                             "arguments": {"summary": "Reject the internal QC file."},
                         },
                     ],
-                }
+                },
+                review("components"),
+                review("profiles"),
+                review("provenance"),
             ]
         ),
         objective="review the new candidate",

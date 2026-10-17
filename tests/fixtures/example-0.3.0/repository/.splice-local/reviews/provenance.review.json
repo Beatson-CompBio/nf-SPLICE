@@ -1,16 +1,20 @@
 {
   "confirmed": {
     "/crate": {
-      "sha256": "f039e649a4b906c2c5c965f14433fd748a6c6edb4ad4cbde3f95ee6aa7dae763",
-      "event": "event:54657a7dd55e3892"
+      "sha256": "03e73376346b54fd0306386ab2b6497ebdc1aa079bcc59d89a5485a7bef568f3",
+      "event": "event:a61e77a2ef409316"
     },
     "/source": {
       "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
-      "event": "event:54657a7dd55e3892"
+      "event": "event:a61e77a2ef409316"
     },
     "/strategy": {
       "sha256": "dc9eb7787a90eeea09680a991ed664de9ff336599600fc5b36d1b0cf28221398",
       "event": "event:54657a7dd55e3892"
+    },
+    "/origin": {
+      "sha256": "dc9eb7787a90eeea09680a991ed664de9ff336599600fc5b36d1b0cf28221398",
+      "event": "event:a61e77a2ef409316"
     }
   },
   "events": [
@@ -78,11 +82,76 @@
       "before_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
       "after_sha256": "29c02b1fe956a2953a70bd422d4b5f219f136b34e1b8b5fe6ad7560d095fcf4e",
       "source_revision": null
+    },
+    {
+      "id": "event:4a675c019578cca5",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "provenance",
+      "action": "promote",
+      "pointers": [
+        "ro-crate-metadata.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "035814d1ccf64129de67c136db32db5332b6513893b71e0830b7abad399c83c0",
+      "after_sha256": "035814d1ccf64129de67c136db32db5332b6513893b71e0830b7abad399c83c0",
+      "source_revision": null
+    },
+    {
+      "id": "event:a61e77a2ef409316",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "provenance",
+      "action": "generate_minimal",
+      "pointers": [
+        "/crate",
+        "/origin",
+        "/source"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "035814d1ccf64129de67c136db32db5332b6513893b71e0830b7abad399c83c0",
+      "after_sha256": "d7ba90cc514b80fcc4976875ebe06dc215796c4178d33d1885515cacee167a1e",
+      "source_revision": null
+    },
+    {
+      "id": "event:8a600564b07a3c67",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "provenance",
+      "action": "promote",
+      "pointers": [
+        "ro-crate-metadata.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "d7ba90cc514b80fcc4976875ebe06dc215796c4178d33d1885515cacee167a1e",
+      "after_sha256": "d7ba90cc514b80fcc4976875ebe06dc215796c4178d33d1885515cacee167a1e",
+      "source_revision": null
     }
   ],
   "format": "0.3.0",
   "layer": "provenance",
   "promoted": {
-    "ro-crate-metadata.json": "66ff156fd2e4411a7d0fc4ed7853b3243c97318384b8072810ee95a8c64df68c"
+    "ro-crate-metadata.json": "1dda905f610fc9a19c2066b1077cbf38ee6b148d33ecd77f1b6a650f2fa222f5"
   }
 }

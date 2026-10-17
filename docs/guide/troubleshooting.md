@@ -16,18 +16,23 @@ Run `nf-splice plan` to see everything still open, or
 | Code | Meaning | What to do |
 | --- | --- | --- |
 | `missing_required` | A required value is empty. | Set it with `nf-splice configure` or in the draft. |
-| `unconfirmed_detected_value` | A value was detected but not yet confirmed. | Confirm it with `nf-splice draft confirm`, or edit it. |
 | `conflicting_evidence` | Sources disagree about a value. | Set the value yourself. |
 | `placeholder` | A value looks like template text, such as `TODO`. | Replace it with the real value. |
 | `invalid_value` | A value has the wrong form, such as a malformed URL or ORCID iD. | Correct it. |
 | `recommended` | A recommended value is missing. | Optional; add it for a better listing. |
-| `pending_candidate` | A discovered output, module or profile needs a decision. | Accept or reject it. |
-| `access_unreviewed` | A parameter has no access policy. | See [Inputs](inputs.md). |
-| `missing_default` | No default execution profile is chosen. | See [Execution profiles](execution-profiles.md#4-choose-the-default). |
+| `unresolved` | A seeded entry still lacks a required value. | Write it into the draft; `nf-splice draft validate --help`, or the wizard's *Explain errors*. |
+| `route_not_covered` (warning) | A published route matches no output. | Add an output, or list it under `excluded_routes` with a reason. |
+| `unresolved_component` | A module's container or version needs a decision. | Resolve it in the draft and remove the `unresolved` entry. |
+| `module_not_listed` (warning) | A module is not in the inventory. | Add it, or leave it out on purpose. |
+| `syntax` | A draft cannot be parsed. | Fix it in your editor; nf-splice never rewrites it. |
+| `access_unreviewed` | A parameter you added has no access policy. | Give it `x-splice-access.editable_by` (`[]` for nobody); see [Inputs](inputs.md). |
+| `section_policy` | A config's parameter section conflicts with the access policy. | See [Execution profiles](execution-profiles.md#checks). |
+| `root_property` (warning) | The RO-Crate lacks a required root property. | See [Provenance](provenance.md). |
+| `missing_default` | No default execution profile is chosen. | Set `default_profile`; see [Execution profiles](execution-profiles.md). |
 | `identity_not_ready` | Another layer is waiting for the identity. | Finish [Identity](identity.md) first. |
 | `identity_mismatch` | A layer repeats an outdated identity. | Run `nf-splice draft sync-identity`. |
 | `inputs_not_ready` | Profile parameter overrides need a ready inputs layer. | Finish [Inputs](inputs.md) first. |
-| `needs_materialisation` | Images must be downloadable but one is not verified. | See [Components](components.md#3-verify-image-files). |
+| `needs_materialisation` | Images must be downloadable but one is not verified. | See [Components](components.md#deliver-images-to-an-object-store). |
 
 ## Common situations
 

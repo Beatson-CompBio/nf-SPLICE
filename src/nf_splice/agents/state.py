@@ -61,7 +61,6 @@ _SKIP_DIRECTORIES = {
     ".git",
     WORKSPACE,
     ".nf-splice-local",
-    "splice",
     "work",
     ".nextflow",
     "node_modules",
@@ -114,6 +113,31 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ReviewRecord(_Model):
+    """An AI review of one layer, with the facts that show it happened.
+
+    ``inspected`` is recorded by nf-splice from the tool calls the model
+    actually made (files and line ranges read, searches, analyses), never
+    from what the model says it looked at. ``kind`` is ``scientific`` for
+    identity, inputs, outputs and provenance and ``operational`` for
+    components and execution profiles.
+    """
+
+    kind: str
+    outcome: str
+    summary: str = ""
+    checked: list[str] = Field(default_factory=list)
+    findings: list[str] = Field(default_factory=list)
+    uncertainties: list[str] = Field(default_factory=list)
+    inspected: list[str] = Field(default_factory=list)
+    draft_sha256: str | None = None
+    sources_fingerprint: str = ""
+    provider: str = ""
+    model: str | None = None
+    reasoning_effort: str | None = None
+    at: str = ""
+
+
 class StageRecord(_Model):
     status: StageStatus = StageStatus.PENDING
     attempts: int = 0
@@ -122,6 +146,9 @@ class StageRecord(_Model):
     notes: list[str] = Field(default_factory=list)
     started_at: str | None = None
     completed_at: str | None = None
+    #: Every source read and analysis the model made for this stage.
+    investigation: list[str] = Field(default_factory=list)
+    review: ReviewRecord | None = None
 
 
 class PlannedOperation(_Model):
@@ -221,6 +248,11 @@ class ProviderRecord(_Model):
     account: str | None = None
     billing: str = "unknown"
     inference: str = "remote"
+    reasoning_control: str = "none"
+    #: The effort requested and, after a turn, what the provider applied.
+    reasoning_requested: str | None = None
+    reasoning_applied: str | None = None
+    reasoning_notice: str | None = None
 
 
 class SessionState(_Model):
@@ -348,7 +380,10 @@ def sources_fingerprint(root: Path) -> str:
     def files() -> Iterator[tuple[str, Path]]:
         for current, directories, names in os.walk(root, followlinks=False):
             directories[:] = [
-                item for item in directories if item not in _SKIP_DIRECTORIES
+                item
+                for item in directories
+                if item not in _SKIP_DIRECTORIES
+                and not (item == "splice" and Path(current) == root)
             ]
             for name in names:
                 path = Path(current) / name
@@ -408,6 +443,21 @@ class SessionStore:
         state.updated_at = now()
         directory = self.session_directory(state.id)
         _write_atomic(directory / "session.json", state.model_dump_json(indent=2))
+
+    def latest_review(self, stage: Stage, *, exclude: str = "") -> ReviewRecord | None:
+        """The newest completed review of a stage in another saved session."""
+        found: list[ReviewRecord] = []
+        for item in self.sessions():
+            if item.id == exclude:
+                continue
+            try:
+                state = self.load(item.id)
+            except SessionError:
+                continue
+            review = state.stages[stage].review
+            if review is not None and review.outcome in {"changed", "no_change"}:
+                found.append(review)
+        return max(found, key=lambda item: item.at) if found else None
 
     def load(self, session_id: str | None = None) -> SessionState:
         if session_id is None:

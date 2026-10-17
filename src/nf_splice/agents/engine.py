@@ -71,6 +71,7 @@ from nf_splice.agents.state import (
     PlannedOperation,
     Proposal,
     ProviderRecord,
+    ReviewRecord,
     SessionError,
     SessionState,
     SessionStatus,
@@ -81,9 +82,15 @@ from nf_splice.agents.state import (
     repository_key,
     sources_fingerprint,
 )
-from nf_splice.agents.toolbox import SessionToolbox, ToolMode, TurnOutcome
+from nf_splice.agents.toolbox import (
+    SOURCE_INSPECTIONS,
+    SessionToolbox,
+    ToolMode,
+    TurnOutcome,
+)
 from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
 from nf_splice.layers import ChangeContext
+from nf_splice.layers.base import layer_spec, read_layer
 from nf_splice.layout import STAGING_DIR, is_git_work_tree
 from nf_splice.services import gitops
 from nf_splice.services.coverage import assess
@@ -95,8 +102,15 @@ from nf_splice.services.export import (
 )
 from nf_splice.services.lifecycle import validate_layer
 
-_PLAN_CONTROLS = {"submit_stage_proposal", "record_blocker", "record_evidence"}
-_EXECUTE_CONTROLS = {"record_blocker", "record_evidence"}
+_PLAN_CONTROLS = {
+    "submit_stage_proposal",
+    "complete_review",
+    "record_blocker",
+    "record_evidence",
+}
+_EXECUTE_CONTROLS = {"complete_review", "record_blocker", "record_evidence"}
+#: Layer stages whose review is scientific; the others are operational.
+_SCIENTIFIC = frozenset({Stage.IDENTITY, Stage.INPUTS, Stage.OUTPUTS, Stage.PROVENANCE})
 _PREVIEW_APPROVER = Actor(label="preview", kind=ActorKind.HUMAN)
 
 
@@ -182,6 +196,8 @@ class SessionEngine:
                 model=policy.budgets.model or getattr(provider, "model", None),
                 billing=capabilities.billing,
                 inference=capabilities.inference,
+                reasoning_control=capabilities.reasoning_control,
+                reasoning_requested=policy.budgets.reasoning_effort,
             ),
             policy=policy,
         )
@@ -460,7 +476,103 @@ class SessionEngine:
             stage=stage,
         )
 
+    # -------------------------------------------------------- reviews
+
+    def _source_inspections(self, stage: Stage | None) -> int:
+        if stage is None:
+            return 0
+        return sum(
+            1
+            for item in self.state.stages[stage].investigation
+            if item.split(" ", 1)[0].split("(", 1)[0] in SOURCE_INSPECTIONS
+        )
+
+    def _draft_sha(self, stage: Stage) -> str | None:
+        layer = LAYER_FOR_STAGE.get(stage)
+        if layer is None:
+            return None
+        sha = read_layer(self.root, layer).file.sha256
+        if layer == "execution-profiles":
+            # The profile's configuration lives in its native config files.
+            from nf_splice.layers.execution import list_config_drafts
+
+            configs = [
+                read_layer(self.root, layer).file.sha256 or "",
+                *(
+                    (self.root / item).read_text(encoding="utf-8", errors="replace")
+                    for item in list_config_drafts(self.root)
+                ),
+            ]
+            sha = hashlib.sha256("\0".join(configs).encode()).hexdigest()
+        return sha
+
+    def _review_satisfied(self, stage: Stage) -> bool:
+        """Whether this layer stage has a current AI review (never the gate)."""
+        if stage not in LAYER_FOR_STAGE:
+            return True
+        review = self.state.stages[stage].review
+        current = self._draft_sha(stage)
+        if review is not None and review.outcome in {"changed", "no_change"}:
+            if review.draft_sha256 == current:
+                return True
+        if self.state.policy.review == "reuse_unchanged":
+            previous = self.store.latest_review(stage, exclude=self.state.id)
+            if (
+                previous is not None
+                and previous.draft_sha256 == current
+                and previous.sources_fingerprint == self._fingerprints()[1]
+            ):
+                self.state.stages[stage].review = previous.model_copy(
+                    update={"outcome": previous.outcome}
+                )
+                self.state.say(
+                    "system",
+                    "review_reused",
+                    f"{spec(stage).title}: reusing the review of {previous.at}; "
+                    "the draft and sources are unchanged since.",
+                    stage=stage,
+                )
+                return True
+        return False
+
+    def _record_review(
+        self,
+        stage: Stage,
+        outcome: str,
+        details: dict[str, Any] | None,
+    ) -> None:
+        details = details or {}
+        record = self.state.stages[stage]
+        record.review = ReviewRecord(
+            kind="scientific" if stage in _SCIENTIFIC else "operational",
+            outcome=outcome,
+            summary=str(details.get("summary") or ""),
+            checked=[str(item) for item in details.get("checked") or []],
+            findings=[str(item) for item in details.get("findings") or []],
+            uncertainties=[str(item) for item in details.get("uncertainties") or []],
+            inspected=list(record.investigation),
+            draft_sha256=self._draft_sha(stage),
+            sources_fingerprint=self._fingerprints()[1],
+            provider=self.state.provider.name,
+            model=self.state.provider.model,
+            reasoning_effort=self.state.provider.reasoning_applied,
+            at=now(),
+        )
+        self.state.say(
+            "agent",
+            "review",
+            f"{spec(stage).title} review ({record.review.kind}): "
+            f"{record.review.summary or outcome}",
+            stage=stage,
+            data={"inspected": len(record.investigation)},
+        )
+
     def _record_outcome(self, stage: Stage | None, outcome: TurnOutcome) -> None:
+        if stage is not None:
+            record = self.state.stages[stage]
+            for entry in outcome.inspected:
+                if entry not in record.investigation:
+                    record.investigation.append(entry)
         for item in outcome.evidence:
             self.state.add_evidence(
                 str(item.get("claim", "")),
@@ -545,6 +657,7 @@ class SessionEngine:
             max_budget_usd=remaining,
             model=budgets.model or self.state.provider.model,
             conversation_ref=self.state.provider.conversation_ref,
+            reasoning_effort=budgets.reasoning_effort,
         )
         messages: list[str] = []
 
@@ -556,6 +669,8 @@ class SessionEngine:
                     toolbox.outcome.failures.append(event.text)
                 elif event.kind is EventKind.USAGE:
                     self._account_usage(event.data)
+                elif event.kind is EventKind.NOTICE and event.text:
+                    toolbox.outcome.notices.append(event.text)
                 if self._cancel.is_set():
                     await session.cancel()
                     break
@@ -613,6 +728,26 @@ class SessionEngine:
                 )
                 break
         self.state.provider.conversation_ref = session.conversation_ref
+        provider_record = self.state.provider
+        provider_record.reasoning_requested = budgets.reasoning_effort
+        if toolbox.outcome.notices:
+            provider_record.reasoning_notice = toolbox.outcome.notices[-1]
+            for notice in toolbox.outcome.notices:
+                if not any(
+                    item.kind == "notice" and item.text == notice
+                    for item in self.state.conversation
+                ):
+                    self.state.say("system", "notice", notice, stage=stage)
+        supported = provider.capabilities.reasoning_efforts
+        if budgets.reasoning_effort is None:
+            provider_record.reasoning_applied = None
+        elif not toolbox.outcome.notices and budgets.reasoning_effort in supported:
+            provider_record.reasoning_applied = budgets.reasoning_effort
+        elif toolbox.outcome.notices:
+            text = toolbox.outcome.notices[-1]
+            provider_record.reasoning_applied = next(
+                (item for item in supported if f"'{item}' was used" in text), None
+            )
         toolbox.outcome.messages = messages
         if messages:
             self.state.say("agent", "message", "\n\n".join(messages), stage=stage)
@@ -699,6 +834,7 @@ class SessionEngine:
             session_directory=self.session_directory,
             sandbox=sandbox,
             log=self._log,
+            prior_inspections=self._source_inspections(stage),
         )
 
     # -------------------------------------------------------- assisted planning
@@ -806,15 +942,33 @@ class SessionEngine:
         self.state.status = SessionStatus.AWAITING_INPUT
         self.state.say("agent", "question", message, stage=stage)
 
-    async def _plan_stage(self, stage: Stage, issues: list[str] | None = None) -> None:
+    async def _plan_stage(
+        self, stage: Stage, issues: list[str] | None = None, guidance: str = ""
+    ) -> bool:
+        """Plan one stage; True when its review finished it with no change."""
         record = self.state.stages[stage]
         record.attempts += 1
         instruction = stage_instruction(
             self.root, self.state, stage, issues=issues, attempt=record.attempts
         )
+        if guidance:
+            instruction += "\n\nThe user's guidance:\n" + guidance
         proposal, outcome = await self._plan(stage, "plan", instruction)
         if proposal is not None:
-            return
+            return False
+        if outcome.review is not None and stage in LAYER_FOR_STAGE:
+            result = gate(stage, self.root)
+            if result.passed and not outcome.blockers:
+                self._record_review(stage, "no_change", outcome.review)
+                self._complete(stage, result, "reviewed; no change was needed")
+                return True
+            self._await_input(
+                stage,
+                f"I reviewed {spec(stage).title} but it still fails its validation: "
+                + "; ".join(result.issues[:5])
+                + ". Tell me how to proceed, or edit the draft and continue.",
+            )
+            return False
         if outcome.blockers:
             self._block(stage, record.issues, outcome.blockers, [])
         self._await_input(
@@ -827,6 +981,7 @@ class SessionEngine:
                 "continue."
             ),
         )
+        return False
 
     # -------------------------------------------------------- execution
 
@@ -1138,8 +1293,14 @@ class SessionEngine:
                 self._finish()
                 break
             result = gate(stage, self.root)
-            if result.passed:
-                self._complete(stage, result, "already satisfied by the current files")
+            if result.passed and self._review_satisfied(stage):
+                self._complete(
+                    stage,
+                    result,
+                    "validated and reviewed"
+                    if stage in LAYER_FOR_STAGE
+                    else "already satisfied by the current files",
+                )
                 continue
             if stage is Stage.DISCOVER:
                 self._deterministic_proposal(
@@ -1179,13 +1340,14 @@ class SessionEngine:
             if record.attempts >= state.policy.budgets.max_stage_attempts:
                 self._await_input(
                     stage,
-                    f"{spec(stage).title} still fails after {record.attempts} "
+                    f"{spec(stage).title} still needs work after {record.attempts} "
                     "attempt(s): "
-                    + "; ".join(record.issues[:5])
-                    + ". Tell me how to proceed, or fix the draft and continue.",
+                    + ("; ".join(record.issues[:5]) or "its review is not complete")
+                    + ". Tell me how to proceed, or edit the draft and continue.",
                 )
                 break
-            await self._plan_stage(stage)
+            if await self._plan_stage(stage):
+                continue
             break
         self._save()
         return state
@@ -1255,6 +1417,16 @@ class SessionEngine:
         )
         result = gate(stage, self.root)
         if result.passed:
+            if stage in LAYER_FOR_STAGE:
+                self._record_review(
+                    stage,
+                    "changed",
+                    {
+                        "summary": proposal.summary,
+                        "checked": proposal.evidence,
+                        "uncertainties": proposal.uncertainties,
+                    },
+                )
             self._complete(stage, result)
             self._save()
             return await self._advance()
@@ -1370,21 +1542,9 @@ class SessionEngine:
         record.attempts = 0
         self.state.status = SessionStatus.ACTIVE
         self.state.current_stage = stage
-        record.attempts += 1
-        instruction = (
-            stage_instruction(self.root, self.state, stage, attempt=record.attempts)
-            + "\n\nThe user's guidance:\n"
-            + text
-        )
-        proposal, outcome = await self._plan(stage, "plan", instruction)
-        if proposal is None:
-            if outcome.blockers:
-                self._block(stage, record.issues, outcome.blockers, [])
-            self._await_input(
-                stage,
-                "I still could not propose a sound change. "
-                + "; ".join(str(item.get("decision")) for item in outcome.blockers),
-            )
+        if await self._plan_stage(stage, guidance=text):
+            self._save()
+            return await self._advance()
         self._save()
         return self.state
 
@@ -1422,6 +1582,7 @@ class SessionEngine:
         result = gate(stage, self.root)
         outcome = TurnOutcome()
         attempted: list[str] = []
+        reviewed: dict[str, Any] | None = None
         while record.attempts < self.state.policy.budgets.max_stage_attempts:
             if self._cancel.is_set():
                 return
@@ -1450,14 +1611,26 @@ class SessionEngine:
                 issues=list(result.issues),
                 attempt=record.attempts,
             )
+            if result.passed and record.attempts > 1 and reviewed is None:
+                instruction += (
+                    "\n\nThe draft validates, but the review is not finished: "
+                    "inspect the pipeline's sources for this stage, improve the "
+                    "draft where the evidence says so, then call complete_review."
+                )
             outcome = await self._turn("execute", stage, instruction, toolbox)
             self.state.transaction = None
             self._record_outcome(stage, outcome)
             attempted.extend(outcome.executed)
+            reviewed = outcome.review or reviewed
             result = gate(stage, self.root)
             # A decision the agent says it cannot make keeps the stage open even
             # when validation passes: an optional field may be what is undecided.
-            if result.passed and not outcome.blockers:
+            # Passing validation alone never completes a layer: it needs the
+            # agent's review of the content against the sources.
+            if result.passed and not outcome.blockers and reviewed is not None:
+                self._record_review(
+                    stage, "changed" if attempted else "no_change", reviewed
+                )
                 self._complete(stage, result)
                 self.store.save(self.state)
                 return
@@ -1474,10 +1647,21 @@ class SessionEngine:
                 break
             previous = signature
             self.store.save(self.state)
+        blockers = list(outcome.blockers)
+        if result.passed and not blockers and reviewed is None:
+            blockers.append(
+                {
+                    "decision": f"The {spec(stage).title} draft validates, but its "
+                    "review against the pipeline's sources was not completed",
+                    "artefact": layer_spec(LAYER_FOR_STAGE[stage]).draft,
+                    "suggested_resolution": "resume the session (or review the "
+                    "draft yourself and continue manually)",
+                }
+            )
         self._block(
             stage,
             result.issues,
-            outcome.blockers,
+            blockers,
             [*attempted, f"validate_layer({LAYER_FOR_STAGE[stage]})"],
         )
 
@@ -1550,8 +1734,16 @@ class SessionEngine:
                 self._commit_stage(assisted=False)
             elif stage is Stage.REPORT:
                 break
-            elif (result := gate(stage, self.root)).passed:
-                self._complete(stage, result, "already satisfied by the current files")
+            elif (result := gate(stage, self.root)).passed and self._review_satisfied(
+                stage
+            ):
+                self._complete(
+                    stage,
+                    result,
+                    "validated and reviewed"
+                    if stage in LAYER_FOR_STAGE
+                    else "already satisfied by the current files",
+                )
             elif stage is Stage.DISCOVER:
                 failure = await self._execute(
                     stage,

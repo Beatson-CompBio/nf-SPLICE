@@ -289,16 +289,22 @@ def test_exports_are_deterministic_verified_and_private_free(tmp_path: Path) -> 
     assert again.sha256 == bundle.sha256  # deterministic
 
     pipeline = export_archive(copy, ExportScope.PIPELINE, tmp_path / "pipeline.zip")
-    members = zipfile.ZipFile(pipeline.path).namelist()
-    top = members[0].split("/")[0]
-    assert all(name.startswith(top + "/") for name in members)
-    assert f"{top}/main.nf" in members or f"{top}/nextflow.config" in members
-    assert f"{top}/splice/bundle.json" in members
-    assert not any(".splice-local" in name or "/.git/" in name for name in members)
-    assert not any(name.endswith("/.env") for name in members)
+    archive = zipfile.ZipFile(pipeline.path)
+    members = archive.namelist()
+    # A Workflow RO-Crate: the pipeline at the archive root, with the reviewed
+    # crate as the root descriptor (the published one, byte for byte).
+    assert "main.nf" in members or "nextflow.config" in members
+    assert "splice/bundle.json" in members
+    assert (
+        archive.read("ro-crate-metadata.json")
+        == (copy / "splice" / "ro-crate-metadata.json").read_bytes()
+    )
+    assert any("archive-root ro-crate" in item for item in pipeline.checks)
+    assert not any(".splice-local" in name or ".git/" in name for name in members)
+    assert not any(name.endswith(".env") for name in members)
     extracted = tmp_path / "extracted"
-    zipfile.ZipFile(pipeline.path).extractall(extracted)
-    assert validate_bundle(extracted / top).valid
+    archive.extractall(extracted)
+    assert validate_bundle(extracted).valid
 
     with pytest.raises(ExportError, match="include itself"):
         export_archive(copy, ExportScope.PIPELINE, copy / "inside.zip")

@@ -1,4 +1,4 @@
-"""RO-Crate analysis and reviewed include/enrich/generate strategy."""
+"""The pipeline's RO-Crate graph: authored in the draft, checked against identity."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from textual.widgets import Button, Static
 
 from nf_splice.interfaces.tui.screens._common import issue_lines
 from nf_splice.interfaces.tui.state import WizardSnapshot
-from nf_splice.interfaces.tui.widgets import StepView
+from nf_splice.interfaces.tui.widgets import FilePanel, StepView
 from nf_splice.layers.provenance import (
     analyse_ro_crate,
     choose_include,
@@ -21,17 +21,21 @@ from nf_splice.services.lifecycle import validate_layer
 class ProvenanceView(StepView):
     step_id = "provenance"
     explanation = (
-        "Your repository-root ro-crate-metadata.json is never modified. Include "
-        "it unchanged when current, review an enriched copy when it is stale, or "
-        "generate a minimal Workflow RO-Crate from reviewed identity."
+        "provenance.draft.yaml holds the pipeline's RO-Crate graph, seeded from "
+        "the repository-root crate (a copy; the original is never modified) or "
+        "built from the identity. Edit it with Open YAML, or use a shortcut: "
+        "adopt the current root crate, correct a copy from the reviewed "
+        "identity, or rebuild it from the identity. nf-splice adds the splice/ "
+        "bundle entities when it builds."
     )
 
     def compose(self) -> ComposeResult:
+        yield FilePanel("provenance")
         yield Static("", id="provenance-findings", classes="section")
         with Horizontal(classes="row"):
-            yield Button("Include unchanged", id="provenance-include")
-            yield Button("Review enriched copy", id="provenance-enrich")
-            yield Button("Generate minimal", id="provenance-generate")
+            yield Button("Adopt root crate", id="provenance-include")
+            yield Button("Correct from identity", id="provenance-enrich")
+            yield Button("Rebuild from identity", id="provenance-generate")
         yield Static("", id="provenance-preview", classes="section")
         yield Static("", id="provenance-issues", classes="issues")
 
@@ -39,8 +43,8 @@ class ProvenanceView(StepView):
         analysis = analyse_ro_crate(snapshot.repository)
         if not analysis.present:
             text = (
-                "No repository-root RO-Crate: generate a minimal one from "
-                "reviewed identity."
+                "No repository-root RO-Crate: the draft's graph was built from "
+                "the identity."
             )
         else:
             text = (
