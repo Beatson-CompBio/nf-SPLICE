@@ -21,7 +21,7 @@ import pytest
 from typer.testing import CliRunner
 
 from agent_scripts import RouteAgent, _call
-from layer_fixtures import ADA, write_pipeline
+from layer_fixtures import ADA, follow_scope, write_pipeline
 from multi_route import EXAMPLE, copy_fixture
 from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
 from nf_splice.agents.protocol import ToolInvoker, TurnRequest
@@ -426,6 +426,7 @@ def _declare(request: TurnRequest, tools: ToolInvoker) -> list[str]:
             sources=item["locations"],
         )
     if request.purpose == "plan":
+        follow_scope(tools)
         _call(
             tools,
             "submit_stage_proposal",
@@ -456,11 +457,12 @@ def _withdraw_total(request: TurnRequest, tools: ToolInvoker) -> list[str]:
         rationale="The README documents this library type.",
         sources=["README.md:3"],
     )
+    follow_scope(tools)
     _call(
         tools,
         "submit_stage_proposal",
         summary="Identity with poly(A) RNA-seq only.",
-        evidence=["main.nf"],
+        evidence=["assess_assays"],
         uncertainties=[],
     )
     return ["Revised."]
@@ -554,11 +556,12 @@ def test_autonomous_runs_never_assert_assays_and_record_blockers(
         from multi_route import IDENTITY
 
         _call(tools, "set_identity", changes=dict(IDENTITY))
+        follow_scope(tools)
         _call(
             tools,
             "submit_stage_proposal",
             summary="Identity; the person declared the assays.",
-            evidence=[],
+            evidence=["assess_assays"],
             uncertainties=[],
         )
         return ["Identity is ready for approval."]

@@ -20,7 +20,14 @@ from typing import Any
 
 import pytest
 
-from layer_fixtures import ADA, edit_draft_file, review_turns, write_root_crate
+from layer_fixtures import (
+    ADA,
+    edit_draft_file,
+    review_arguments,
+    review_turns,
+    scripted_review,
+    write_root_crate,
+)
 from multi_route import FIXTURE, author_all, build, copy_fixture
 from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
 from nf_splice.agents.operations import OPERATIONS, OperationContext
@@ -189,11 +196,7 @@ def test_core_07_unfinished_autonomous_work_survives_and_is_honest(
 
     def write_invalid(request: TurnRequest, tools: Any) -> list[str]:
         if request.stage != "outputs":
-            tools.call("read_source", {"path": "main.nf"})
-            tools.call(
-                "complete_review",
-                {"summary": "Fine.", "checked": ["main.nf"]},
-            )
+            scripted_review(tools, str(request.stage))
             return ["Reviewed."]
         draft = tools.call("read_draft", {"layer": "outputs"})["data"]
         tools.call("analyse_routes", {})
@@ -269,7 +272,7 @@ def test_core_09_a_review_without_inspection_is_refused(tmp_path: Path) -> None:
                 "steps": [
                     {
                         "tool": "complete_review",
-                        "arguments": {"summary": "Looks fine.", "checked": []},
+                        "arguments": review_arguments("identity"),
                     }
                 ],
             }

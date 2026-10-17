@@ -6,8 +6,11 @@ script is either a Python callable ``agent(request, tools) -> list[str]``
 (it calls tools itself and returns messages), or a JSON-compatible list of
 turns. Each turn is ``{"stage": ..., "purpose": ..., "steps": [...]}`` (stage
 and purpose optional) and steps are ``{"message": text}`` or
-``{"tool": name, "arguments": {...}}``. Turns are matched in order to the
-first unused turn whose stage and purpose fit the request.
+``{"tool": name, "arguments": {...}}``, or ``{"follow": "review_scope"}``,
+which asks for the stage's review scope and makes every call it suggests
+(what a diligent reviewer would read; it proves the evidence records, not
+any reasoning). Turns are matched in order to the first unused turn whose
+stage and purpose fit the request.
 """
 
 from __future__ import annotations
@@ -100,6 +103,18 @@ class _ScriptedSession:
                 break
             if "message" in step:
                 yield AgentEvent(EventKind.MESSAGE, str(step["message"]))
+                continue
+            if step.get("follow") == "review_scope":
+                scope = request.tools.call("review_scope", {})
+                yield AgentEvent(EventKind.TOOL_RESULT, "review_scope", scope)
+                for call in scope.get("suggested_calls") or []:
+                    name, arguments = str(call["tool"]), dict(call["arguments"])
+                    yield AgentEvent(
+                        EventKind.TOOL_CALL, name, {"arguments": arguments}
+                    )
+                    yield AgentEvent(
+                        EventKind.TOOL_RESULT, name, request.tools.call(name, arguments)
+                    )
                 continue
             name = str(step.get("tool"))
             arguments = dict(step.get("arguments") or {})

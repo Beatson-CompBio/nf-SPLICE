@@ -125,11 +125,22 @@ class ReviewRecord(_Model):
 
     kind: str
     outcome: str
+    #: ``revised`` (the stage changed the draft) or ``verified_unchanged``
+    #: (the draft was checked against the evidence and kept as it was).
+    basis: str = ""
     summary: str = ""
     checked: list[str] = Field(default_factory=list)
     findings: list[str] = Field(default_factory=list)
     uncertainties: list[str] = Field(default_factory=list)
     inspected: list[str] = Field(default_factory=list)
+    #: The citations the review gave for its conclusions.
+    evidence: list[str] = Field(default_factory=list)
+    #: Omissions, incorrect assumptions, unsupported declarations, confirmed.
+    draft_assessment: dict[str, list[str]] = Field(default_factory=dict)
+    #: Each evidence class of the stage's scope and how far it was inspected.
+    coverage: list[dict[str, Any]] = Field(default_factory=list)
+    #: Required and advisory evidence left uninspected.
+    gaps: list[str] = Field(default_factory=list)
     draft_sha256: str | None = None
     sources_fingerprint: str = ""
     provider: str = ""
@@ -149,6 +160,9 @@ class StageRecord(_Model):
     #: Every source read and analysis the model made for this stage.
     investigation: list[str] = Field(default_factory=list)
     review: ReviewRecord | None = None
+    #: The draft's hash when the stage started, to tell a revised draft from
+    #: one that was reviewed and kept unchanged.
+    baseline_sha256: str | None = None
 
 
 class PlannedOperation(_Model):

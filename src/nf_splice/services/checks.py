@@ -15,7 +15,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -277,8 +277,14 @@ ROCRATE_PROFILE = "workflow-ro-crate-1.0"
 ROCRATE_SUPPORTED = re.compile(r"^0\.(?:1[0-9]|[89])\.")
 
 
-def _crate_root(root: Path, target: Path) -> None:
-    """Lay the pipeline out as its archive would be: crate at the root."""
+def _crate_root(
+    root: Path, target: Path, crate: Mapping[str, Any] | None = None
+) -> None:
+    """Lay the pipeline out as its archive would be: crate at the root.
+
+    ``crate`` replaces the published crate, to check a draft graph before it
+    is built.
+    """
     from nf_splice.services.export import _pipeline_members
 
     members, _excluded = _pipeline_members(root)
@@ -286,6 +292,11 @@ def _crate_root(root: Path, target: Path) -> None:
         destination = target / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(path, destination)
+    if crate is not None:
+        (target / "ro-crate-metadata.json").write_text(
+            json.dumps(crate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return
     canonical = root / "splice" / "ro-crate-metadata.json"
     shutil.copyfile(canonical, target / "ro-crate-metadata.json")
 
@@ -297,6 +308,7 @@ def rocrate_validation(
     runner: Runner = subprocess.run,
     timeout: float = 600.0,
     executable_name: str = "rocrate-validator",
+    crate: Mapping[str, Any] | None = None,
 ) -> CheckResult:
     """Validate the pipeline's Workflow RO-Crate with ``rocrate-validator``.
 
@@ -307,7 +319,7 @@ def rocrate_validation(
     not check.
     """
     name, tool = f"RO-Crate {ROCRATE_PROFILE}", "rocrate-validator"
-    if not (root / "splice" / "ro-crate-metadata.json").is_file():
+    if crate is None and not (root / "splice" / "ro-crate-metadata.json").is_file():
         return CheckResult(
             name, CheckStatus.NOT_APPLICABLE, "no published RO-Crate yet", tool
         )
@@ -351,9 +363,9 @@ def rocrate_validation(
             version=version,
         )
     with tempfile.TemporaryDirectory(prefix="nf-splice-rocrate-") as scratch:
-        crate = Path(scratch) / "crate"
+        layout = Path(scratch) / "crate"
         report = Path(scratch) / "report.json"
-        _crate_root(root, crate)
+        _crate_root(root, layout, crate)
         command: list[str] = [
             executable,
             "validate",
@@ -367,7 +379,7 @@ def rocrate_validation(
         ]
         if NETWORK not in permitted:
             command.append("--offline")
-        command.append(str(crate))
+        command.append(str(layout))
         try:
             completed = runner(
                 command,

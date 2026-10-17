@@ -76,9 +76,13 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
                                 "reason": "Internal QC only",
                             },
                         },
+                        {"follow": "review_scope"},
                         {
                             "tool": "submit_stage_proposal",
-                            "arguments": {"summary": "Reject the internal QC file."},
+                            "arguments": {
+                                "summary": "Reject the internal QC file.",
+                                "evidence": ["analyse_routes"],
+                            },
                         },
                     ],
                 },

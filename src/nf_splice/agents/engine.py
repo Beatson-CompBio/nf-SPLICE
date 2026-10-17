@@ -52,6 +52,7 @@ from nf_splice.agents.providers.base import (
     ProviderErrorKind,
 )
 from nf_splice.agents.report import build_report, report_text
+from nf_splice.agents.review_scope import coverage
 from nf_splice.agents.sandbox import Sandbox
 from nf_splice.agents.stages import (
     FINISHING,
@@ -103,12 +104,18 @@ from nf_splice.services.export import (
 from nf_splice.services.lifecycle import validate_layer
 
 _PLAN_CONTROLS = {
+    "review_scope",
     "submit_stage_proposal",
     "complete_review",
     "record_blocker",
     "record_evidence",
 }
-_EXECUTE_CONTROLS = {"complete_review", "record_blocker", "record_evidence"}
+_EXECUTE_CONTROLS = {
+    "review_scope",
+    "complete_review",
+    "record_blocker",
+    "record_evidence",
+}
 #: Layer stages whose review is scientific; the others are operational.
 _SCIENTIFIC = frozenset({Stage.IDENTITY, Stage.INPUTS, Stage.OUTPUTS, Stage.PROVENANCE})
 _PREVIEW_APPROVER = Actor(label="preview", kind=ActorKind.HUMAN)
@@ -487,6 +494,19 @@ class SessionEngine:
             if item.split(" ", 1)[0].split("(", 1)[0] in SOURCE_INSPECTIONS
         )
 
+    def _stage_changed(self, stage: Stage | None) -> bool:
+        """Whether the stage's draft changed since the stage started."""
+        if stage is None or stage not in LAYER_FOR_STAGE:
+            return False
+        baseline = self.state.stages[stage].baseline_sha256
+        return baseline is not None and baseline != self._draft_sha(stage)
+
+    def _start_stage(self, stage: Stage) -> None:
+        record = self.state.stages[stage]
+        record.started_at = record.started_at or now()
+        if stage in LAYER_FOR_STAGE and record.baseline_sha256 is None:
+            record.baseline_sha256 = self._draft_sha(stage)
+
     def _draft_sha(self, stage: Stage) -> str | None:
         layer = LAYER_FOR_STAGE.get(stage)
         if layer is None:
@@ -543,9 +563,29 @@ class SessionEngine:
     ) -> None:
         details = details or {}
         record = self.state.stages[stage]
+        report = coverage(
+            self.root,
+            stage.value,
+            record.investigation,
+            examples=bool(self._examples()),
+        )
+        assessment = details.get("draft_assessment") or {}
         record.review = ReviewRecord(
             kind="scientific" if stage in _SCIENTIFIC else "operational",
             outcome=outcome,
+            basis="revised" if outcome == "changed" else "verified_unchanged",
+            evidence=[str(item) for item in details.get("evidence") or []],
+            draft_assessment={
+                key: [str(item) for item in assessment.get(key) or []]
+                for key in (
+                    "omissions",
+                    "incorrect_assumptions",
+                    "unsupported_declarations",
+                    "confirmed",
+                )
+            },
+            coverage=[item.to_json() for item in report.classes],
+            gaps=report.gap_lines(),
             summary=str(details.get("summary") or ""),
             checked=[str(item) for item in details.get("checked") or []],
             findings=[str(item) for item in details.get("findings") or []],
@@ -834,7 +874,11 @@ class SessionEngine:
             session_directory=self.session_directory,
             sandbox=sandbox,
             log=self._log,
-            prior_inspections=self._source_inspections(stage),
+            prior_investigation=(
+                self.state.stages[stage].investigation if stage is not None else ()
+            ),
+            stage=stage.value if stage in LAYER_FOR_STAGE else None,
+            stage_changed=self._stage_changed(stage),
         )
 
     # -------------------------------------------------------- assisted planning
@@ -1268,7 +1312,7 @@ class SessionEngine:
                 self._finish()
                 break
             record = state.stages[stage]
-            record.started_at = record.started_at or now()
+            self._start_stage(stage)
             if stage is Stage.VALIDATE:
                 self._validate_stage()
                 if state.stages[Stage.VALIDATE].status is StageStatus.BLOCKED:
@@ -1424,6 +1468,7 @@ class SessionEngine:
                     {
                         "summary": proposal.summary,
                         "checked": proposal.evidence,
+                        "evidence": proposal.evidence,
                         "uncertainties": proposal.uncertainties,
                     },
                 )
@@ -1723,7 +1768,7 @@ class SessionEngine:
             if stage is None:
                 break
             record = state.stages[stage]
-            record.started_at = record.started_at or now()
+            self._start_stage(stage)
             if stage is Stage.VALIDATE:
                 self._validate_stage()
             elif stage is Stage.VERIFY:

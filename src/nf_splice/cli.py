@@ -787,9 +787,9 @@ def configure_command(
     ),
     strategy: str | None = typer.Option(
         None,
-        help="Provenance shortcut: include (adopt the root crate), enriched "
-        "(correct a copy from the identity) or generated (rebuild from the "
-        "identity). Editing the YAML does the same.",
+        help="Provenance shortcut: adopt (the repository's own crate), correct "
+        "(a copy, from the reviewed identity) or regenerate (from the identity). "
+        "Editing the YAML does the same.",
     ),
     with_nf_core: bool = typer.Option(
         False,
@@ -944,14 +944,17 @@ def configure_command(
                 else "no hosting claims needed removing"
             )
         )
-    if strategy == "include":
+    from nf_splice.services.crate_review import STRATEGIES
+
+    chosen = STRATEGIES.get(strategy) if strategy is not None else None
+    if strategy is not None and chosen is None:
+        raise typer.BadParameter("strategy must be adopt, correct or regenerate")
+    if chosen == "adopt":
         _run(lambda: provenance_layer.choose_include(repository, _context()))
-    elif strategy == "enriched":
+    elif chosen == "correct":
         _run(lambda: provenance_layer.prepare_enrichment(repository, _context()))
-    elif strategy == "generated":
+    elif chosen == "regenerate":
         _run(lambda: provenance_layer.generate_minimal(repository, _context()))
-    elif strategy is not None:
-        raise typer.BadParameter("strategy must be include, enriched or generated")
     analysis = provenance_layer.analyse_ro_crate(repository)
     for finding in analysis.findings:
         typer.echo(
@@ -1292,6 +1295,56 @@ def draft_check_config_command(
         for item in result.warnings:
             typer.echo(f"  warning: {item}")
     if result.status.value in {"failed", "error"}:
+        raise typer.Exit(code=2)
+
+
+@draft_app.command("check-crate")
+def draft_check_crate_command(
+    repository: RepositoryOption = Path("."),
+    allow: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--allow",
+            help="external_tools: run rocrate-validator; network: let it fetch "
+            "profile contexts (otherwise it runs offline).",
+        ),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Assess the RO-Crate and check the draft graph (standards check opt-in)."""
+    from nf_splice.services.crate_review import assess_crate, check_crate
+
+    root = repository.resolve()
+    assessment = assess_crate(root)
+    checked = check_crate(root, permitted=set(allow or []))
+    if json_output:
+        typer.echo(dumps({"assessment": assessment, "checks": checked}))
+    else:
+        recommendation = assessment["recommendation"]
+        typer.echo(
+            f"Recommendation: {recommendation['action']} - "
+            + "; ".join(recommendation["reasons"])
+        )
+        generator = assessment["generator"]
+        typer.echo(
+            "nf-core generator: "
+            + ("installed" if generator["installed"] else "not installed")
+            + f"; {generator['reason']}"
+        )
+        typer.echo(f"Structural checks: {checked['structural']['status']}")
+        for item in checked["structural"]["errors"]:
+            typer.echo(f"  error: {item}")
+        standards = checked["standards"]
+        typer.echo(
+            f"Standards ({standards['name']}): {standards['status']} "
+            f"({standards['reason']})"
+        )
+        for item in standards["failures"][:20]:
+            typer.echo(f"  failure: {item}")
+        typer.echo(checked["statement"])
+    if checked["structural"]["status"] == "failed" or checked["standards"][
+        "status"
+    ] in {"failed", "error"}:
         raise typer.Exit(code=2)
 
 

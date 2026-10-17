@@ -210,17 +210,57 @@ def review_turn(stage: str, purpose: str = "plan") -> dict[str, Any]:
         "stage": stage,
         "purpose": purpose,
         "steps": [
-            {"tool": "read_source", "arguments": {"path": "main.nf"}},
-            {
-                "tool": "complete_review",
-                "arguments": {
-                    "summary": f"The {stage} draft matches the pipeline.",
-                    "checked": ["main.nf"],
-                },
-            },
+            {"follow": "review_scope"},
+            {"tool": "complete_review", "arguments": review_arguments(stage)},
         ],
     }
 
 
+#: The analysis each stage's scope always requires, cited as evidence.
+STAGE_ANALYSIS = {
+    "identity": "assess_assays",
+    "inputs": "parameter_usage",
+    "outputs": "analyse_routes",
+    "components": "component_inventory",
+    "profiles": "analyse_execution",
+    "provenance": "analyse_ro_crate",
+}
+
+
+def review_arguments(stage: str, **changes: Any) -> dict[str, Any]:
+    """complete_review arguments citing the stage's own analysis."""
+    return {
+        "summary": f"The {stage} draft matches the pipeline.",
+        "checked": [STAGE_ANALYSIS[stage]],
+        "evidence": [STAGE_ANALYSIS[stage]],
+        "draft_assessment": {
+            "omissions": [],
+            "incorrect_assumptions": [],
+            "unsupported_declarations": [],
+            "confirmed": [f"the {stage} draft agrees with {STAGE_ANALYSIS[stage]}"],
+        },
+    } | changes
+
+
 def review_turns(*stages: str, purpose: str = "plan") -> list[dict[str, Any]]:
     return [review_turn(stage, purpose) for stage in stages]
+
+
+def scripted_review(tools: Any, stage: str, **changes: Any) -> dict[str, Any]:
+    """Inspect what the stage's review scope asks for, then complete the review.
+
+    The calls are the ones nf-splice suggests; this proves the evidence
+    records and gates, never a model's reasoning.
+    """
+    follow_scope(tools)
+    result: dict[str, Any] = tools.call(
+        "complete_review", review_arguments(stage, **changes)
+    )
+    return result
+
+
+def follow_scope(tools: Any) -> None:
+    """Make every call the stage's review scope suggests."""
+    scope = tools.call("review_scope", {})
+    for call in scope.get("suggested_calls") or []:
+        tools.call(call["tool"], call["arguments"])

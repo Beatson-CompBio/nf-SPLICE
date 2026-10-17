@@ -293,7 +293,13 @@ SPECS: tuple[StageSpec, ...] = (
         "with the reviewed identity and attribution.",
         "provenance",
         (Stage.IDENTITY,),
-        ("replace_draft", "provenance_strategy", "patch_draft", "confirm_values"),
+        (
+            "replace_draft",
+            "provenance_strategy",
+            "generate_ro_crate",
+            "patch_draft",
+            "confirm_values",
+        ),
     ),
     StageSpec(
         Stage.VALIDATE,

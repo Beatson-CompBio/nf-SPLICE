@@ -507,8 +507,36 @@ def _classify(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _crate(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
-    analysis = provenance_layer.analyse_ro_crate(ctx.root)
-    return {"success": True, "data": [item.to_json() for item in analysis.findings]}
+    from nf_splice.services.crate_review import assess_crate
+
+    return _untrusted(assess_crate(ctx.root))
+
+
+def _check_crate(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.services.crate_review import check_crate
+
+    return {
+        "success": True,
+        "data": check_crate(
+            ctx.root, permitted=[item.value for item in ctx.policy.grants]
+        ),
+    }
+
+
+def _generate_crate(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    # nf-core's generator is an external program that may use the network.
+    ctx.policy.require(Permission.NETWORK)
+    run = provenance_layer.generate_with_nf_core(ctx.root, ctx.change, approve=True)
+    return {
+        "success": True,
+        "generator": {
+            "version": run.version,
+            "returncode": run.returncode,
+            "removed_claims": list(run.removed_claims),
+        },
+        "note": "the generated graph replaced the draft's crate and was corrected "
+        "from the reviewed identity; inspect it and run validate_ro_crate",
+    }
 
 
 def _read_skill(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -833,19 +861,21 @@ def _slurm(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _provenance(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    strategy = str(a["strategy"])
-    if strategy == "include":
+    from nf_splice.services.crate_review import STRATEGIES
+
+    strategy = STRATEGIES.get(str(a["strategy"]))
+    if strategy == "adopt":
         result = provenance_layer.choose_include(ctx.root, ctx.change)
-    elif strategy == "enriched":
+    elif strategy == "correct":
         result = provenance_layer.prepare_enrichment(ctx.root, ctx.change)
-    elif strategy == "generated":
+    elif strategy == "regenerate":
         result = provenance_layer.generate_minimal(
             ctx.root,
             ctx.change,
             main_workflow=str(a.get("main_workflow") or "main.nf"),
         )
     else:
-        raise LayerError("strategy must be include, enriched or generated")
+        raise LayerError("strategy must be adopt, correct or regenerate")
     return _edit(result)
 
 
@@ -1227,11 +1257,26 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "analyse_ro_crate",
-            "RO-Crate structural and identity findings.",
+            "Assess the repository's own RO-Crate and the authored draft graph: "
+            "findings, whether to keep, adopt, correct or regenerate (with "
+            "reasons), and whether nf-core's generator and rocrate-validator are "
+            "installed and applicable.",
             _obj(),
             _R,
             "read",
             _crate,
+        ),
+        Operation(
+            "validate_ro_crate",
+            "Check the draft graph as it would be published: nf-splice's "
+            "structural checks, and Workflow RO-Crate standards validation with "
+            "rocrate-validator when installed and permitted (external_tools; "
+            "network, or it runs offline). The two results are separate: "
+            "passed, failed, not_run or not_applicable.",
+            _obj(),
+            _R,
+            "read",
+            _check_crate,
         ),
         Operation(
             "read_skill",
@@ -1600,12 +1645,14 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "provenance_strategy",
-            "Choose the RO-Crate strategy: include, enriched or generated.",
+            "Start the authored graph afresh: adopt the repository's own crate, "
+            "correct a copy of it from the reviewed identity, or regenerate one "
+            "from the identity. Replaces the draft's crate.",
             _obj(
                 {
                     "strategy": {
                         "type": "string",
-                        "enum": ["include", "enriched", "generated"],
+                        "enum": ["adopt", "correct", "regenerate"],
                     },
                     "main_workflow": {"type": "string"},
                 },
@@ -1614,6 +1661,19 @@ OPERATIONS: dict[str, Operation] = {
             _D,
             "draft",
             _provenance,
+        ),
+        Operation(
+            "generate_ro_crate",
+            "Generate a candidate graph with nf-core's `pipelines rocrate`, on an "
+            "isolated copy of the pipeline (never the original), when nf-core is "
+            "installed; needs external_tools and network. Reviewed identity "
+            "values are applied and nf-co.re hosting claims removed for "
+            "pipelines that are not nf-core's; the result replaces the draft's "
+            "crate. nf-splice never installs nf-core.",
+            _obj(),
+            Permission.EXTERNAL_TOOLS,
+            "draft",
+            _generate_crate,
         ),
         Operation(
             "patch_draft",
@@ -1657,18 +1717,28 @@ OPERATIONS: dict[str, Operation] = {
 
 #: Session-control tools: recorded by the engine, never touching files.
 CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
+    "review_scope": {
+        "name": "review_scope",
+        "description": "The evidence this stage's review must and should inspect "
+        "in this pipeline (its workflow files, publishing configs, unresolved "
+        "modules, profile configs, crate, ...), what you have inspected so far, "
+        "the gaps, and calls that would close them. Call it before finishing.",
+        "input_schema": _obj(),
+    },
     "submit_stage_proposal": {
         "name": "submit_stage_proposal",
-        "description": "Finish planning: summarise the staged changes, the evidence, "
-        "the uncertainties and the validation that will decide the stage.",
+        "description": "Finish planning: summarise the staged changes, the evidence "
+        "that supports them (files as path or path:line, or the analyses you "
+        "ran), the uncertainties and the validation that will decide the stage. "
+        "Refused while required review evidence is uninspected (see review_scope).",
         "input_schema": _obj(
             {
                 "summary": {"type": "string"},
-                "evidence": _STRINGS,
+                "evidence": {**_STRINGS, "minItems": 1},
                 "uncertainties": _STRINGS,
                 "validation_gate": {"type": "string"},
             },
-            ["summary"],
+            ["summary", "evidence"],
         ),
     },
     "assess_objection": {
@@ -1695,17 +1765,36 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
     "complete_review": {
         "name": "complete_review",
         "description": "Finish reviewing the current stage's draft against the "
-        "pipeline: what you checked, what you found, what stays uncertain. Use it "
-        "after inspecting the real sources (it is refused if you inspected "
-        "nothing), whether or not you changed the draft.",
+        "pipeline, whether or not you changed it. Give your assessment of the "
+        "draft (omissions, incorrect assumptions, unsupported declarations, and "
+        "what you confirmed against the evidence), the evidence for your "
+        "conclusions (files as path or path:line that you read, or the analyses "
+        "you ran) and what stays uncertain. Refused while required evidence for "
+        "this stage is uninspected (see review_scope), when evidence cites a file "
+        "you never read, or when an unchanged draft has no confirmations.",
         "input_schema": _obj(
             {
                 "summary": {"type": "string"},
                 "checked": _STRINGS,
                 "findings": _STRINGS,
                 "uncertainties": _STRINGS,
+                "evidence": {**_STRINGS, "minItems": 1},
+                "draft_assessment": _obj(
+                    {
+                        "omissions": _STRINGS,
+                        "incorrect_assumptions": _STRINGS,
+                        "unsupported_declarations": _STRINGS,
+                        "confirmed": _STRINGS,
+                    },
+                    [
+                        "omissions",
+                        "incorrect_assumptions",
+                        "unsupported_declarations",
+                        "confirmed",
+                    ],
+                ),
             },
-            ["summary", "checked"],
+            ["summary", "checked", "evidence", "draft_assessment"],
         ),
     },
     "record_blocker": {

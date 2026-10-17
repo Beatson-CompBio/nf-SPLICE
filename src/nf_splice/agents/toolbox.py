@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -28,6 +28,12 @@ from nf_splice.agents.operations import (
     describe,
 )
 from nf_splice.agents.permissions import ExecutionPolicy, PolicyViolation
+from nf_splice.agents.review_scope import (
+    Coverage,
+    coverage,
+    suggested_calls,
+    unsupported_citations,
+)
 from nf_splice.agents.sandbox import Sandbox
 from nf_splice.agents.state import PlannedOperation, Usage, now
 from nf_splice.layers import ChangeContext, LayerError
@@ -77,6 +83,7 @@ SOURCE_INSPECTIONS = frozenset(
         "component_inventory",
         "analyse_execution",
         "analyse_ro_crate",
+        "validate_ro_crate",
         "assess_assays",
         "list_example_outputs",
         "reconcile_example_outputs",
@@ -138,7 +145,9 @@ class SessionToolbox:
         session_directory: Path | None = None,
         sandbox: Sandbox | None = None,
         log: Callable[[dict[str, Any]], None] | None = None,
-        prior_inspections: int = 0,
+        prior_investigation: Sequence[str] = (),
+        stage: str | None = None,
+        stage_changed: bool = False,
     ) -> None:
         self.root = root
         self.policy = policy
@@ -152,7 +161,9 @@ class SessionToolbox:
         self.session_directory = session_directory
         self.sandbox = sandbox
         self._log = log
-        self.prior_inspections = prior_inspections
+        self.prior_investigation = list(prior_investigation)
+        self.stage = stage
+        self.stage_changed = stage_changed
         self.outcome = TurnOutcome()
 
     def schemas(self) -> list[dict[str, Any]]:
@@ -317,8 +328,66 @@ class SessionToolbox:
             else after[:4000],
         }
 
+    def trace(self) -> list[str]:
+        """Everything inspected in this stage, earlier turns included."""
+        return [*self.prior_investigation, *self.outcome.inspected]
+
+    def coverage(self) -> Coverage:
+        if self.stage is None:
+            return Coverage("")
+        return coverage(
+            self.root, self.stage, self.trace(), examples=bool(self.examples)
+        )
+
+    def _require_evidence(self, arguments: Mapping[str, Any], *, review: bool) -> None:
+        """Refuse to finish a stage the evidence does not support (ADR-0063)."""
+        if self.stage is None:
+            return
+        trace = self.trace()
+        if not any(
+            item.split(" ", 1)[0].split("(", 1)[0] in SOURCE_INSPECTIONS
+            for item in trace
+        ):
+            raise PolicyViolation(
+                "a review needs evidence: inspect the pipeline itself first "
+                "(call review_scope to see what this stage needs)"
+            )
+        report = self.coverage()
+        if report.required_gaps:
+            raise PolicyViolation(
+                "required evidence for this stage is not inspected yet: "
+                + "; ".join(line for line in report.gap_lines() if "(required)" in line)
+                + ". Inspect it (review_scope lists the calls), or record a "
+                "blocker if it cannot be inspected."
+            )
+        evidence = [str(item) for item in arguments.get("evidence") or []]
+        supported, unsupported = unsupported_citations(evidence, trace)
+        if unsupported:
+            raise PolicyViolation(
+                "the evidence cites files you have not read in this stage: "
+                + ", ".join(unsupported[:10])
+                + "; read them first, or cite what you did inspect"
+            )
+        if not supported:
+            raise PolicyViolation(
+                "cite the evidence for your conclusions: files you read "
+                "(path or path:line) or the analyses you ran"
+            )
+        if not review:
+            return
+        assessment = arguments.get("draft_assessment") or {}
+        changed = self.stage_changed or bool(
+            self.outcome.staged or self.outcome.executed
+        )
+        if not changed and not assessment.get("confirmed"):
+            raise PolicyViolation(
+                "the draft is unchanged: list under draft_assessment.confirmed what "
+                "you verified against the evidence, or change the draft"
+            )
+
     def _control(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
         if name == "submit_stage_proposal":
+            self._require_evidence(arguments, review=False)
             self.outcome.proposal = arguments
             return {
                 "success": True,
@@ -331,19 +400,20 @@ class SessionToolbox:
         if name == "record_blocker":
             self.outcome.blockers.append(arguments)
             return {"success": True, "note": "blocker recorded"}
+        if name == "review_scope":
+            report = self.coverage()
+            return {
+                "success": True,
+                "data": report.to_json(),
+                "suggested_calls": suggested_calls(report, advisory=True),
+            }
         if name == "complete_review":
-            looked = self.prior_inspections + sum(
-                1
-                for item in self.outcome.inspected
-                if item.split(" ", 1)[0].split("(", 1)[0] in SOURCE_INSPECTIONS
-            )
-            if not looked:
-                raise PolicyViolation(
-                    "a review needs evidence: inspect the pipeline itself first "
-                    "(read_source, search_source, analyse_routes, parameter_usage, "
-                    "component_inventory, analyse_execution or analyse_ro_crate)"
-                )
+            self._require_evidence(arguments, review=True)
             self.outcome.review = arguments
-            return {"success": True, "note": "review recorded"}
+            return {
+                "success": True,
+                "note": "review recorded",
+                "advisory_gaps": self.coverage().gap_lines(),
+            }
         self.outcome.evidence.append(arguments)
         return {"success": True, "note": "evidence recorded"}

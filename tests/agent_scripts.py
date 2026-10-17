@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from layer_fixtures import STAGE_ANALYSIS, follow_scope, review_arguments
 from multi_route import ACCESS, IDENTITY, OUTPUTS
 from nf_splice.agents.protocol import ToolInvoker, TurnRequest
 
@@ -141,7 +142,7 @@ def profiles(tools: ToolInvoker) -> None:
 
 def provenance(tools: ToolInvoker) -> None:
     _call(tools, "analyse_ro_crate")
-    _call(tools, "provenance_strategy", strategy="generated")
+    _call(tools, "provenance_strategy", strategy="regenerate")
 
 
 STAGES: dict[str, Callable[[ToolInvoker], None]] = {
@@ -176,20 +177,24 @@ class RouteAgent:
             return ["Nothing to do for this stage."]
         _call(tools, "workspace_status")
         action(tools)
+        stage = str(request.stage)
+        follow_scope(tools)
         if request.purpose == "plan":
             submitted = _call(
                 tools,
                 "submit_stage_proposal",
-                summary=f"Review the {request.stage} layer.",
-                evidence=["repository files"],
+                summary=f"Review the {stage} layer.",
+                evidence=[STAGE_ANALYSIS[stage]],
                 uncertainties=[],
             )
             if submitted.get("staged_operations"):
-                return [f"Prepared the {request.stage} stage."]
+                return [f"Prepared the {stage} stage."]
         _call(
             tools,
             "complete_review",
-            summary=f"Reviewed the {request.stage} layer against the sources.",
-            checked=["the stage's sources and draft"],
+            **review_arguments(
+                stage,
+                summary=f"Reviewed the {stage} layer against the sources.",
+            ),
         )
-        return [f"Prepared the {request.stage} stage."]
+        return [f"Prepared the {stage} stage."]

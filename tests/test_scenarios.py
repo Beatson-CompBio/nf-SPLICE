@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from layer_fixtures import ADA, ready_repository, write_pipeline
+from layer_fixtures import ADA, ready_repository, review_turn, write_pipeline
 from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
 from nf_splice.agents.providers.scripted import ScriptedProvider
 from nf_splice.contracts import families
@@ -56,21 +56,8 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
     reject_output(manual, candidate, "Internal QC only", ADA)
 
     def review(stage: str) -> dict[str, object]:
-        """A scripted review: inspect the source, find nothing to change."""
-        return {
-            "stage": stage,
-            "purpose": "plan",
-            "steps": [
-                {"tool": "read_source", "arguments": {"path": "main.nf"}},
-                {
-                    "tool": "complete_review",
-                    "arguments": {
-                        "summary": f"The {stage} draft matches the pipeline.",
-                        "checked": ["main.nf"],
-                    },
-                },
-            ],
-        }
+        """A scripted review: inspect the scope, find nothing to change."""
+        return review_turn(stage)
 
     engine = SessionEngine.create(
         assisted,
@@ -92,9 +79,13 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
                                 "reason": "Internal QC only",
                             },
                         },
+                        {"follow": "review_scope"},
                         {
                             "tool": "submit_stage_proposal",
-                            "arguments": {"summary": "Reject the internal QC file."},
+                            "arguments": {
+                                "summary": "Reject the internal QC file.",
+                                "evidence": ["analyse_routes"],
+                            },
                         },
                     ],
                 },

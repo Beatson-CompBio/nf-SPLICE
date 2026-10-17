@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 
 from agent_scripts import RouteAgent, outputs
+from layer_fixtures import follow_scope, scripted_review
 from multi_route import EXAMPLE, copy_fixture
 from nf_splice.agents import (
     CapabilityError,
@@ -184,11 +185,12 @@ def test_assisted_session_proposes_waits_executes_and_validates(
 
 def _drop_hisat2(request: TurnRequest, tools: ToolInvoker) -> list[str]:
     outputs(tools, reject=["hisat2_align_bam"])
+    follow_scope(tools)
     tools.call(
         "submit_stage_proposal",
         {
             "summary": "Catalogue the outputs seen in the example run.",
-            "evidence": ["example-star"],
+            "evidence": ["analyse_routes", "list_example_outputs"],
             "uncertainties": ["HISAT2 output was not observed"],
         },
     )
@@ -217,9 +219,13 @@ def _investigate(request: TurnRequest, tools: ToolInvoker) -> list[str]:
         },
     )
     outputs(tools)
+    follow_scope(tools)
     tools.call(
         "submit_stage_proposal",
-        {"summary": "Keep both aligner routes in the catalogue."},
+        {
+            "summary": "Keep both aligner routes in the catalogue.",
+            "evidence": ["main.nf:21", "analyse_routes"],
+        },
     )
     return ["You are right: both aligner routes are supported outputs."]
 
@@ -425,10 +431,7 @@ def test_validators_decide_and_repairs_are_bounded(tmp_path: Path) -> None:
         from agent_scripts import identity
 
         identity(tools)  # the identity, and the documented assays
-        tools.call(
-            "complete_review",
-            {"summary": "Identity fixed.", "checked": ["nextflow.config"]},
-        )
+        scripted_review(tools, "identity", summary="Identity fixed.")
         return ["Fixed the version."]
 
     engine = _engine(

@@ -32,8 +32,18 @@ How this works:
   and the analysis tools (analyse_routes, parameter_usage, component_inventory,
   analyse_execution, analyse_ro_crate, assess_assays). nf-splice records which
   files you actually inspected; never claim to have checked what you did not.
-  When you are done with a stage, call complete_review with what you checked,
-  what you found and what stays uncertain.
+  review_scope lists the evidence this stage needs in this pipeline (required
+  and advisory), what you have inspected and the gaps; deterministic discovery
+  is only where you start, so also look beyond it for entries it missed.
+- Finish a stage with complete_review (or submit_stage_proposal): assess the
+  draft as it stands (omissions, incorrect assumptions, unsupported
+  declarations, and what you confirmed against the evidence), cite the files
+  (path or path:line) and analyses that support each conclusion, and list
+  what stays uncertain. Both are refused while required evidence is
+  uninspected or when you cite a file you never read. A draft you leave
+  unchanged needs explicit confirmations; never accept it unexamined. If
+  evidence cannot be inspected or a fact cannot be established, record it as
+  an uncertainty or a blocker instead of answering it.
 - Prefer one coherent revision per stage (replace_draft of a whole section or
   draft) to many small patches.
 
@@ -216,6 +226,20 @@ def stage_instruction(
         lines.append("A thorough review of this stage covers:")
         lines.extend(f"- {text}" for text in CHECKLISTS[stage])
         record = state.stages[stage]
+        from nf_splice.agents.review_scope import coverage, summary_for_prompt
+
+        report = coverage(
+            root,
+            stage.value,
+            record.investigation,
+            examples=bool(state.policy.examples),
+        )
+        if report.classes:
+            lines.append(
+                "Evidence this review needs in this pipeline (review_scope "
+                "gives the files and calls):"
+            )
+            lines.append(summary_for_prompt(report))
         if record.investigation:
             lines.append(
                 "Already inspected in this session: "
