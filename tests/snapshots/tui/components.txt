@@ -20,6 +20,7 @@
 <button Explain errors>
 
 modules__local__tool | tool | 1.0 | container-<hash> | -
+main__nf__REPORT | report | ? | - | -
 Modules not yet in the draft (optional hints)
 <button Discover modules>
 <button Add all unambiguous>

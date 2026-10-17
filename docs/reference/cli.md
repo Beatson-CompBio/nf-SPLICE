@@ -20,7 +20,7 @@ Global options go before the command name, for example
 | Command | Purpose |
 | --- | --- |
 | [`nf-splice inspect`](#nf-splice-inspect) | Inspect pipeline evidence and the splice/ tree (read-only). |
-| [`nf-splice status`](#nf-splice-status) | Show each layer's draft-derived status (read-only). |
+| [`nf-splice status`](#nf-splice-status) | Show each layer's draft status and where the bundle stands (read-only). |
 | [`nf-splice init`](#nf-splice-init) | Create absent drafts from evidence; existing drafts are never replaced. |
 | [`nf-splice configure`](#nf-splice-configure) | Review one layer by targeted, attributed edits to its draft. |
 | [`nf-splice plan`](#nf-splice-plan) | Preview promotion/publication changes and blockers (read-only). |
@@ -51,6 +51,7 @@ Global options go before the command name, for example
 | [`nf-splice draft parameters`](#nf-splice-draft-parameters) | Where workflow code reads params.*, against the input contract (read-only). |
 | [`nf-splice draft resources`](#nf-splice-draft-resources) | Resource selectors, task.memory uses and one config's memory settings. |
 | [`nf-splice draft check-config`](#nf-splice-draft-check-config) | Ask Nextflow for the effective configuration of one profile (opt-in). |
+| [`nf-splice draft check-crate`](#nf-splice-draft-check-crate) | Assess the RO-Crate and check the draft graph (standards check opt-in). |
 | [`nf-splice draft recover`](#nf-splice-draft-recover) | Restore the previous release after an interrupted publication. |
 | [`nf-splice containers plan`](#nf-splice-containers-plan) | Which image each container needs and how it would be obtained (offline). |
 | [`nf-splice containers store`](#nf-splice-containers-store) | Configure the image store (no secrets; kept in your config folder). |
@@ -114,7 +115,7 @@ nf-splice inspect [OPTIONS]
 
 ### nf-splice status
 
-Show each layer's draft-derived status (read-only).
+Show each layer's draft status and where the bundle stands (read-only).
 
 ```text
 nf-splice status [OPTIONS]
@@ -175,7 +176,7 @@ nf-splice configure [OPTIONS] LAYER
 | `--require-downloadable` | `<str>` |  | Components: true/false whether images must be downloadable. |
 | `--default` | `<str>` |  | Execution profiles: the reviewed default profile ID. |
 | `--slurm-default` |  |  | Execution profiles: add the generated SPLICE Slurm candidate. |
-| `--strategy` | `<str>` |  | Provenance shortcut: include (adopt the root crate), enriched (correct a copy from the identity) or generated (rebuild from the identity). Editing the YAML does the same. |
+| `--strategy` | `<str>` |  | Provenance shortcut: adopt (the repository's own crate), correct (a copy, from the reviewed identity) or regenerate (from the identity). Editing the YAML does the same. |
 | `--with-nf-core` |  |  | Provenance: replace the crate with nf-core's generator output, run on an isolated copy (needs nf-core installed; never touches the pipeline). |
 | `--reimport` |  |  | Inputs: apply a conflict-free nextflow_schema.json re-import. |
 | `--add-assay` | `<str>` |  | Identity: declare an assay the pipeline can process, by registered code (polya_rnaseq) or entity:<id>. Repeatable. |
@@ -634,6 +635,20 @@ nf-splice draft check-config [OPTIONS] PROFILE
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--allow` | `<str>` |  | run_nextflow: let `nextflow config` evaluate the configuration. |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice draft check-crate
+
+Assess the RO-Crate and check the draft graph (standards check opt-in).
+
+```text
+nf-splice draft check-crate [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--allow` | `<str>` |  | external_tools: run rocrate-validator; network: let it fetch profile contexts (otherwise it runs offline). |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice draft recover

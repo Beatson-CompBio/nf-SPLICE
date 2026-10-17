@@ -71,65 +71,6 @@ SPLIT = "split"
 DRAFT_FIELDS = ("contract", "categories", "outputs", "excluded_routes")
 SEEDED = "seeded"
 _SEMVER = re.compile(r"^v?(\d+\.\d+\.\d+)$")
-#: Provisional category from the producing tool's name. Hints only: the seed
-#: says so, and the author or an agent replaces them with the real meaning.
-_CATEGORY_HINTS = (
-    (("multiqc",), "aggregate_qc"),
-    (
-        ("pipeline_info", "software_versions", "dumpsoftware", "custom_dump"),
-        "job_report",
-    ),
-    (("samplesheet", "check_samplesheet"), "sample_metadata"),
-    (("umi", "umitools", "umicollapse"), "umi"),
-    (
-        ("fastp", "trimgalore", "cutadapt", "trim", "sortmerna", "bbsplit", "fq_"),
-        "preprocessing",
-    ),
-    (
-        (
-            "fastqc",
-            "qualimap",
-            "rseqc",
-            "dupradar",
-            "preseq",
-            "biotype",
-            "deseq2_qc",
-            "qc",
-        ),
-        "quality_control",
-    ),
-    (("star_align", "hisat2_align", "bowtie", "bwa", "_align"), "alignment"),
-    (("markduplicates", "picard", "samtools", "sort", "dedup"), "postprocessing"),
-    (("bedgraph", "bigwig", "genomecov", "coverage"), "coverage"),
-    (
-        (
-            "salmon",
-            "rsem",
-            "featurecounts",
-            "kallisto",
-            "htseq",
-            "stringtie",
-            "tximport",
-            "tximeta",
-            "quant",
-            "summarizedexperiment",
-        ),
-        "quantification",
-    ),
-    (
-        (
-            "genome",
-            "index",
-            "gtf",
-            "fasta",
-            "gffread",
-            "build",
-            "reference",
-            "chromsizes",
-        ),
-        "reference",
-    ),
-)
 _REFERENCE_PREFIXES = ("genome/", "reference/", "references/", "index/")
 
 
@@ -142,11 +83,19 @@ def _empty_draft(schema_version: str | None) -> dict[str, Any]:
     }
 
 
-def _category_hint(*names: str) -> str | None:
-    text = " ".join(names).lower()
-    for needles, category in _CATEGORY_HINTS:
-        if any(needle in text for needle in needles):
-            return category
+def _directory_category(pattern: str) -> str | None:
+    """The pipeline's own grouping: the first literal directory it publishes to.
+
+    nf-splice prescribes no category vocabulary; a seeded category is the
+    directory the pipeline itself chose (``^fastqc/...`` gives ``fastqc``),
+    skipping a leading run-time directory. Without one it stays empty for
+    the author.
+    """
+    parts = pattern.removeprefix("^").split("/")[:-1]
+    for part in parts:
+        if re.fullmatch(r"[A-Za-z0-9_.-]+", part.replace("\\.", ".")):
+            name = re.sub(r"[^a-z0-9_]+", "_", part.replace("\\.", ".").lower())
+            return name.strip("_") or None
     return None
 
 
@@ -183,7 +132,7 @@ def _route_entry(candidate: OutputCandidate) -> dict[str, Any] | None:
         "key": candidate.suggested_key,
         "title": candidate.suggested_title,
         "description": candidate.suggested_description,
-        "category": _category_hint(*candidate.processes, candidate.suggested_key),
+        "category": _directory_category(pattern),
         "formats": [candidate.suggested_format.value]
         if candidate.suggested_format
         else [],

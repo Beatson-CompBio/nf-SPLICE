@@ -72,6 +72,12 @@ _FORMAT_BY_SUFFIX = {
     ".mtx": OutputFormat.MTX,
     ".zip": OutputFormat.ZIP,
     ".gz": OutputFormat.GZ,
+    ".tif": OutputFormat.TIFF,
+    ".tiff": OutputFormat.TIFF,
+    ".ome.tif": OutputFormat.OME_TIFF,
+    ".ome.tiff": OutputFormat.OME_TIFF,
+    ".zarr": OutputFormat.ZARR,
+    ".h5ad": OutputFormat.H5AD,
 }
 
 

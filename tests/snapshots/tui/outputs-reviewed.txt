@@ -30,10 +30,7 @@ report | Report | job_report | job | ^reports/report\.html$ |
 [description] Job report.
 [category (free text)] job_report
 [stage (optional free text)]
-<output-format> html
-html
-▼
-▲
+[format (any lower-case name: bam, ome-tiff, zarr)] html
 <output-scope> job
 job
 ▼

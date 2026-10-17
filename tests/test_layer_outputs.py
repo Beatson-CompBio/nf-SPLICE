@@ -86,7 +86,8 @@ def test_discovery_seeds_a_useful_catalogue_finished_by_editing_the_file(
         r"^pipeline_info/trace\.txt$",
     }
     counts = by_pattern[r"^quant/{sample}/counts\.tsv$"]
-    assert counts["scopes"] == ["sample"] and counts["category"] == "quantification"
+    # The category is the pipeline's own directory; nf-splice prescribes none.
+    assert counts["scopes"] == ["sample"] and counts["category"] == "quant"
     # The contract version comes from the identity (X.Y.Z), unknowns stay empty.
     assert draft["contract"]["schema_version"] == "1.2.0"
     assert discovery.pending == ()

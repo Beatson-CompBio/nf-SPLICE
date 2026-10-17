@@ -139,7 +139,7 @@ def _output_document(output: ReviewedOutput) -> dict[str, object]:
         "category": output.category,
         "scope": [item.value for item in output.scopes],
         "entity_type": [item.value for item in output.entity_types],
-        "format": [item.value for item in output.formats],
+        "format": list(output.formats),
         "path_patterns": list(output.path_patterns),
     }
     if output.stage is not None:
@@ -204,7 +204,7 @@ def _schema_document(
             "category": {"const": output.category},
             "scope": {"enum": [item.value for item in output.scopes]},
             "entity_type": {"enum": [item.value for item in output.entity_types]},
-            "format": {"enum": [item.value for item in output.formats]},
+            "format": {"enum": list(output.formats)},
             "path": _path_constraint(output.path_patterns),
         }
         if output.stage is not None:

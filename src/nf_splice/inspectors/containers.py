@@ -110,8 +110,19 @@ def container_sources(main_nf: Path, relative: str) -> tuple[ContainerSource, ..
     if main_nf.is_symlink() or not main_nf.is_file():
         return ()
     text = main_nf.read_text(encoding="utf-8", errors="replace")
+    return sources_in_text(text, relative)
+
+
+def sources_in_text(
+    text: str, relative: str, start: int = 0, end: int | None = None
+) -> tuple[ContainerSource, ...]:
+    """Container references in ``text[start:end]``, located in the whole file.
+
+    Used for a module's ``main.nf`` and for one process defined inline in a
+    workflow file.
+    """
     found: list[ContainerSource] = []
-    for match in _CONTAINER.finditer(text):
+    for match in _CONTAINER.finditer(text, start, len(text) if end is None else end):
         expression = _expression(text, match.end())
         location = f"{relative}:{_line(text, match.start())}"
         values = [item.group("value") for item in _QUOTED.finditer(expression)]

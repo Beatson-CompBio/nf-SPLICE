@@ -109,7 +109,7 @@ create: splice/bundle.json
 create: splice/components.json
 --- /dev/null
 +++ splice/components.json
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,60 @@
 +{
 +  "schema_id": "https://schemas.splice-data.io/workflow-bundle/components",
 +  "schema_version": "0.3.0",
@@ -138,6 +138,19 @@ create: splice/components.json
 +    }
 +  ],
 +  "components": [
++    {
++      "id": "main__nf__REPORT",
++      "type": "workflow_module",
++      "name": "REPORT",
++      "path": "main.nf::REPORT",
++      "namespace": "inline",
++      "tool": {
++        "name": "report"
++      },
++      "evidence": [
++        "main.nf:1"
++      ]
++    },
 +    {
 +      "id": "modules__local__tool",
 +      "type": "workflow_module",

@@ -22,6 +22,20 @@ OutputLabelText = Annotated[
     ),
 ]
 
+#: A file format: any lower-case identifier (``bam``, ``ome-tiff``, ``zarr``,
+#: ``mzml``). The contract accepts any non-empty string; formats are never
+#: restricted to one scientific domain. :class:`OutputFormat` lists only the
+#: formats nf-splice recognises from file names, as suggestions.
+OutputFormatText = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=40,
+        pattern=r"^[a-z0-9][a-z0-9._+-]*$",
+    ),
+]
+
 #: Default category suggested for workflow-wide (job-scoped) outputs.
 DEFAULT_JOB_CATEGORY = "job_report"
 #: Non-binding suggestions offered by interfaces; any safe label is valid.
@@ -125,6 +139,10 @@ class OutputFormat(str, Enum):
     MTX = "mtx"
     ZIP = "zip"
     GZ = "gz"
+    TIFF = "tiff"
+    OME_TIFF = "ome-tiff"
+    ZARR = "zarr"
+    H5AD = "h5ad"
     DIRECTORY = "directory"
 
 
@@ -172,7 +190,7 @@ class ReviewedOutput(DomainModel):
     title: NonEmptyString
     description: NonEmptyString
     category: OutputLabelText
-    formats: tuple[OutputFormat, ...]
+    formats: tuple[OutputFormatText, ...]
     scopes: tuple[OutputScope, ...]
     entity_types: tuple[OutputEntityType, ...]
     path_patterns: tuple[NonEmptyString, ...]

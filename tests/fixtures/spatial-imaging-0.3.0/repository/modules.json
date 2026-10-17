@@ -1,0 +1,10 @@
+{
+  "items": [
+    {"kind": "module", "path": "modules/local/xenium_preprocess", "tool": "spatial-tools"},
+    {"kind": "module", "path": "modules/local/cosmx_preprocess", "tool": "spatial-tools"},
+    {"kind": "module", "path": "modules/local/segment_cells", "tool": "cellpose"},
+    {"kind": "module", "path": "modules/local/quantify_cells", "tool": "spatial-tools"},
+    {"kind": "module", "path": "modules/local/spatial_report", "tool": "spatial-report"},
+    {"kind": "module", "path": "modules/local/write_index", "tool": "write_index"}
+  ]
+}

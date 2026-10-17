@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 from typer.testing import CliRunner
 
 from layer_fixtures import edit_draft_file
@@ -712,3 +713,29 @@ def test_conda_only_components_block_deployment_under_a_container_engine(
     assert deployment.status == "blocked"
     assert any("declare only Conda packages" in item for item in deployment.blockers)
     assert any("execution host's software" in item for item in deployment.notes)
+
+
+# ------------------------------------------------------------ wizard
+
+
+@pytest.mark.asyncio
+async def test_the_wizard_states_the_same_lifecycle_as_the_cli(tmp_path: Path) -> None:
+    from textual.widgets import Static
+
+    from nf_splice.interfaces.tui import NfSpliceApp
+    from tui_helpers import settle
+
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    edit_draft_file(root, "inputs", _unbind_input)
+    build(root)
+    status = runner.invoke(app, ["status", "--repository", str(root)])
+    assert "Published, but not ready for SPLICE ingestion." in status.output
+    wizard = NfSpliceApp(root)
+    async with wizard.run_test(size=(160, 60)) as pilot:
+        await settle(wizard, pilot)
+        wizard.show_step("done")
+        await settle(wizard, pilot)
+        report = str(wizard.query_one("#done-report", Static).render())
+    assert "Published, but not ready for SPLICE ingestion." in report
+    assert "runtime parameters: input" in report

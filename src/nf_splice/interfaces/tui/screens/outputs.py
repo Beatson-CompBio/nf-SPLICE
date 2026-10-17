@@ -92,10 +92,10 @@ class OutputsView(StepView):
             id="output-stage",
             suggester=SuggestFromList(SUGGESTED_OUTPUT_STAGES),
         )
-        yield Select(
-            [(item.value, item.value) for item in OutputFormat],
-            prompt="format",
+        yield Input(
+            placeholder="format (any lower-case name: bam, ome-tiff, zarr)",
             id="output-format",
+            suggester=SuggestFromList([item.value for item in OutputFormat]),
         )
         yield Select(
             [(item.value, item.value) for item in OutputScope],
@@ -191,8 +191,10 @@ class OutputsView(StepView):
         self.query_one("#output-pattern", Input).value = ",".join(
             entry.get("path_patterns") or []
         )
+        self.query_one("#output-format", Input).value = ",".join(
+            str(item) for item in entry.get("formats") or []
+        )
         for selector, field in (
-            ("#output-format", "formats"),
             ("#output-scope", "scopes"),
             ("#output-entity", "entity_types"),
         ):
@@ -297,8 +299,10 @@ class OutputsView(StepView):
             candidate.suggested_description or ""
         )
         self.query_one("#output-pattern", Input).value = candidate.path_pattern or ""
+        self.query_one("#output-format", Input).value = (
+            candidate.suggested_format.value if candidate.suggested_format else ""
+        )
         for selector, value in (
-            ("#output-format", candidate.suggested_format),
             ("#output-scope", candidate.likely_scope),
             ("#output-entity", candidate.likely_entity_type),
         ):
@@ -344,7 +348,11 @@ class OutputsView(StepView):
             "title": self.query_one("#output-title", Input).value.strip(),
             "description": self.query_one("#output-description", Input).value.strip(),
             "category": self.query_one("#output-category", Input).value.strip(),
-            "formats": [self._value("#output-format")],
+            "formats": [
+                item.strip()
+                for item in self.query_one("#output-format", Input).value.split(",")
+                if item.strip()
+            ],
             "scopes": [self._value("#output-scope")],
             "entity_types": [self._value("#output-entity")],
             "path_patterns": patterns

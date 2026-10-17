@@ -36,6 +36,7 @@ from nf_splice.inspectors.containers import (
     config_overrides,
     container_sources,
     nextflow_cache_filename,
+    sources_in_text,
 )
 from nf_splice.inspectors.modules import (
     ModuleDiscoveryError,
@@ -92,6 +93,92 @@ def _process_names(main_nf: Path) -> list[str]:
         r"\bprocess\s+([A-Za-z0-9_]+)\s*\{",
         main_nf.read_text(encoding="utf-8", errors="replace"),
     )
+
+
+#: Directories that never hold workflow code of the pipeline itself.
+_NOT_WORKFLOW = {".git", ".splice-local", ".nf-splice-local", "work", ".nextflow"}
+
+
+def _block_end(text: str, opening: int) -> int:
+    """Index just past the brace that closes the one at ``opening``."""
+    depth = 0
+    for index in range(opening, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    return len(text)
+
+
+def inline_processes(root: Path) -> list[dict[str, Any]]:
+    """Processes defined in workflow files rather than in module directories.
+
+    Custom pipelines often define processes in ``main.nf`` or a workflow
+    file. Each is a component, with the container references of its own
+    body (located by file and line), so an inventory never silently misses
+    software a pipeline runs.
+    """
+    found = []
+    for path in sorted(root.rglob("*.nf")):
+        relative = path.relative_to(root)
+        parts = relative.parts
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or parts[0] in {"modules", "splice", "tests"}
+            or any(part in _NOT_WORKFLOW for part in parts)
+            or "tests" in parts[:-1]
+        ):
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for match in re.finditer(r"^\s*process\s+([A-Za-z0-9_]+)\s*\{", text, re.M):
+            start = text.index("{", match.start())
+            end = _block_end(text, start)
+            name = match.group(1)
+            line = text.count("\n", 0, match.start()) + 1
+            found.append(
+                {
+                    "file": relative.as_posix(),
+                    "process": name,
+                    "line": line,
+                    "sources": sources_in_text(
+                        text, relative.as_posix(), match.start(), end
+                    ),
+                }
+            )
+    return found
+
+
+def _declared_sources(root: Path, path: str) -> tuple[ContainerSource, ...]:
+    """Container references a component's code declares (module or inline)."""
+    if path.endswith(".nf") and "::" not in path:
+        return ()
+    file, _, process = path.partition("::")
+    if process:
+        return next(
+            (
+                tuple(item["sources"])
+                for item in inline_processes(root)
+                if item["file"] == file and item["process"] == process
+            ),
+            (),
+        )
+    main = root / path / "main.nf"
+    if main.is_symlink() or not main.is_file():
+        return ()
+    return container_sources(main, f"{path}/main.nf")
+
+
+def _code_exists(root: Path, path: str) -> bool:
+    file, _, process = path.partition("::")
+    if process:
+        return any(
+            item["file"] == file and item["process"] == process
+            for item in inline_processes(root)
+        )
+    return (root / path / "main.nf").is_file()
 
 
 def _scanned_items(root: Path) -> tuple[dict[str, Any], ...]:
@@ -160,6 +247,31 @@ def _discover(root: Path) -> list[dict[str, Any]]:
                         if (module / "meta.yml").is_file()
                         else set()
                     )
+                ),
+            }
+        )
+    for inline in inline_processes(root):
+        # path is "<file>::<PROCESS>": a process defined in a workflow file.
+        relative = f"{inline['file']}::{inline['process']}"
+        sources = list(inline["sources"])
+        sources.extend(overrides.get(inline["process"], []))
+        uris = tuple(source.raw for source in sources)
+        discovered.append(
+            {
+                "id": "component:"
+                + re.sub(r"[^A-Za-z0-9_]+", "__", relative).strip("_"),
+                "name": inline["process"],
+                "path": relative,
+                "namespace": "inline",
+                "tool_name": inline["process"].lower(),
+                "versions": list(detected_versions({}, relative, uris)),
+                "conda_packages": [],
+                "sources": [source.model_dump(mode="json") for source in sources],
+                "evidence": sorted(
+                    {
+                        f"{inline['file']}:{inline['line']}",
+                        *(source.location for source in sources),
+                    }
                 ),
             }
         )
@@ -800,7 +912,7 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
         and entry.get("status") != "rejected"
         and isinstance(entry.get("candidate"), dict)
         and str(entry["candidate"].get("path")) not in listed_paths
-        and (root / str(entry["candidate"].get("path")) / "main.nf").is_file()
+        and _code_exists(root, str(entry["candidate"].get("path")))
     )
     if missing:
         issues.append(
@@ -823,12 +935,7 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
             and not component.get(UNRESOLVED)
             and isinstance(component.get("path"), str)
         ):
-            main = root / str(component["path"]) / "main.nf"
-            declared = (
-                container_sources(main, f"{component['path']}/main.nf")
-                if main.is_file() and not main.is_symlink()
-                else ()
-            )
+            declared = _declared_sources(root, str(component["path"]))
             if declared:
                 issues.append(
                     issue(
