@@ -133,7 +133,9 @@ Structurally valid: yes; scientifically classified: no; ready for ingestion: no.
 
 A bundle is *structurally valid* when its files, identity and lock are
 correct, *scientifically classified* when it declares verified assays, and
-*ready for ingestion* only when both hold.
+*ready for ingestion* only when both hold and every other readiness
+dimension (runtime parameters, deployment, provenance, publication) is
+ready; see [Core concepts](concepts.md#readiness).
 
 ## What is published
 

@@ -151,3 +151,6 @@ $RECYCLE.BIN/
 # ignored directory inside the clone. It is never part of the published
 # splice/ bundle and must never be staged (see scripts/check_staged_paths.py).
 /.nf-splice-local/
+# nf-splice's own private workspace, should it ever run on this checkout
+# (fixtures under tests/ keep theirs: this rule is anchored to the root).
+/.splice-local/

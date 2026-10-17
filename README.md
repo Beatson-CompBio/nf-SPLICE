@@ -80,6 +80,9 @@ nf-splice draft validate outputs
 nf-splice build all && nf-splice validate
 ```
 
+`build` publishes the bundle; `validate` (and every other command) then says
+whether it is ready for SPLICE ingestion, and why not.
+
 or let an agent investigate the pipeline and propose each stage's revision
 for your approval:
 

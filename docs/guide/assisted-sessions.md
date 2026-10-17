@@ -14,6 +14,21 @@ contract, not whether a category or a route is right. When the agent finds
 nothing to change after inspecting the sources, it records its review and
 moves on.
 
+### What a finished review needs
+
+For each layer, nf-splice works out from your repository what a review must
+look at (`review_scope`): for outputs, the current draft, the traced
+routes, the entry workflow and every workflow file, and every config that
+declares `publishDir`; for components, every module with an unresolved
+container or version; for profiles, every profile's own config; and so on.
+A review, or a proposal, is refused while any of that is uninspected, or
+when its evidence cites a file the agent never read. The agent must also
+assess the draft (what is missing, which assumptions are wrong, what is
+declared without support, what it confirmed), cite the evidence for its
+conclusions and list what stays uncertain. A draft left unchanged needs
+explicit confirmations. The session report shows each review's basis
+(`revised` or `verified_unchanged`), evidence and remaining gaps.
+
 ## Start a session
 
 From the root of your pipeline repository:

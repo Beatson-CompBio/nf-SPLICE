@@ -57,15 +57,28 @@ since `init`, a profile in `nextflow.config`). They are hints: the wizard
 and `nf-splice configure` can turn one into a draft entry for you, but
 nothing waits for them, and a valid draft builds with every candidate
 untouched. What blocks is the draft's content: a missing required value, a
-published route no output covers (a warning), an unresolved container.
+route the code always publishes that no output covers, an unresolved
+container. Conditional and unresolvable routes are warnings.
 
 ## Readiness
 
-A layer is `ready` when its draft passes validation. A *published* bundle is
-ready for ingestion only when every dimension is: valid contracts,
-scientifically classified assays, runtime parameters someone can supply,
-deployable images for the default profile, a standards-conformant RO-Crate
-and a consistent publication. `nf-splice validate` reports each one.
+Four facts are kept apart, and every command and the wizard state them the
+same way:
+
+| Fact | Means |
+| --- | --- |
+| Drafts valid | Every draft passes validation, so the bundle can be published |
+| Published | `splice/` holds a bundle built from the drafts, and it is current |
+| Scientifically classified | The pipeline's assays are declared from the SPLICE vocabulary |
+| Ready for SPLICE ingestion | Every readiness dimension is ready |
+
+The dimensions are valid contracts, classified assays, runtime parameters
+someone can supply, deployable software for the default profile (images
+for its container engine, no Conda-only module under a container engine),
+an RO-Crate with its required properties and a consistent publication. A
+dimension nf-splice could not assess is not ready. You may publish a valid
+bundle for further review; it is then reported as `Published, but not ready
+for SPLICE ingestion` with the reasons until all are ready.
 
 ## Draft and published files
 

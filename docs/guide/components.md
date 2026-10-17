@@ -35,7 +35,11 @@ folder when there is no `modules.json`) with:
   !task.ext.singularity_pull_docker_container ? A : B` gives `A` to
   Singularity and Apptainer and `B` to Docker; a `withName` override in the
   configuration replaces a module's directive;
-- container IDs kept from an earlier `splice/components.json`.
+- container IDs kept from an earlier `splice/components.json`, and its
+  verified image files when nf-splice can vouch for them (see below);
+- every process defined inline in a workflow file (common in custom
+  pipelines), as a component whose `path` is `<file>::<PROCESS>`, such as
+  `main.nf::TILE_SLIDE`, with the container references of its own body.
 
 What cannot be resolved statically, such as a container built from
 parameters at run time or conflicting versions, is listed under the
@@ -55,10 +59,23 @@ components:
 ```
 
 Edit the file to fix it (add the container, set `tool.version`, then delete
-the `unresolved` entry). A module added to the pipeline after `init` is
+the `unresolved` entry). A component whose code declares a container but
+which names none is an error, `container_not_mapped`: set its
+`container_id`, or record what stops it under `unresolved`. A module added to the pipeline after `init` is
 reported as `module_not_listed`; add it, or leave it out on purpose. The
 wizard's *Add all unambiguous* and `nf-splice configure components
 --accept-detected` add such modules for you; they are never required.
+
+## Software the default profile can use
+
+Readiness checks each component against the default profile's container
+engine. A component with a container needs a source for that engine (an
+OCI reference serves Docker, Podman, Singularity and Apptainer; a verified
+image file serves Singularity and Apptainer). A component that declares
+only Conda packages cannot get them from a container engine, so under one
+it blocks deployment readiness. A component that declares no container and
+no Conda environment, such as a Groovy `exec:` process, runs with what the
+execution host provides; readiness notes it.
 
 ## 2. Decide whether images must be downloadable
 
@@ -86,6 +103,12 @@ are not accepted.
 For safety, verification only uses HTTPS, refuses addresses with credentials
 and private or local network addresses (on every redirect too), limits the
 download size and never leaves a partial file behind.
+
+When `init` seeds the inventory from an earlier `splice/components.json`,
+a container's verified image file is kept only if the lock vouches for that
+published file, the file records the image as verified and every source of
+the container is unchanged. It is not downloaded again; validation says so
+(`adopted_distribution`), and `nf-splice containers verify` checks it anew.
 
 ## Useful tools
 

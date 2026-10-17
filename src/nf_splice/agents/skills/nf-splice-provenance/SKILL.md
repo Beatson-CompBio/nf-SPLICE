@@ -20,18 +20,29 @@ repository-root crate, or explaining what the archives contain.
 
 ## Workflow
 
-1. `read_draft` and `analyse_ro_crate`: structure, the root dataset's
-   RO-Crate 1.1 properties (name, description, licence, `datePublished`),
-   the main workflow, and differences from the reviewed identity.
+1. `read_draft`, `read_draft` of the identity (`bundle`) and
+   `analyse_ro_crate`: the repository's crate and the authored graph, their
+   findings (structure, the root dataset's RO-Crate 1.1 properties: name,
+   description, licence, `datePublished`; the main workflow; differences
+   from the reviewed identity), a recommendation to `keep`, `adopt`,
+   `correct` or `regenerate` with its reasons, and whether nf-core's
+   generator and `rocrate-validator` are installed and applicable.
+   Decide yourself; the recommendation is a starting point.
 2. Correct and extend the graph as one revision (`replace_draft` of
    `/crate`). Data-entity IDs are relative to the pipeline directory.
    Distinguish the workflow's authors, the integration reviewer and
    nf-splice as software; reuse the reviewed identity rather than asking
    again.
-3. nf-core's generator (`nf-core pipelines rocrate`) is a person's opt-in
-   command (`nf-splice configure provenance --with-nf-core`), run on an
-   isolated copy; its output is a candidate, and nf-co.re hosting claims are
-   removed for pipelines that are not nf-core's. It is not a validator.
+3. To start afresh: `provenance_strategy` with `adopt` (copy the root
+   crate), `correct` (a copy corrected from the identity) or `regenerate`
+   (from the identity). `generate_ro_crate` runs nf-core's generator
+   (`nf-core pipelines rocrate`) on an isolated copy of the pipeline, when
+   nf-core is installed and the session grants `external_tools` and
+   `network`; nf-splice never installs it. Its output replaces the draft's
+   crate after identity values are applied and nf-co.re hosting claims are
+   removed for pipelines that are not nf-core's. It is a generator, not a
+   validator: inspect and correct its graph. People run the same with
+   `nf-splice configure provenance --strategy ...` or `--with-nf-core`.
 4. nf-splice adds the `splice/` bundle Dataset and its files when it builds;
    do not author them. No checksum of the bundle or the archive is put in
    the crate.
@@ -46,8 +57,15 @@ repository-root crate, or explaining what the archives contain.
   RO-Crate 1.1 root properties.
 - The provenance readiness dimension blocks while those properties are
   missing or the crate disagrees with the bundle's identity.
-- Standards validation: `nf-splice assess --allow external_tools --allow
-  network` runs `rocrate-validator` on the archive layout when installed.
+- `validate_ro_crate` (or `nf-splice draft check-crate`) checks the draft
+  graph as it would be published and reports two results apart:
+  nf-splice's structural checks (`passed`/`failed`) and the Workflow
+  RO-Crate 1.0 standards profile with `rocrate-validator` (`passed`,
+  `failed`, `not_run`, `not_applicable`; it runs only when installed and
+  `external_tools` is granted, offline without `network`). Report exactly
+  which ran: a structural pass is never a standards pass. When a tool or a
+  permission is missing, say so in your review's uncertainties, or record a
+  blocker if the decision depends on it.
 
 ## Failure handling
 

@@ -121,8 +121,8 @@ Workflow modules. No other keys are allowed.
 | `id` | non-empty string | yes | Stable module identifier. |
 | `type` | always `"workflow_module"` | yes | Kind of component. Always `workflow_module` in this revision. |
 | `name` | non-empty string | yes | Module name. |
-| `path` | non-empty string | yes | Module directory in the workflow repository. |
-| `namespace` | non-empty string | yes | Module namespace, such as `nf-core` or `local`. |
+| `path` | non-empty string | yes | Module directory in the workflow repository, or `<file>::<PROCESS>` for a process defined inline in a workflow file (for example `main.nf::TILE_SLIDE`). |
+| `namespace` | non-empty string | yes | Module namespace, such as `nf-core` or `local`; `inline` for a process defined in a workflow file. |
 | `tool` | object | yes | Wrapped tool. |
 | `evidence` | array of non-empty strings | yes | Repository locations the module was found from. |
 | `container_id` | `container-` followed by 12 hexadecimal characters | no | Container the module runs in. Matches a `containers[].id`. |

@@ -1,4 +1,4 @@
-"""Assess, decide on and check the pipeline's RO-Crate (ADR-0064).
+"""Assess, decide on and check the pipeline's RO-Crate (ADR-0065).
 
 The same services back the command line and the agents:
 

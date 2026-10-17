@@ -41,21 +41,44 @@ Importing `nf_splice.agents` never imports a provider SDK.
 | outputs | `outputs` layer valid | `replace_draft`, `update_output`, `set_output_contract_version`, `discover_outputs`, `accept_output`, `reject_output`, `merge_outputs`, `split_output`, `patch_draft`, `confirm_values` |
 | components | `components` layer valid | `replace_draft`, `set_image_policy`, `discover_components`, `accept_component`, `accept_unambiguous_components`, `reject_component`, `patch_draft`, `confirm_values` |
 | profiles | `execution-profiles` layer valid | `replace_draft`, `write_config`, `set_default_profile`, `discover_profiles`, `review_profile`, `reject_profile`, `add_slurm_default_profile`, `patch_draft`, `confirm_values` |
-| provenance | `provenance` layer valid | `replace_draft`, `provenance_strategy`, `patch_draft`, `confirm_values` |
+| provenance | `provenance` layer valid | `replace_draft`, `provenance_strategy`, `generate_ro_crate` (`external_tools` and `network`), `patch_draft`, `confirm_values` |
 | validate | publication plan has no blockers | none; failing layers are reopened |
-| build | published bundle valid and current | `build_bundle` (run without a model) |
+| build | published bundle valid and current; its summary is the lifecycle headline (ADR-0062) | `build_bundle` (run without a model) |
 | verify | records the assessment | `run_optional_checks` |
 | report | writes the report | none |
 
 A layer stage completes only when its gate passes **and** a review is
-recorded for the current draft (ADR-0058): an approved proposal, or the
+recorded for the current draft (ADR-0063): an approved proposal, or the
 agent's `complete_review`. Passing the gate never skips the review. The
 toolbox records every read the model makes (file and line range, search,
-analysis) in the stage's `investigation`; `complete_review` is refused
-unless the pipeline's own sources were inspected. The review is stored with
-its kind (`scientific` for identity, inputs, outputs and provenance;
-`operational` for components and profiles), the draft hash, the sources
-fingerprint, the provider, model and reasoning effort. With the session
+analysis) in the stage's `investigation`.
+
+`src/nf_splice/agents/review_scope.py` derives, for each layer stage, the
+evidence classes that apply to the repository, each required or advisory:
+
+| Stage | Required | Advisory |
+| --- | --- | --- |
+| identity | the draft; assay evidence through the vocabulary tools; the pipeline's metadata (`nextflow.config`, `main.nf`); its documentation (README, usage, `CITATION.cff`) | alternative routes |
+| inputs | the draft; `parameter_usage`; `nextflow_schema.json`; workflow code; configs that set values | — |
+| outputs | the draft; `analyse_routes`; the entry workflow and every file under `workflows/`; every config that declares `publishDir`; the example outputs supplied | local subworkflows |
+| components | the draft; `component_inventory`; `modules.json`; every module with an `unresolved` item | configs that override containers |
+| profiles | the draft; `analyse_execution`; every profile's config; the pipeline's resource config | modules that use `task.memory` |
+| provenance | the draft; `analyse_ro_crate` or `validate_ro_crate`; the identity draft; the root crate | authorship sources; the standards check |
+
+A class whose evidence does not exist is not applicable. `review_scope`
+returns the classes, what was inspected, the gaps and calls that would close
+them. `complete_review` and `submit_stage_proposal` are refused while a
+required class is uninspected or when `evidence` cites a file (`path` or
+`path:line`) the trace does not show was read; at least one citation must be
+a read file or an analysis that ran. `complete_review` also takes
+`draft_assessment` (`omissions`, `incorrect_assumptions`,
+`unsupported_declarations`, `confirmed`); an unchanged draft needs
+`confirmed` entries, and an outputs review must name every uncovered
+alternative route it leaves out. The review is stored with its kind
+(`scientific` for identity, inputs, outputs and provenance; `operational`
+for components and profiles), its basis (`revised` or
+`verified_unchanged`), evidence, assessment, coverage and gaps, the draft
+hash, the sources fingerprint, the provider, model and reasoning effort. With the session
 policy `review: reuse_unchanged` (`--review reuse-unchanged`), a completed
 review from an earlier session is reused only while the draft and the
 sources are byte-identical. The report lists each stage's markers
@@ -74,11 +97,12 @@ Every stage also offers the read operations: `workspace_status`,
 `analyse_execution`, `read_config`, `list_pending`, `analyse_routes`,
 `list_example_outputs`, `reconcile_example_outputs`, `preview_build`,
 `validate_layer`, `validate_bundle`, `assess`, `explain_term`,
-`classify_container`, `analyse_ro_crate`, the assay tools and `read_skill`.
+`classify_container`, `analyse_ro_crate`, `validate_ro_crate`, the assay
+tools and `read_skill`.
 
 Session-control tools record intent without touching files:
-`submit_stage_proposal`, `complete_review`, `assess_objection`,
-`record_blocker` and `record_evidence`.
+`review_scope`, `submit_stage_proposal`, `complete_review`,
+`assess_objection`, `record_blocker` and `record_evidence`.
 
 `nf-splice session tools` prints every schema; `--stage outputs` shows one
 stage's offer.

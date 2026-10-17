@@ -1,4 +1,4 @@
-"""Regression tests of the 0.3.0 corrective consistency pass (ADR-0061 to ADR-0064).
+"""Regression tests of the 0.3.0 corrective consistency pass (ADR-0061 to ADR-0065).
 
 They exercise real services, files and commands. Scripted providers prove
 orchestration, permissions and evidence records only, never a real model's

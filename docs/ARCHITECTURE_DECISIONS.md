@@ -36,7 +36,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0003 | Materialise the platform integration at repository-root `splice/` | Superseded | ADR-0021 |
 | ADR-0004 | Use `nf-splice.yaml` as canonical authoring state | Superseded | ADR-0021 |
 | ADR-0005 | Keep evidence, candidates, and decisions distinct | Current | — |
-| ADR-0006 | Render only reviewed state and block affected unresolved layers | Current | — |
+| ADR-0006 | Render only reviewed state and block affected unresolved layers | Superseded | ADR-0061 |
 | ADR-0007 | Record generation provenance in `nf-splice.lock.json` | Superseded | ADR-0021 |
 | ADR-0008 | Treat a recognised existing `splice/` tree as a returning workflow | Current | — |
 | ADR-0009 | Inspect the complete tree and establish ownership per path | Current | — |
@@ -60,10 +60,10 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0027 | Classify outputs by SPLICE job, sample and run with free-text scientific labels | Current | — |
 | ADR-0028 | Generate one analysis output per job from the embedded output catalogue | Current | — |
 | ADR-0029 | Attribute review events publicly by label and keep contact details in a private local audit | Current | — |
-| ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Current | — |
+| ADR-0030 | Make one YAML draft per layer the authoritative, file-first authoring source | Superseded | ADR-0061 |
 | ADR-0031 | Review rich pipeline identity in `bundle.draft.yaml` with evidence kept distinct | Current | — |
-| ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Current | — |
-| ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Current | — |
+| ADR-0032 | Own an engine-neutral input contract with one access policy per parameter | Superseded | ADR-0061 |
+| ADR-0033 | Separate container sources, runtime variants and verified downloadable distributions | Superseded | ADR-0061 |
 | ADR-0034 | Review one default execution profile with adopted or deterministically generated configs | Superseded | ADR-0059 |
 | ADR-0035 | Validate, repair or generate the RO-Crate by review while preserving the root source | Superseded | ADR-0060 |
 | ADR-0036 | Promote layers independently and publish the bundle through a recoverable transaction | Current | — |
@@ -88,9 +88,14 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0055 | Declare typed assay capabilities from a pinned SPLICE modality vocabulary | Current | — |
 | ADR-0056 | Discover assay capabilities from scientific evidence and require classification for ingestion readiness | Current | — |
 | ADR-0057 | Make the six YAML drafts and native configs the authors' source of truth, seeded once and never gated on candidates | Current | — |
-| ADR-0058 | Review every layer with deep, high-effort AI investigation, independently of its validation gate | Current | — |
+| ADR-0058 | Review every layer with deep, high-effort AI investigation, independently of its validation gate | Superseded | ADR-0063 |
 | ADR-0059 | Keep profile metadata in YAML and configuration in native files; deliver images only on explicit approval | Current | — |
 | ADR-0060 | Author one RO-Crate graph, enrich it with the bundle, and make the pipeline archive a Workflow RO-Crate | Current | — |
+| ADR-0061 | State the authoring, access and image-provenance rules once for the file-first model | Current | — |
+| ADR-0062 | State one lifecycle: drafts valid, published, classified and ingestion ready are separate facts | Current | — |
+| ADR-0063 | Complete a layer review only with stage-specific evidence, an assessment of the draft and cited support | Current | — |
+| ADR-0064 | Keep outputs and components pipeline-defined and classify uncovered routes by evidence | Current | — |
+| ADR-0065 | Let agents assess, regenerate and check the RO-Crate through permission-controlled operations | Current | — |
 
 ---
 
@@ -227,12 +232,12 @@ value, confidence, and applicable repository revision.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-08-06 |
 | Source | Step 0 architecture baseline |
 | Scope | Generation eligibility |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0061 |
 | Related | ADR-0004, ADR-0005, ADR-0012, ADR-0013 |
 
 ### Decision
@@ -1023,6 +1028,8 @@ draft from a model would discard developer edits and comments.
 
 > **Note (2026-10-17).** Deliberate whole-draft or section replacement with an expected sha256 (`replace_draft`) is authoring, not regeneration; the restricted-YAML and conflict rules apply to it (ADR-0057).
 
+> **Note (2026-10-17).** Drafts and their atomic writes are confined to `.splice-local/drafts/` (ADR-0047), not `splice/`; ADR-0061 states the current authoring rules.
+
 ## ADR-0027: Classify outputs by SPLICE job, sample and run with free-text scientific labels
 
 | Metadata | Value |
@@ -1240,12 +1247,12 @@ unset.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 10 (requirements 3 and 6) |
 | Scope | Authoring authority and storage |
 | Supersedes | ADR-0021 |
-| Superseded by | — |
+| Superseded by | ADR-0061 |
 | Related | ADR-0005, ADR-0006, ADR-0008, ADR-0010, ADR-0011, ADR-0013, ADR-0021, ADR-0026, ADR-0029 |
 | Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/drafts/store.py` |
 | Tests | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py`, `tests/test_drafts_infra.py` |
@@ -1372,12 +1379,12 @@ derived the bundle id from the name on every render.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 4 (requirement 5) |
 | Scope | Input contract semantics, permissions and engine bindings |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0061 |
 | Related | ADR-0024, ADR-0026, ADR-0030 |
 | Implementation | `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py`, `src/nf_splice/domain/access.py` |
 | Tests | `tests/test_layer_inputs.py` |
@@ -1453,12 +1460,12 @@ user-configurable parameters, dropped `hidden`, rebuilt groups without their
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-15 |
 | Source | nf-SPLICE 0.3.0 implementation specification, section 6 |
 | Scope | Component inventory and container provenance |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0061 |
 | Related | ADR-0005, ADR-0024, ADR-0029, ADR-0030, ADR-0041 |
 | Implementation | `src/nf_splice/domain/components.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/inspectors/modules.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` |
 | Tests | `tests/test_containers.py` |
@@ -2079,9 +2086,9 @@ publish.
   MultiQC, an unpublished samtools step) and a STAR-only example back the
   tests.
 
----
+> **Note (2026-10-17, superseding the earlier note).** Outputs validation classifies uncovered routes: established ones are errors (`route_not_covered`), conditional and unresolved ones warnings (ADR-0064).
 
-> **Note (2026-10-17).** Route coverage is now reported by outputs validation itself as `route_not_covered` warnings, and `excluded_routes` records deliberate omissions (ADR-0057).
+---
 
 ## ADR-0043: Run optional external checkers only when installed, applicable and explicitly permitted
 
@@ -3056,16 +3063,18 @@ approvals and 122 parameter decisions on a real pipeline. The wizard
   write the same shapes, and legacy profile and provenance shapes are read.
 - Route coverage is static and can over-report; it warns rather than blocks.
 
+> **Note (2026-10-17).** Amended by ADR-0064: an uncovered route the code always publishes is an error, not a warning; conditional and unresolved routes stay warnings. Readiness is stated through one lifecycle (ADR-0062), and review completion follows ADR-0063.
+
 ## ADR-0058: Review every layer with deep, high-effort AI investigation, independently of its validation gate
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-17 |
 | Source | Maintainer's authoritative six-layer, file-first correction of 0.3.0 (17 October 2026) |
 | Scope | Session engine, stages, operations, toolbox, prompts, providers, reports |
 | Supersedes | ADR-0044 |
-| Superseded by | — |
+| Superseded by | ADR-0063 |
 | Related | ADR-0045, ADR-0046, ADR-0050, ADR-0051, ADR-0052, ADR-0053, ADR-0056, ADR-0057 |
 | Implementation | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/prompts.py`, `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/skills.py`, `src/nf_splice/agents/providers/`, `src/nf_splice/agents/help.py`, `src/nf_splice/agents/sandbox.py` |
 | Tests | `tests/test_file_first.py`, `tests/test_agents.py`, `tests/test_agent_interfaces.py`, `tests/test_scenarios.py`, `tests/test_skills.py` |
@@ -3270,3 +3279,342 @@ with no crate at its root, so standard tools did not recognise it.
 - Pipeline archives extracted anywhere are standard Workflow RO-Crates.
 - Bundles whose identity lacks a licence or release date are not ready for
   ingestion until the author supplies them.
+
+> **Note (2026-10-17).** Amended by ADR-0065: agents assess, regenerate and check the crate through permission-controlled operations, and standards validation is reported apart from nf-splice's structural checks.
+
+## ADR-0061: State the authoring, access and image-provenance rules once for the file-first model
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), section 2 |
+| Scope | Draft authority, seeded values, input access policies, container sources and distributions |
+| Supersedes | ADR-0006, ADR-0030, ADR-0032, ADR-0033 |
+| Superseded by | — |
+| Related | ADR-0005, ADR-0011, ADR-0026, ADR-0029, ADR-0041, ADR-0045, ADR-0047, ADR-0057, ADR-0059 |
+| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/services/containers.py`, `src/nf_splice/services/images.py` |
+| Tests | `tests/test_layer_inputs.py`, `tests/test_containers.py`, `tests/test_file_first.py`, `tests/test_corrective.py` |
+
+### Context
+
+ADR-0006, ADR-0030, ADR-0032 and ADR-0033 were still Current but described
+the model ADR-0057 replaced: drafts below `splice/drafts/`, seeded values
+pending until confirmed, a parameter without a reviewed policy blocking
+promotion, agents never writing access policies, and an image store
+configured by `NF_SPLICE_IMAGE_STORE_URL`. Notes pointed at ADR-0057, but
+four records each still made a normative statement that the code no longer
+followed. Only one interpretation may be Current.
+
+### Decision
+
+- **Retained from ADR-0006.** Published files are rendered only from the
+  drafts, never from raw inspection results, and a blocking issue in one
+  layer does not block unrelated layers.
+- **Retained from ADR-0030.** One authoritative draft per layer, a draft
+  marker, explicit `null` for absence, drafts created only when absent and
+  never overwritten by discovery, sidecars that never hold field values,
+  and previews that are derived and never written.
+- **What counts as reviewed.** A draft that validates is authored, reviewed
+  content, whoever wrote it and with whatever editor. Drafts live below
+  `.splice-local/drafts/` (ADR-0047). A seeded value needs no confirmation:
+  it is the author's to keep or change, and no candidate status, pending
+  value or confirmation is a validation error. `confirm` and the candidate
+  review tools remain optional records. Unresolved or conflicting *content*
+  (a null required field, conflicting evidence for a required identity
+  field, an unresolved container) still blocks its layer.
+- **Retained from ADR-0032.** The SPLICE-owned, engine-neutral input
+  contract, the lossless nf-schema adapter, the SPLICE extensions,
+  service-side enforcement and three-way re-import.
+- **Least privilege is a decision.** `x-splice-access.editable_by: []` is a
+  valid, deliberate policy (nobody changes the value at run time), and
+  hidden presentation is its default. Every imported parameter starts
+  there. Readiness checks that every indispensable input can still be
+  supplied (ADR-0062); nf-splice never widens a policy to satisfy it.
+- **Agents and access policies.** In an assisted session an agent's policy
+  change applies only after a person approves the proposal. In an
+  autonomous run it applies under the approved policy and is recorded as
+  `agent_autonomous` with approval `agent_policy`, never as human review.
+  The runtime principal `agent` is never granted because an AI wrote the
+  draft.
+- **Retained from ADR-0033.** Container references per runtime with their
+  location and condition, classification of reference kinds, one logical
+  container per image, stable container IDs, the published `id`/`type`/
+  `uri`, `source_images` and `resolution`, and the transport protections.
+- **Distributions.** A `distribution` is recorded only by nf-splice: by the
+  verification operation, which downloads and checks the file, by
+  `containers deliver` (ADR-0059), or, when the inventory is seeded from a
+  published `splice/components.json`, by keeping a distribution the lock
+  vouches for, recorded as verified and whose every runtime source is
+  unchanged. A kept distribution is reported as not downloaded again;
+  nothing is invented. Image delivery goes only through the explicitly
+  approved S3 workflow of ADR-0059; the environment-variable store is
+  removed.
+- **Components.** A module that declares a container must be mapped to one
+  (`container_not_mapped`). A process defined inline in a workflow file is a
+  component with `path` `<file>::<PROCESS>`.
+
+### Alternatives rejected
+
+- Keeping the four records Current with notes: two normative texts for one
+  rule.
+- Treating `editable_by: []` as incomplete: forces a decision per parameter
+  where least privilege is already the right default.
+
+### Consequences
+
+- ADR-0006, ADR-0030, ADR-0032 and ADR-0033 are historical; their retained
+  rules are stated here.
+- Consumers see no contract change: `path` was already a free string.
+
+---
+
+## ADR-0062: State one lifecycle: drafts valid, published, classified and ingestion ready are separate facts
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), section 3 |
+| Scope | `status`, `draft validate`, `build`, `validate`, `export`, the wizard, session completion and reports |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0036, ADR-0056, ADR-0057, ADR-0061 |
+| Implementation | `src/nf_splice/services/readiness.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/done.py`, `src/nf_splice/interfaces/tui/screens/build.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/stages.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_assay_discovery.py`, `tests/test_tui.py` |
+
+### Context
+
+ADR-0057 introduced six readiness dimensions, but only `nf-splice validate`
+and session reports showed them. `build` said "Built N file(s).",
+`status` said "Bundle ready to publish", the wizard's last step said
+"Bundle valid: yes", and `BundleReport` called a bundle without structural
+or classification errors "ingestion ready". A bundle could be published,
+and look finished, while a required input could not be supplied by anyone.
+
+### Decision
+
+- `nf-splice.services.readiness.lifecycle()` is the one statement every
+  interface makes: whether the drafts validate, whether the bundle is
+  published and current, whether it is structurally valid and
+  scientifically classified, and whether it is ready for SPLICE ingestion,
+  with one headline (`Drafts do not validate yet`, `Drafts validate, but the
+  bundle is not published`, `Published, but not ready for SPLICE
+  ingestion`, `Published and ready for SPLICE ingestion`) and actionable
+  reasons by dimension.
+- Publishing a structurally valid bundle for further review stays possible.
+  `build`, `status`, `validate`, `export`, the wizard's Review, Build and
+  Done steps, the build gate's summary and session reports print the
+  lifecycle; `draft validate` says it checks drafts only. `validate` exits
+  2 unless the bundle is ingestion ready.
+- A dimension that could not be assessed is not ready. A null or empty
+  default supplies nothing. Components that declare only Conda packages
+  block deployment under a container engine; components that declare no
+  software environment are noted as using the execution host's software.
+- Everything is computed offline from the repository; no provider or
+  network is needed.
+
+### Alternatives rejected
+
+- Refusing to publish until ingestion ready: a bundle is also reviewed
+  after publishing, and readiness can depend on deployment facts outside
+  the drafts.
+- A single "valid" flag: hides which dimension fails.
+
+### Consequences
+
+- `BundleReport.levels()` no longer reports ingestion readiness; consumers
+  read `lifecycle` (`--json`).
+
+---
+
+## ADR-0063: Complete a layer review only with stage-specific evidence, an assessment of the draft and cited support
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), section 4 |
+| Scope | Session engine, review controls, toolbox, prompts, scripted provider, reports |
+| Supersedes | ADR-0058 |
+| Superseded by | — |
+| Related | ADR-0045, ADR-0046, ADR-0050, ADR-0056, ADR-0057, ADR-0064, ADR-0065 |
+| Implementation | `src/nf_splice/agents/review_scope.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/prompts.py`, `src/nf_splice/agents/providers/scripted.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_file_first.py`, `tests/test_agents.py`, `tests/test_other_pipelines.py` |
+
+### Context
+
+ADR-0058 made a review necessary even when a draft validates, but accepted
+`complete_review` after one recorded source inspection of any kind. One
+read of `main.nf` could "review" an outputs catalogue whose publishing
+configs were never opened, and an unchanged draft could be accepted
+without saying what was checked.
+
+### Decision
+
+- **Retained from ADR-0058.** One engine, three policies; reviews
+  independent of the gates; the investigation trace recorded by nf-splice
+  from the model's own calls; review kinds, draft hash, sources
+  fingerprint, provider, model and effort; the reuse policy for
+  byte-identical drafts and sources; the authoring tools; reasoning effort
+  and its per-provider mapping; nine skills.
+- **Review scope.** For each layer stage, `review_scope` derives from the
+  repository the evidence classes that apply to this pipeline, each
+  required or advisory, with its files or analyses: identity (the current
+  draft, assay evidence through the vocabulary tools, the pipeline's
+  metadata and documentation; alternative routes advisory), inputs (the
+  draft, parameter usage, `nextflow_schema.json`, workflow code, configs
+  that set values), outputs (the draft, traced routes, the entry workflow
+  and every workflow file, every config that declares `publishDir`, the
+  example outputs supplied; subworkflows advisory), components (the draft,
+  the module inventory, `modules.json`, every module with an unresolved
+  item; container overrides advisory), profiles (the draft, the execution
+  analysis, every profile's own config, the pipeline's resource config;
+  `task.memory` modules advisory), provenance (the draft, the crate
+  assessment, the reviewed identity, the root crate; standards check and
+  authorship advisory). Evidence that does not exist in the repository is
+  not applicable, never missing. No count of calls is required.
+- **Completion.** `complete_review` and `submit_stage_proposal` are refused
+  while required evidence is uninspected, and when cited evidence names a
+  file never read; evidence must cite files (`path` or `path:line`) or
+  analyses that were run. `complete_review` also needs an assessment of
+  the draft (omissions, incorrect assumptions, unsupported declarations,
+  confirmations); an unchanged draft needs explicit confirmations. An
+  outputs review must address each uncovered alternative route
+  (ADR-0064). Uncertainties and blockers are recorded, never answered by
+  guessing.
+- **Record.** Each review records its basis (`revised` or
+  `verified_unchanged`), evidence, assessment, the coverage of every class
+  and the gaps left, apart from draft validity.
+- Deterministic discovery is the starting point; the prompt tells the model
+  to look beyond it. The scripted provider's `{"follow": "review_scope"}`
+  step makes the suggested calls for orchestration tests only.
+
+### Alternatives rejected
+
+- A fixed number of files or calls: pipelines differ; volume is not
+  coverage.
+- Trusting the model's list of what it checked: the trace is nf-splice's.
+
+### Consequences
+
+- AI sessions read more of each pipeline before finishing a stage.
+- Scripted tests prove the records and refusals, never a model's judgement.
+
+---
+
+## ADR-0064: Keep outputs and components pipeline-defined and classify uncovered routes by evidence
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), sections 5, 7 and 8 |
+| Scope | Output catalogue validation, seeding and formats, component inventory, test fixtures |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0027, ADR-0042, ADR-0057, ADR-0061, ADR-0063 |
+| Implementation | `src/nf_splice/layers/outputs.py`, `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/interfaces/tui/screens/outputs.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_other_pipelines.py`, `tests/test_layer_outputs.py`, `tests/test_file_first.py` |
+
+### Context
+
+ADR-0057 reported every uncovered published route as a warning, so an
+output the code always publishes could be missing from a catalogue that
+validated. Real-pipeline testing focused on bulk RNA-seq: the output
+formats nf-splice accepted were a closed genomics list (an imaging
+pipeline's OME-TIFF and Zarr outputs could not be described, although the
+contract allows any format), seeded categories came from a table of RNA-seq
+tool names, and processes defined inline in a workflow file were missing
+from the inventory.
+
+### Decision
+
+- **Route classes.** An uncovered route is *established* when the code
+  always publishes it (confirmed, with no branch, `when:`, switch, `saveAs`
+  or run-time path): an error, `route_not_covered`. *Conditional* or
+  configuration-dependent routes are warnings,
+  `conditional_route_not_covered`, naming the condition. Routes static
+  analysis cannot resolve are warnings, `route_unverified`, never blockers.
+  Each is resolved by adding or correcting an output, or by an
+  `excluded_routes` entry with a reason and an optional `kind`
+  (`intermediate`, `false_positive`, `out_of_scope`). The catalogue stays
+  the union of every route, whatever one example run took. No
+  candidate-by-candidate approval returns.
+- **Formats.** An output's format is any lower-case identifier; the
+  recognised list (now including TIFF, OME-TIFF, Zarr and H5AD) only
+  suggests formats from file names.
+- **Categories.** A seeded category is the first literal directory the
+  pipeline publishes to; nf-splice prescribes no category vocabulary.
+- **Inline processes** are inventoried with their own container references
+  (ADR-0061).
+- **Fixtures.** A multi-assay imaging-based spatial transcriptomics pipeline
+  and a minimal custom pipeline without `nextflow_schema.json`,
+  `modules.json` or nf-core conventions are exercised end to end in all
+  three modes.
+
+### Alternatives rejected
+
+- Blocking every uncovered route: static analysis over-reports conditional
+  and dynamic routes.
+- A larger closed list of formats: still prescribes a domain.
+
+### Consequences
+
+- An established output can no longer be silently missing from a
+  validating catalogue.
+- No contract changes: the contract already accepted any format string.
+
+---
+
+## ADR-0065: Let agents assess, regenerate and check the RO-Crate through permission-controlled operations
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), section 6 |
+| Scope | Provenance stage operations, standards-check reporting, CLI |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0043, ADR-0045, ADR-0060, ADR-0063 |
+| Implementation | `src/nf_splice/services/crate_review.py`, `src/nf_splice/services/checks.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_layer_provenance.py` |
+
+### Context
+
+ADR-0060 added nf-core generation on an isolated copy, archive layout and
+an opt-in `rocrate-validator` check, but only for the command line; agents
+still chose between the earlier `include|enriched|generated` strategies and
+could not run the generator or the validator. A structural pass could be
+read as a standards pass.
+
+### Decision
+
+- `analyse_ro_crate` assesses the repository's crate and the authored graph
+  and recommends `keep`, `adopt`, `correct` or `regenerate` with reasons,
+  stating whether nf-core's generator is installed and applicable.
+- `provenance_strategy` takes `adopt`, `correct` or `regenerate` (the
+  earlier names are read).
+- `generate_ro_crate` runs `nf-core pipelines rocrate` on an isolated copy
+  (ADR-0060) and needs `external_tools` and `network`; nf-splice never
+  installs nf-core. The result is reconciled with the reviewed identity.
+- `validate_ro_crate` and `nf-splice draft check-crate` check the draft
+  graph as it would be published: nf-splice's structural and identity
+  checks, and separately the Workflow RO-Crate 1.0 profile with
+  `rocrate-validator` (`external_tools`; offline without `network`),
+  reported as `passed`, `failed`, `not_run` or `not_applicable`, with a
+  statement that only structural checks are established when the standards
+  check did not run.
+- Missing tools or permissions give a result with the reason, so an agent
+  can report progress or record a blocker.
+
+### Alternatives rejected
+
+- Running the generator implicitly: hidden external effects.
+- One combined pass/fail: conflates nf-splice's checks with the standard.
+
+### Consequences
+
+- The provenance stage can be completed by an agent without any external
+  tool; standards validation is reported as not run in that case.

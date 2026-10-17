@@ -71,7 +71,7 @@ never a sample or a run.
 | `category` | yes | The output type's category |
 | `scope` | yes | `job`, `sample` or `run`: which unit owns the output |
 | `entity_type` | yes | `file` or `directory` |
-| `format` | yes | For example `html`, `tsv`, `bam` |
+| `format` | yes | For example `html`, `tsv`, `bam`, `ome-tiff`; one of the output type's formats, never from a fixed list |
 | `sample_id` | for `sample` and `run` | The sample that owns it, or the run's parent sample |
 | `run_id` | for `run` | The platform run that owns it |
 | `stage` | no | Processing stage from the catalogue |

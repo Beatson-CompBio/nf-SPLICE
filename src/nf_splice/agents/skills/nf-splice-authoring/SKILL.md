@@ -53,10 +53,15 @@ AI-assisted session and an autonomous run.
 4. **Validate** (`validate_layer`, `nf-splice draft validate <layer>`), read
    the issues, revise and validate again. A saved draft does not have to
    validate yet; nothing is lost while you iterate.
-5. **Review**: in AI modes, call `complete_review` once the content matches
-   the evidence, even if the draft already validated before you started.
+5. **Review**: in AI modes, inspect what `review_scope` lists for the stage,
+   then call `complete_review` with your assessment of the draft and the
+   evidence you read, even if the draft already validated before you
+   started.
 6. **Build** with `nf-splice build all` (or `build_bundle` when permitted),
-   then `nf-splice validate`, which reports readiness by dimension.
+   then `nf-splice validate`. A build publishes; it does not make a bundle
+   ready. Every command reports the lifecycle: `Published, but not ready for
+   SPLICE ingestion` with the reasons, until every readiness dimension is
+   ready.
 
 Discovery candidates (`list_pending`, `accept_output`, `reject_output`,
 `accept_unambiguous_components`, `review_profile`, `confirm_values`) are
@@ -76,8 +81,11 @@ required: a valid draft builds with every candidate untouched.
   revision on the current file; never overwrite someone's edit.
 - `unresolved` issues: a seeded entry still lacks a required value; supply it
   from evidence or leave it and say why.
-- `route_not_covered` warnings: a published route matches no output; add an
-  output or list it under `excluded_routes` with a reason.
+- `route_not_covered` (error): the code always publishes a path no output
+  matches; add or correct an output, or list it under `excluded_routes`
+  with a reason (`kind: false_positive` when the analysis is wrong).
+  `conditional_route_not_covered` and `route_unverified` are warnings:
+  decide them the same way, and keep alternative routes.
 - `identity_not_ready` on other layers: fix the identity first.
 - `syntax`: the YAML cannot be read; it is reported, never rewritten.
 

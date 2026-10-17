@@ -125,10 +125,13 @@ nf-splice build all
 nf-splice validate
 ```
 
-`validate` reports whether the bundle is structurally valid, scientifically
-classified and ready for ingestion, with each readiness dimension separately
-(contracts, classification, runtime parameters, deployment, provenance,
-publication). The published bundle is in `splice/`. Commit `splice/` and the
+`build` publishes the bundle and then says where it stands, for example
+`Published, but not ready for SPLICE ingestion.` with each reason. A
+successful build is not ingestion readiness: `validate` reports whether the
+bundle is structurally valid, scientifically classified and ready for
+ingestion, with each readiness dimension separately (contracts,
+classification, runtime parameters, deployment, provenance, publication),
+and exits with status 2 until all are ready. The published bundle is in `splice/`. Commit `splice/` and the
 updated `.gitignore`; your drafts stay in the private `.splice-local/` folder.
 
 ```bash

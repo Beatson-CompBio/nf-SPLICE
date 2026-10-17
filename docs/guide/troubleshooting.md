@@ -21,7 +21,11 @@ Run `nf-splice plan` to see everything still open, or
 | `invalid_value` | A value has the wrong form, such as a malformed URL or ORCID iD. | Correct it. |
 | `recommended` | A recommended value is missing. | Optional; add it for a better listing. |
 | `unresolved` | A seeded entry still lacks a required value. | Write it into the draft; `nf-splice draft validate --help`, or the wizard's *Explain errors*. |
-| `route_not_covered` (warning) | A published route matches no output. | Add an output, or list it under `excluded_routes` with a reason. |
+| `route_not_covered` (error) | The code always publishes a path no output matches. | Add or correct an output, or list it under `excluded_routes` with a reason (`kind: false_positive` if the analysis is wrong). |
+| `conditional_route_not_covered` (warning) | A route published under a condition matches no output. | Add an output for it, or exclude it with a reason; keep alternative routes. |
+| `route_unverified` (warning) | Static analysis could not resolve a route. | Check the code; add an output or exclude it if it is published. |
+| `container_not_mapped` | A module declares a container but its component names none. | Set `container_id`, or record what stops it under `unresolved`. |
+| `adopted_distribution` (warning) | A verified image file was kept from the earlier bundle without downloading it again. | Nothing, or run `nf-splice containers verify` to check it again. |
 | `unresolved_component` | A module's container or version needs a decision. | Resolve it in the draft and remove the `unresolved` entry. |
 | `module_not_listed` (warning) | A module is not in the inventory. | Add it, or leave it out on purpose. |
 | `syntax` | A draft cannot be parsed. | Fix it in your editor; nf-splice never rewrites it. |

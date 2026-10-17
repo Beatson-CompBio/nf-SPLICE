@@ -38,9 +38,16 @@ The drafts on disk are always the source of truth (ADR-0057).
   `src/nf_splice/agents/toolbox.py` (permissions, budgets, staging, logging).
 - A stage is complete only when its deterministic gate in
   `src/nf_splice/agents/stages.py` passes, and a layer stage also needs the
-  agent's recorded review (`complete_review`, or an approved proposal),
-  which requires source inspections nf-splice logged itself. A passing gate
+  agent's recorded review (`complete_review`, or an approved proposal). A
+  review needs the stage's required evidence from
+  `src/nf_splice/agents/review_scope.py`, inspected as nf-splice logged it,
+  an assessment of the draft and cited support (ADR-0063). A passing gate
   never skips the review; model output is never validation.
+- Where an integration stands is stated once, by
+  `src/nf_splice/services/readiness.py` `lifecycle()` (ADR-0062): drafts
+  valid, published, classified and ingestion ready are separate facts, and
+  every interface reports them the same way. A build is never ingestion
+  readiness.
 - Agents author through `replace_draft` (whole draft or section, with the
   expected sha256) and `write_config`; a safe write is kept even when the
   content does not validate yet. Reasoning effort is provider-neutral

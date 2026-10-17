@@ -32,7 +32,11 @@ cluster.
    `// ***** User Pipeline Input Params *****` for values users may change
    and `// ***** SPLICE Pipeline Input Params *****` for values the
    deployment sets or fixes. Add any other valid configuration around them.
-4. **Site profiles without memory requests** (a Slurm site that rejects
+   Any executor Nextflow supports is valid (`local`, `slurm`, `lsf`, `sge`,
+   `pbspro`, `k8s`, `awsbatch`, `google-batch`, ...), and any engine:
+   nothing about one site or scheduler is a default.
+4. **Site profiles without memory requests**, when the evidence shows the
+   site needs one (for example a Slurm site that rejects
    `#SBATCH --mem` and allots memory per CPU, such as 2 GB per core):
    - `analyse_execution` with the config: label and selector resources,
      memory = null coverage, memory per core, and every `task.memory` use;

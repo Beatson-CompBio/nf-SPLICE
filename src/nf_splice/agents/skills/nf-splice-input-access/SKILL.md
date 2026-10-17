@@ -43,12 +43,17 @@ parameter when a job is submitted, or checking whether a job can run.
 3. Visibility (`standard`, `advanced`, `hidden`) is presentation only; it
    never authorises a change.
 4. Apply the whole policy as one revision (`replace_draft` or batched
-   `set_parameter_access`), with reasons for uncertain cases. Ask one
+   `set_parameter_access`), with reasons for uncertain cases. In an
+   assisted session the person approves it; in an autonomous run it is
+   recorded as your decision under the approved policy, never as human
+   review. Ask one
    grouped question where the intended exposure is a genuine choice.
 5. Check that indispensable inputs (required values and the sample sheet
    with no default) can be supplied: by a principal, a default, or the
    default profile's config. `nf-splice validate` reports this as the
-   runtime-parameters readiness dimension.
+   runtime-parameters readiness dimension. Never widen a policy only to make
+   a bundle ready: if nobody should supply a value, the default profile's
+   config must set it, or it is a question for the person.
 
 ## Verification gates
 

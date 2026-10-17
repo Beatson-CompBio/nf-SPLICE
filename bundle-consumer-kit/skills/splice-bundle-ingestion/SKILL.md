@@ -48,7 +48,7 @@ downstream component needs; you choose tables, documents or columns.
 | Output catalogue: `analysis_output_schema_version`, the schema's `$id`, `categories`, `output_types[]` (below) | `outputs.schema.json` → `x-output-catalog`, `$id` | Results views, data explorer, linking job records |
 | Profiles: every key of `profiles[]`, the content of each profile's `config` file, `site_parameters[]` | `execution-profiles.json`, `configs/` | Launcher, launch form |
 | Containers: `id`, `type`, `uri`, `source_images`, `distribution`, `resolution.status`; and `require_downloadable_images` | `components.json` | Launcher (image pre-fetch), software inventory |
-| Components: `id`, `name`, `namespace`, `path`, `tool.name`, `tool.version`, `container_id`, `conda_packages`, `evidence` | `components.json` | Software inventory, "tools used" pages, citations |
+| Components: `id`, `name`, `namespace`, `path`, `tool.name`, `tool.version`, `container_id`, `conda_packages`, `evidence` | `components.json` | Software inventory, "tools used" pages, citations. `path` is a module directory, or `<file>::<PROCESS>` (namespace `inline`) for a process defined in a workflow file; store it as an opaque string |
 | RO-Crate | `ro-crate-metadata.json` | Provenance export (store as a document) |
 | Integrity: `managed_files` hashes, `repository.url`, `repository.revision`, `contracts` | `nf-splice.lock.json` | Change detection, provenance ("built from commit …") |
 
@@ -106,7 +106,7 @@ version + `key`:
 | `category` | Key into `x-output-catalog.categories`; store categories with their optional `title` and `description` |
 | `stage` | Optional free-text processing stage |
 | `scope[]` | Which of `job`, `sample`, `run` may own it |
-| `entity_type[]`, `format[]` | `file` and/or `directory`; permitted formats |
+| `entity_type[]`, `format[]` | `file` and/or `directory`; permitted formats, free lower-case names chosen for the pipeline (`bam`, `ome-tiff`, `zarr`): never validate them against a fixed list |
 | `path_patterns[]` | Python `re` patterns; see `splice-analysis-output` |
 | `labels` | Optional name-value pairs |
 

@@ -28,7 +28,10 @@ file into `analysis_output.json` that the run did not produce.
 - The identity layer is ready (outputs compile against it).
 - `nf-splice init` has seeded the draft: from a previously published
   `splice/outputs.yaml` when one exists, otherwise one provisional entry per
-  published route. Seeded categories, scopes and titles are first guesses.
+  published route. Seeded categories (the pipeline's own publish
+  directories), scopes and titles are first guesses; nf-splice prescribes
+  no category list, and formats are any lower-case names (`bam`,
+  `ome-tiff`, `zarr`).
 - Optional: authorised example outputs (a results directory, a saved
   listing or an output index).
 
@@ -60,12 +63,23 @@ file into `analysis_output.json` that the run did not produce.
    section `/outputs` (and `/categories`). Keep semantically different
    outputs apart, merge only true duplicates, and add outputs discovery
    missed when the source shows they are published. List published routes
-   you deliberately leave out under `excluded_routes` with a reason.
+   you deliberately leave out under `excluded_routes` with a reason and,
+   optionally, a `kind`: `intermediate`, `false_positive` (static
+   discovery reported a route the pipeline does not publish) or
+   `out_of_scope`.
 5. With an example, `reconcile_example_outputs`: every observed file should
    classify to exactly one output; unobserved types may belong to other
    routes. Never infer a product from a file extension alone.
-6. `validate_layer`, read the issues (including `route_not_covered`
-   warnings), revise and repeat; then `complete_review`.
+6. `validate_layer`, read the issues, revise and repeat. Uncovered routes
+   come in three classes: `route_not_covered` (an error: the code always
+   publishes it), `conditional_route_not_covered` (a warning naming the
+   condition) and `route_unverified` (a warning: static analysis could not
+   resolve it). Resolve each; never drop an alternative route because an
+   example run took another branch.
+7. `review_scope`, then `complete_review`: the outputs review needs the
+   entry workflow and every workflow file, every config that declares
+   `publishDir` and the examples supplied, and must name each uncovered
+   alternative route it leaves out, with why.
 
 ## Verification gates
 

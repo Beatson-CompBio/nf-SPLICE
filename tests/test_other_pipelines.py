@@ -162,7 +162,7 @@ def author_spatial(root: Path) -> None:
             ADA,
             evidence="documented",
             rationale="README.md names the platform's output this route reads.",
-            sources=["README.md:5"],
+            sources=("README.md:5",),
         )
     sync_identity(root, ADA)
 

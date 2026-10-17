@@ -23,7 +23,9 @@ optional routes are found and checked.
   included.
 
 Seeded entries are first guesses: titles from emit names, categories from
-the tool, scopes from the path. What cannot be known is empty, for example a
+the directory the pipeline publishes to (`^segmentation/...` gives
+`segmentation`; nf-splice prescribes no category list), formats from file
+names, scopes from the path. What cannot be known is empty, for example a
 description, and validation says so (`unresolved`). Example results from a
 real run add evidence:
 
@@ -79,16 +81,19 @@ nf-splice configure outputs \
 | --- | --- |
 | `key` | Stable identifier, lower-case with `_` |
 | `title`, `description` | What users see |
-| `category` | Free-text grouping, such as `quality_control` |
+| `category` | Free-text grouping chosen for the pipeline, such as `quality_control` or `segmentation` |
 | `stage` | Optional free-text processing stage |
 | `scopes` | `job`, `sample` and/or `run` |
-| `formats` | For example `html`, `tsv`, `bam` |
+| `formats` | Any lower-case format names, such as `html`, `bam`, `ome-tiff`, `zarr` |
 | `entity_types` | `file` or `directory` |
 | `path_patterns` | Regular expressions anchored with `^` and `$` |
 | `labels` | Optional name/value pairs, such as the aligner |
 
 `excluded_routes` is draft-only: published routes you leave out on purpose,
-by `process` or by `glob`, each with a reason.
+by `process` or by `glob`, each with a `reason` and, optionally, a `kind`:
+`intermediate` (a file the platform need not classify), `false_positive`
+(static discovery reported a route the pipeline does not publish) or
+`out_of_scope`.
 
 ## Scopes and path patterns
 
@@ -103,11 +108,21 @@ paths relative to the job's publish directory:
 
 ## Coverage
 
-Validation compares the catalogue with the routes the pipeline publishes. A
-published route that no pattern matches is a `route_not_covered` warning
-naming the process and the rule: add an output for it, or exclude it with a
-reason. Coverage never blocks the build: static analysis cannot see paths
-decided at run time.
+Validation compares the catalogue with the routes the pipeline publishes,
+and says how firm the evidence for each uncovered route is:
+
+| Finding | When | Severity |
+| --- | --- | --- |
+| `route_not_covered` | The code always publishes the path: no branch, `when:`, switch, `saveAs` or run-time path | error |
+| `conditional_route_not_covered` | The route runs only under a condition (named in the message), or its paths depend on configuration | warning |
+| `route_unverified` | Static analysis could not resolve whether or what the route publishes | warning |
+
+Resolve each by adding or correcting an output, or by excluding the route
+with a reason (`kind: false_positive` when the analysis is wrong). An
+alternative route stays in the catalogue even if your example run took
+another branch: the catalogue is the union of every route. Only
+established routes block the build, because static analysis over-reports
+routes decided at run time.
 
 ## Set the job output schema version
 

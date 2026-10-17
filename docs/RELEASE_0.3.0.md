@@ -1,9 +1,12 @@
 # nf-SPLICE 0.3.0 release record
 
 **Status:** ready for review on branch `wip/nf-splice-v0.3.0`; not released.
-Nothing has been merged, tagged or published. The branch passed CI at
-`0828774`; the file-first six-layer correction (ADR-0057 to ADR-0060) is a
-local commit that has not yet been pushed or run in CI.
+Nothing has been merged, tagged or published. The file-first six-layer
+correction (ADR-0057 to ADR-0060) was pushed and passed CI at `0cf4277` on
+Python 3.10 to 3.14, with the wheel and hygiene jobs. The corrective
+consistency pass (ADR-0061 to ADR-0065) is committed locally on the same
+branch and has **not** been pushed or run in CI; see
+[Current verification](#current-verification-corrective-pass-17-october-2026).
 
 | Item | Value |
 | --- | --- |
@@ -39,17 +42,22 @@ run, made for trying output discovery, `nf-splice assess` and sessions.
 
 Please look first at:
 
-1. ADR-0057 to ADR-0060: seeded, file-first drafts with no approval gates;
-   reviews that are independent of validation, with reasoning effort;
-   native profile configs; and one authored RO-Crate.
-2. The [decisions flagged for review](#decisions-flagged-for-review).
-3. ADR-0044 to ADR-0046: the three ways of working, agent permissions and
+1. ADR-0061 to ADR-0065, the corrective pass: one statement of the
+   authoring, access and image rules; one lifecycle in which a published
+   bundle is not automatically ready for ingestion; evidence-based review
+   completion; pipeline-neutral outputs with uncovered routes classified;
+   and the agentic RO-Crate workflow.
+2. ADR-0057 to ADR-0060: seeded, file-first drafts with no approval gates;
+   native profile configs; and one authored RO-Crate. ADR-0058 (reviews
+   and reasoning effort) is superseded by ADR-0063, which keeps its rules.
+3. The [decisions flagged for review](#decisions-flagged-for-review).
+4. ADR-0044 to ADR-0046: the three ways of working, agent permissions and
    attribution, and the skills.
-4. ADR-0042: output routes, and why the catalogue and a job's
+5. ADR-0042: output routes, and why the catalogue and a job's
    `analysis_output.json` differ.
-5. ADR-0041, which removes all 0.1.0 compatibility because 0.1.0 was a
+6. ADR-0041, which removes all 0.1.0 compatibility because 0.1.0 was a
    pre-release test version.
-6. The [schema reference](schemas/README.md), if you build tools on bundles.
+7. The [schema reference](schemas/README.md), if you build tools on bundles.
 
 ## Feature ledger
 
@@ -71,20 +79,20 @@ checks that every ADR exists, every path exists and every test file exists.
 | Job metadata (`--job-metadata`) | ADR-0027 | `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py` | `tests/test_output_scopes.py`, `tests/test_runtime.py` | Current |
 | outputs.schema.json x-output-catalog as sole runtime catalogue | ADR-0028 | `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py` | `tests/test_output_scopes.py`, `tests/test_output_contracts.py` | Current |
 | Actor attribution and private audit store | ADR-0029 | `src/nf_splice/domain/audit.py`, `src/nf_splice/services/audit.py` | `tests/test_audit.py` | Current |
-| One authoritative YAML draft per layer; no nf-splice.yaml | ADR-0030 | `src/nf_splice/layers/base.py`, `src/nf_splice/drafts/` | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py` | Current |
+| One authoritative YAML draft per layer; no nf-splice.yaml | ADR-0061 | `src/nf_splice/layers/base.py`, `src/nf_splice/drafts/` | `tests/test_layer_bundle.py`, `tests/test_layer_outputs.py` | Current |
 | Rich identity in bundle.draft.yaml | ADR-0031 | `src/nf_splice/layers/bundle.py`, `src/nf_splice/domain/identity.py` | `tests/test_layer_bundle.py` | Current |
-| Engine-neutral input contract and service-side permissions | ADR-0032 | `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py` | `tests/test_layer_inputs.py` | Current |
-| Container sources, verified distributions and cache naming | ADR-0033 | `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` | `tests/test_containers.py` | Current |
+| Engine-neutral input contract and service-side permissions | ADR-0061 | `src/nf_splice/layers/inputs.py`, `src/nf_splice/services/input_policy.py` | `tests/test_layer_inputs.py` | Current |
+| Container sources, verified distributions and cache naming | ADR-0061 | `src/nf_splice/layers/components.py`, `src/nf_splice/services/containers.py` | `tests/test_containers.py` | Current |
 | One default profile; profile metadata in YAML, configuration in native files | ADR-0059 | `src/nf_splice/layers/execution.py`, `src/nf_splice/services/execution_review.py` | `tests/test_layer_execution.py`, `tests/test_file_first.py` | Current |
 | One authored RO-Crate graph, bundle entities and the nf-core adapter | ADR-0060 | `src/nf_splice/layers/provenance.py` | `tests/test_layer_provenance.py` | Current |
 | Per-layer promotion and recoverable bundle publication | ADR-0036 | `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py` | `tests/test_lifecycle.py` | Current |
 | Only 0.3.0 contracts supported; pre-release 0.1.0 compatibility removed | ADR-0041 | `src/nf_splice/cli.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/inspectors/splice_tree.py`, `src/nf_splice/contracts/data/registry.json` | `tests/test_state.py`, `tests/test_output_scopes.py`, `tests/test_contracts.py` | Current |
-| File-first CLI | ADR-0030, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
+| File-first CLI | ADR-0061, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
 | File-first Textual wizard and CLI/TUI equivalence | ADR-0057 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |
-| Manual Ask AI, AI-assisted sessions and autonomous integration over one engine | ADR-0058 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/help.py`, `src/nf_splice/cli.py` | `tests/test_agents.py`, `tests/test_scenarios.py` | Current |
-| Typed agent operations over the deterministic services, with sandboxed previews | ADR-0058 | `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/sandbox.py` | `tests/test_agents.py` | Current |
-| Session views in the wizard sharing state with the CLI | ADR-0058, ADR-0057 | `src/nf_splice/interfaces/tui/screens/session.py`, `src/nf_splice/interfaces/tui/screens/ask.py`, `src/nf_splice/interfaces/tui/screens/welcome.py` | `tests/test_agent_interfaces.py`, `tests/test_tui.py` | Current |
-| Provider-neutral protocol with Claude Agent SDK and scripted providers | ADR-0058 | `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/` | `tests/test_agent_interfaces.py` | Current |
+| Manual Ask AI, AI-assisted sessions and autonomous integration over one engine | ADR-0063 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/help.py`, `src/nf_splice/cli.py` | `tests/test_agents.py`, `tests/test_scenarios.py` | Current |
+| Typed agent operations over the deterministic services, with sandboxed previews | ADR-0063 | `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/sandbox.py` | `tests/test_agents.py` | Current |
+| Session views in the wizard sharing state with the CLI | ADR-0063, ADR-0057 | `src/nf_splice/interfaces/tui/screens/session.py`, `src/nf_splice/interfaces/tui/screens/ask.py`, `src/nf_splice/interfaces/tui/screens/welcome.py` | `tests/test_agent_interfaces.py`, `tests/test_tui.py` | Current |
+| Provider-neutral protocol with Claude Agent SDK and scripted providers | ADR-0063 | `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/` | `tests/test_agent_interfaces.py` | Current |
 | Operation-level permissions, bound approvals and agent attribution | ADR-0045 | `src/nf_splice/agents/permissions.py`, `src/nf_splice/domain/audit.py`, `src/nf_splice/layers/base.py` | `tests/test_agents.py`, `tests/test_audit.py` | Current |
 | Publication-route analysis and published-only output discovery | ADR-0042 | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `tests/fixtures/multi-route-0.3.0/` | `tests/test_routes.py`, `tests/test_output_discovery.py` | Current |
 | Separate contract, observed-output and coverage assessments (`nf-splice assess`) | ADR-0042 | `src/nf_splice/services/coverage.py`, `src/nf_splice/cli.py` | `tests/test_coverage.py` | Current |
@@ -105,14 +113,21 @@ checks that every ADR exists, every path exists and every test file exists.
 | Least-privilege parameter import and parameter usage index | ADR-0057 | `src/nf_splice/layers/inputs.py`, `src/nf_splice/inspectors/parameters.py` | `tests/test_layer_inputs.py`, `tests/test_file_first.py` | Current |
 | Seeded component inventory and per-runtime nf-core container parsing | ADR-0057 | `src/nf_splice/layers/components.py`, `src/nf_splice/inspectors/containers.py` | `tests/test_containers.py`, `tests/test_file_first.py` | Current |
 | Readiness dimensions in validation and reports | ADR-0057 | `src/nf_splice/services/readiness.py` | `tests/test_file_first.py` | Current |
-| Reviews independent of gates, investigation trace, authoring tools, reasoning effort | ADR-0058 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/protocol.py` | `tests/test_file_first.py`, `tests/test_agents.py` | Current |
+| Reviews independent of gates, investigation trace, authoring tools, reasoning effort | ADR-0063 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/protocol.py` | `tests/test_file_first.py`, `tests/test_agents.py` | Current |
+| One lifecycle statement: drafts valid, published, classified, ingestion ready | ADR-0062 | `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/done.py`, `src/nf_splice/agents/report.py` | `tests/test_corrective.py`, `tests/test_tui.py` | Current |
+| Stage-specific review scope, cited evidence and draft assessment | ADR-0063 | `src/nf_splice/agents/review_scope.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/engine.py` | `tests/test_corrective.py`, `tests/test_file_first.py` | Current |
+| Uncovered routes classified as established, conditional or unverified | ADR-0064 | `src/nf_splice/layers/outputs.py` | `tests/test_corrective.py`, `tests/test_file_first.py` | Current |
+| Pipeline-defined formats and categories; inline processes as components | ADR-0064, ADR-0061 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_layer_outputs.py` | Current |
+| Imaging and minimal custom pipelines end to end in all three modes | ADR-0064, ADR-0063 | `tests/fixtures/spatial-imaging-0.3.0/`, `tests/fixtures/minimal-custom-0.3.0/` | `tests/test_other_pipelines.py` | Current |
+| Verified distributions kept on adoption; container mapping checked | ADR-0061 | `src/nf_splice/layers/components.py` | `tests/test_corrective.py` | Current |
+| Agentic RO-Crate assessment, nf-core generation and standards check | ADR-0065 | `src/nf_splice/services/crate_review.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
 | Opt-in image delivery to an S3-compatible store | ADR-0059 | `src/nf_splice/services/images.py` | `tests/test_file_first.py` | Current |
 | Standards validation and archive-root RO-Crate | ADR-0060 | `src/nf_splice/services/checks.py`, `src/nf_splice/services/export.py` | `tests/test_file_first.py`, `tests/test_source_git_export.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
 | Task-based user guide and contributor guide with verified commands | ADR-0023, ADR-0027 | `README.md`, `CONTRIBUTING.md`, `docs/USAGE.md`, `docs/guide/` | `tests/test_docs.py` | Current |
 | Generated command reference | ADR-0023 | `scripts/generate_cli_docs.py`, `docs/reference/cli.md` | `tests/test_docs.py` | Current |
 | Integrator overview, `analysis_output.json` and companion-file references | ADR-0024, ADR-0028 | `docs/CONTRACTS.md`, `docs/schemas/README.md`, `docs/schemas/analysis-output.md`, `docs/schemas/companion-files.md` | `tests/test_docs.py` | Current |
-| Reference validated bundle and incomplete draft fixtures | ADR-0030, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
+| Reference validated bundle and incomplete draft fixtures | ADR-0061, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
 | CI matrix 3.10-3.14, packaging and hygiene gates | ADR-0040 | `.github/workflows/ci.yml`, `pyproject.toml` | `tests/test_packaging.py` | Current |
 
 ## What 0.3.0 provides
@@ -215,6 +230,37 @@ release and the baseline for schema compatibility (ADR-0041).
   repository-hygiene checks, run on pushes to `main` and to `wip/**`
   branches (ADR-0040).
 
+### Corrective consistency pass (ADR-0061 to ADR-0065)
+
+- **One lifecycle** (ADR-0062): drafts valid, published, scientifically
+  classified and ready for SPLICE ingestion are separate facts, stated the
+  same way by `status`, `draft validate`, `build`, `validate`, `export`, the
+  wizard and session reports. A build reports `Published, but not ready for
+  SPLICE ingestion` with the reasons until every dimension is ready; a
+  dimension that was not assessed is not ready; a null default supplies
+  nothing; Conda-only components block deployment under a container engine.
+- **Evidence-based reviews** (ADR-0063): a stage-specific review scope
+  derived from the repository; reviews and proposals refused while required
+  evidence is uninspected or when they cite unread files; an assessment of
+  the draft, cited evidence, a basis (`revised` or `verified_unchanged`),
+  coverage and gaps recorded with each review.
+- **Outputs** (ADR-0064): uncovered routes classified as established
+  (error), conditional (warning) or unverified (warning); exclusions with a
+  `kind`; formats are any lower-case name; seeded categories are the
+  pipeline's own directories.
+- **Components** (ADR-0061, ADR-0064): verified distributions kept on
+  adoption when the lock vouches for them; `container_not_mapped`; inline
+  processes inventoried; the environment-variable image store removed.
+- **RO-Crate for agents** (ADR-0065): assess and recommend, adopt, correct
+  or regenerate, nf-core generation under `external_tools` and `network`,
+  and a structural check reported apart from the standards check
+  (`nf-splice draft check-crate`).
+- **Pipelines beyond bulk RNA-seq**: an imaging-based spatial
+  transcriptomics fixture and a minimal custom fixture, both end to end in
+  every mode.
+- **CI** (`0cf4277`): the optional Claude Agent SDK is imported with
+  `pytest.importorskip`, so mypy and the suite pass without provider SDKs.
+
 ### Fixed during review
 
 - Single-line Nextflow metadata blocks (`{ name = 'x'; version = 'y' }`) are
@@ -227,6 +273,10 @@ release and the baseline for schema compatibility (ADR-0041).
 - `scripts/run-checks.sh` works in uv environments without pip.
 
 ## Functional acceptance checklist (specification section 17)
+
+This checklist was compiled for the first implementation phase and is kept
+as history; rows changed by later decisions are marked. Current results
+are in [Current verification](#current-verification-corrective-pass-17-october-2026).
 
 "Done" items are backed by the ledger tests above and the scenario tests
 below. "Partial" items are complete offline and wait only on the external
@@ -247,8 +297,8 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | Components | OCI source, Apptainer/Singularity source and downloadable image kept distinct | Done | `test_containers.py` |
 | Components | HTTPS image validation, SHA-256, local conversion, cache naming, opt-in upload | Partial | Offline behaviour tested. Live Nextflow cache naming and the real object store are not verified (decisions 3 and 4) |
 | Execution | At most one reviewed default; safe Slurm candidate | Done | `test_layer_execution.py` |
-| Execution | Adopted and generated `.config` routes with required section headings | Done | `test_layer_execution.py` |
-| Provenance | RO-Crate validation, reviewed enrichment/generation, root preserved | Done | `test_layer_provenance.py` |
+| Execution | Adopted and authored `.config` routes with required section headings | Done | `test_layer_execution.py` (generated configs were replaced by authored native configs, ADR-0059) |
+| Provenance | RO-Crate validation, reviewed correction/regeneration, root preserved | Done | `test_layer_provenance.py`, `test_corrective.py` (strategies renamed adopt, correct, regenerate by ADR-0065) |
 | Provenance | Public contacts separated from private local identity | Done | `test_audit.py` |
 | Workflow | One YAML draft per contract; only `outputs.draft.yaml` for outputs; no authoritative `nf-splice.yaml` | Done | `test_layer_outputs.py`, `test_reference_workflow.py` |
 | Workflow | External edits detected, diffed, validated and promoted without import; no lost concurrent edits | Done | `test_drafts_infra.py`, `test_s03_*`, `test_s04_*` |
@@ -265,7 +315,7 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | AI | Claude adapter and scripted provider conform to one protocol; missing capabilities fail clearly | Done | `test_agent_interfaces.py` |
 | AI | Skills canonical, packaged, accurate and loaded into every provider turn | Done | `test_skills.py` |
 | Outputs | Catalogue covers alternative routes; one-route example validates without the others; unknown files fail by default | Done | `test_routes.py`, `test_coverage.py` |
-| Release | Regression tests pass | Done | 217 passed, 2 opt-in skipped |
+| Release | Regression tests pass | Done | historical: 217 passed, 2 opt-in skipped; current: see Current verification |
 | Release | Scenarios S01-S15 pass offline | Done | S05 and S14 migration parts not applicable; see below |
 | Release | Python 3.10-3.14, nf-core coexistence, pytest, ruff, mypy, packaging, installed CLI | Done | 3.10, 3.11 and 3.14 run locally; all of 3.10 to 3.14 pass in GitHub Actions |
 | Release | Golden files and snapshots committed | Done | `tests/snapshots/tui/`, `docs/schemas/*/v0.3.0/` |
@@ -303,8 +353,11 @@ S09 does not simulate a full disk. It injects a write failure through a
 read-only target, and `test_lifecycle.py` tests interrupted publication
 through the `replace_file` hook; both use the same staging and recovery code.
 
-## Tests and checks run
+## Historical test runs (earlier commits)
 
+These results were recorded at the commits named and were not repeated
+unless they appear under
+[Current verification](#current-verification-corrective-pass-17-october-2026).
 All commands ran inside the clone with `. scripts/dev-env.sh`, which keeps
 every cache, temporary file, report and session under `.nf-splice-local/`.
 
@@ -357,6 +410,12 @@ model selected), `scripted` ready.
 
 ## End-to-end on a real pipeline
 
+### Historical run, before seeding (ADR-0057)
+
+This run predates the file-first correction, when drafts started empty and
+each candidate needed a decision. It no longer describes nf-splice: the
+"about 450 review items" below were approval queues that ADR-0057 removed.
+
 The maintainer supplied a copy of a real pipeline,
 `splice-nf-bulk-rnaseq` (based on nf-core/rnaseq, revision `e90c65a`), which
 also contains a hand-made `splice/` folder written before nf-splice could
@@ -391,13 +450,68 @@ outside the repository.
    compared before and after), and no runtime file was written to the
    nf-SPLICE checkout.
 
-Completing this pipeline needs the ~450 decisions to be reviewed by a person
-or a live model; that was not done here. The run found three defects, all
+At the time, completing this pipeline needed those ~450 decisions to be
+reviewed by a person or a live model; that was not done. The run found three defects, all
 fixed in `07bf3fd`: a triple-quoted `description` in the Nextflow
 configuration was read as a single quote; a README title in an HTML `<h1>`
 was missed; a decision-file entry with the wrong key ended in a traceback. The two skipped tests are opt-in: `nextflow`
 needs a Nextflow installation and `live_agent` needs approved Claude
 credentials.
+
+### Current behaviour on the same pipeline (17 October 2026)
+
+`nf-splice init` on a fresh copy, outside any repository, with the
+corrective pass: 61 outputs seeded from the pipeline's own earlier
+`splice/outputs.yaml`, 72 components and 43 containers from `modules.json`
+(no inline processes; no verified distribution to keep), the three earlier
+profiles (`default`, `local`, `eidf`) with their configs, all 122
+parameters imported with `editable_by: []`, and the root RO-Crate adopted.
+No candidate needs a decision. Outputs validation reports 50
+`conditional_route_not_covered` and 3 `route_unverified` warnings and no
+established uncovered route; what remains to author is the identity's
+analysis-output schema version and `require_downloadable_images`. The opt-in
+`reference_pipeline` test passed. The original pipeline was unchanged
+(content hashes, HEAD `e90c65a` and a clean status compared before and
+after). The pipeline was not completed or published here.
+
+## Current verification (corrective pass, 17 October 2026)
+
+Run on macOS with Python 3.12 inside the clone (`. scripts/dev-env.sh`).
+"Not run" means the check did not execute; nothing below is inferred.
+
+| Check | Result |
+| --- | --- |
+| `scripts/run-checks.sh`: dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard | exit 0: 420 passed, 7 skipped (opt-in); ruff clean; 193 files formatted; mypy clean on 170 files; `nf-splice 0.3.0` |
+| A `[dev]`-only environment with no provider SDK (no Claude Agent SDK, PyJWT or boto3) | mypy clean on 170 files; ruff clean; 395 passed, 9 skipped (the provider-specific tests skip) |
+| Wheel and sdist built; wheel installed with `[dev]` into a fresh Python 3.12 environment | the wheel carries the nine skills; full suite against the installed package: 395 passed, 9 skipped; `nf-splice --version`, `skills export` (nine skills) |
+| New fixtures against the installed wheel (`test_other_pipelines.py`, `test_corrective.py`) | 29 passed |
+| Opt-in `rocrate_validator` with rocrate-validator 0.12.2 | passed |
+| Real rocrate-validator 0.12.2 on the imaging fixture's draft graph (`nf-splice draft check-crate --allow external_tools --allow network`; fetched profile contexts over the network) | structural checks passed; Workflow RO-Crate 1.0 passed |
+| Opt-in `reference_pipeline` on a copy of the maintainer's RNA-seq pipeline | passed |
+| Real OpenCode 2.0.29 lockdown against a local fake model | passed |
+| ADR register, ledger, skills (canonical and packaged identical), docs links, CLI and schema references, consumer kit | passed (`test_adr_governance.py`, `test_skills.py`, `test_docs.py`, `test_consumer_kit.py`) |
+| CI on the corrective commits | **Not run**: not pushed |
+| Live Claude, ChatGPT, Codex or OpenCode model | **Not run**: no authorised credentials; Codex is not installed |
+| Nextflow (`nextflow` and effective-configuration tests) | **Not run**: no Java runtime on this machine |
+| S3 image delivery against a real bucket | **Not run**: no test bucket or authorisation |
+| Real `nf-core pipelines rocrate` | **Not run**: nf-core is not installed; tested with a fake executable |
+| Docker, Apptainer or Singularity image conversion | **Not run**: not installed; tested with fakes |
+
+### Corrective-pass requirements
+
+| Section | Requirement | State | Evidence |
+| --- | --- | --- | --- |
+| 1 | mypy and tests pass without optional provider SDKs; provider tests skip transparently | Done | `[dev]`-only environment above; CI at `0cf4277` |
+| 2 | One Current interpretation per decision; documentation and skills agree | Done | ADR-0061 supersedes ADR-0006, 0030, 0032, 0033; ADR-0063 supersedes ADR-0058; amendment notes on ADR-0026, 0042, 0057, 0060; `test_adr_governance.py` |
+| 3 | Publication and ingestion readiness distinct everywhere | Done | `test_corrective.py` lifecycle tests (CLI `status`, `build`, `validate`, `export`, `draft validate`, wizard Done) |
+| 4 | Stage-specific, evidence-based review completion | Done (orchestration) | `test_corrective.py`, `test_other_pipelines.py`; scripted providers only, no live model |
+| 5 | Uncovered routes classified; union of routes kept; no approval queue | Done | `test_corrective.py`, `test_file_first.py`, real pipeline copy |
+| 6 | Agentic RO-Crate: assess, choose, generate on a copy, reconcile, check with separate statuses | Done offline | `test_corrective.py` (fake nf-core and fake validator); real validator on the imaging graph; real nf-core not run |
+| 7 | Verified distributions kept on adoption; real deployment gaps reported | Done | `test_corrective.py` |
+| 8 | No pipeline-specific defaults; non-RNA-seq and minimal fixtures end to end in all modes | Done | `test_other_pipelines.py` |
+| 9 | Manual, assisted and autonomous behaviour preserved | Done (scripted) | full suite; identical contracts from the three modes in `test_other_pipelines.py` |
+| 10 | Contract families unchanged and consistent | Done | no schema changed; `formats` and `path` were already free strings; `docs/schemas/fields.yaml` updated |
+| 11 | Verification and reporting | Done, with the not-run items above | this section |
 
 ## Known dependencies and limitations
 
@@ -417,7 +531,16 @@ credentials.
   nf-core generator was tested with a fake executable only.
 - **Reviews and reasoning** were exercised with scripted providers only.
   Scripted runs prove the tools, gates and records, not the quality of a
-  real model's investigation.
+  real model's investigation. The review scope is derived from file
+  locations and names (`workflows/`, configs that declare `publishDir`,
+  modules with unresolved items); unusual layouts may need the agent to
+  look beyond it, which the prompt asks for.
+- **Inline processes** are found by matching `process NAME {` blocks in
+  workflow files; processes built by unusual Groovy constructs may be
+  missed and are then added by hand.
+- **Established routes** are classified from static evidence; a route the
+  analysis wrongly believes is always published is excluded with `kind:
+  false_positive`.
 - **Ingestion code** is not in this repository. The components shape is
   published as a schema, an example and fixtures; ingestion needs to read it.
 - **Live providers:** no live Claude, ChatGPT, Codex or OpenCode model was
@@ -473,11 +596,14 @@ From specification section 18.
 3. **Nextflow cache name rule.** Strip the URI scheme, map `:` and `/` to
    `-`, then append `.img` (or keep `.sif`); a configured registry prefix is
    applied first. Not yet verified against a live Nextflow.
-4. **Object store.** Upload is opt-in, uses operator configuration and has
-   no built-in URL, account or credential. Untested against the real bucket.
+4. **Object store.** Delivery is the explicitly approved S3 workflow of
+   ADR-0059, with no built-in URL, account or credential; the earlier
+   environment-variable store is removed (ADR-0061). Untested against a
+   real bucket.
 5. **RO-Crate profile.** RO-Crate 1.1 with Workflow RO-Crate conventions.
-   Strategies `include`, `enriched` or `generated`; the root crate is never
-   modified and enriched or generated crates are byte-stable. A
+   Strategies `adopt`, `correct` or `regenerate`, or nf-core's generator
+   (ADR-0060, ADR-0065); the root crate is never modified and corrected or
+   regenerated crates are byte-stable. A
    `CreateAction` and the `#nf-splice` `SoftwareApplication` are always
    added; identity corrections and author credit are reviewed choices.
 6. **Private actor storage.** Published review events carry actor labels
@@ -584,6 +710,13 @@ From specification section 18.
 | `07bf3fd` | fix: findings from the end-to-end run on a real RNA-seq pipeline |
 | `8f7ca26` | fix(opencode): wait until OpenCode has loaded the tool bridge |
 | `4888e05` | feat(assays): typed, multi-assay pipeline capabilities from the SPLICE vocabulary |
+| `a60cd9a` | feat: file-first six-layer authoring with review-required agents |
+| `0cf4277` | test: import the optional Claude Agent SDK with importorskip |
+| `919435a` | feat(readiness): one lifecycle statement; publishing is not ingestion readiness |
+| `e8836ab` | feat(agents): evidence-based review completion and the agentic RO-Crate workflow |
+| `79aaaa6` | feat(outputs): classify uncovered publication routes by how firm the evidence is |
+| `9afec2b` | fix(components): keep verified distributions on adoption; report real deployment gaps |
+| `90e30b8` | fix: represent pipelines beyond bulk RNA-seq and nf-core honestly |
 
 `git log 9ad15c1..` lists everything, including later updates to this
 record.
@@ -612,8 +745,8 @@ personal `.claude/` settings.
 The maintainer merges without pull requests; reviewers have read access.
 
 1. Push `wip/nf-splice-v0.3.0`. CI runs on the push; make sure every job
-   passes, including Python 3.12 and 3.13. CI passed at `0828774`; push
-   again for the later commits.
+   passes, including Python 3.12 and 3.13. CI passed at `0cf4277`; push
+   again for the corrective-pass commits.
 2. Reviewers install the branch (see [above](#for-reviewers-and-testers)),
    follow the user guide and report problems.
 3. Run the opt-in tests where their dependencies exist:

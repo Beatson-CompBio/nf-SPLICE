@@ -34,6 +34,9 @@ permits `scope: run`.
 | **Seeded draft** | A draft `init` filled from repository evidence. It is a first guess: people and agents edit it freely, and no candidate needs approving before it builds. |
 | **Published file** | A file below `splice/`, built only by nf-splice from the drafts; never edited by hand. |
 | **Discovery hint** | An advisory candidate in a `.review.json` sidecar. Hints never block validation or a build. |
+| **Lifecycle** | Where an integration stands, as separate facts every interface states the same way: drafts valid, published (and current), scientifically classified, ready for SPLICE ingestion. Published does not mean ready. |
+| **Review scope** | The evidence an AI review of one layer must (required) or should (advisory) inspect in this pipeline, derived from the repository; a review cannot finish while required evidence is uninspected. |
+| **Established route** | A publication route the code always takes (no branch, switch or run-time path). An uncovered established route is an error; conditional and unresolved routes are warnings. |
 | **Readiness dimension** | One of the separately reported questions `nf-splice validate` answers: contracts, scientific classification, runtime parameters, deployment, provenance and publication. |
 | **Principal** | A role in the SPLICE platform that may set an input at run time: `user`, `platform` or `agent`. The runtime `agent` principal is unrelated to an AI that helps author a draft. |
 | **Image source** | The registry reference or URL a container runtime would pull an image from. |

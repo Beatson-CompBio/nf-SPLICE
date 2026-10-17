@@ -48,9 +48,15 @@ references, or planning downloadable images for an HPC deployment.
 ## Verification gates
 
 - `validate_layer` on `components` reports no errors: no unresolved item,
-  no dangling `container_id`, every distribution verified by nf-splice.
+  no dangling `container_id`, no module that declares a container without
+  one (`container_not_mapped`), every distribution verified by nf-splice.
 - The deployment readiness dimension checks the default profile's engine
-  against the containers' sources and required distributions.
+  against the containers' sources and required distributions. Singularity
+  and Apptainer use their own sources, a verified image file or an OCI
+  reference; Docker and Podman need an OCI reference. A component with
+  only Conda packages blocks deployment under a container engine; one with
+  no container and no Conda environment uses the execution host's software
+  and is noted.
 
 ## Failure handling
 
@@ -58,6 +64,11 @@ references, or planning downloadable images for an HPC deployment.
   add it or remove it on purpose.
 - `unverified_distribution`: a checksum or URL was entered by hand; only
   `nf-splice containers verify`/`deliver` records one.
+- `adopted_distribution` (warning): a verified image file was kept from the
+  earlier `splice/components.json` because the lock vouches for that file
+  and the container's sources are unchanged; it was not downloaded again.
+- Processes defined inline in a workflow file are components too, with
+  `path: <file>::<PROCESS>` (for example `main.nf::TILE_SLIDE`).
 
 ## Evidence reporting
 

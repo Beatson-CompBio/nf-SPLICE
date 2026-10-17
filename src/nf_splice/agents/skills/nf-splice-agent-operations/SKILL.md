@@ -40,36 +40,50 @@ Investigation (read-only): `read_draft`, `contract_reference`,
 `read_config`, `analyse_ro_crate`, `assess_assays`, `search_assay_catalogue`,
 `show_assay`, `list_example_outputs`, `reconcile_example_outputs`,
 `validate_layer`, `preview_build`, `validate_bundle`, `assess`,
-`explain_term`, `classify_container`, `read_skill`, `run_optional_checks`.
+`explain_term`, `classify_container`, `read_skill`, `run_optional_checks`,
+`validate_ro_crate`.
 
 Authoring (permission `draft_edit`): `replace_draft` (a whole draft or a
 section, with the sha256 you read), `write_config` (a native profile config),
 and targeted tools such as `set_identity`, `add_assay_capability`,
 `set_parameter_access`, `update_output`, `set_image_policy`,
-`set_default_profile`. Optional discovery conveniences (`list_pending`,
+`set_default_profile`, `provenance_strategy`, and `generate_ro_crate`
+(permission `external_tools`, and `network`). Optional discovery
+conveniences (`list_pending`,
 `accept_output`, `accept_unambiguous_components`, `review_profile`,
 `confirm_values`) are never required.
 
 Publication (permission `build`): `build_bundle`. Local commit (permission
 `git_commit`, only on request): `git_commit`. Pushing is never available.
 
-Session control: `submit_stage_proposal`, `complete_review`,
-`assess_objection`, `record_blocker`, `record_evidence`.
+Session control: `review_scope`, `submit_stage_proposal`,
+`complete_review`, `assess_objection`, `record_blocker`, `record_evidence`.
 
 ## Workflow: every layer stage
 
-1. Read the draft, its contract and your instruction's issues and checklist.
+1. Read the draft, its contract and your instruction's issues and checklist,
+   and call `review_scope`: it lists the evidence this stage needs in this
+   pipeline (required and advisory), what you have inspected and the gaps.
 2. Investigate the pipeline itself: the code, configs and documentation the
    stage depends on, with the analysis tools as navigation aids. Tool
-   outputs and seeded drafts are hints, not a closed list of conclusions.
+   outputs and seeded drafts are hints, not a closed list of conclusions:
+   look for entries discovery missed, too.
 3. Decide the best complete content and write it as one revision
    (`replace_draft`, `write_config`). Saved content need not validate yet.
 4. Validate, read the issues, revise; repeat while you make progress.
 5. If the draft already validated when you started, still review it: a
    validator cannot tell a wrong category or a missing route.
 6. Finish with `submit_stage_proposal` (assisted, when you changed
-   something) or `complete_review` (no change needed, or autonomous). A
-   review is refused unless you inspected the pipeline's sources.
+   something) or `complete_review` (no change needed, or autonomous). Both
+   are refused while required evidence is uninspected, and when your
+   `evidence` cites a file you never read. Cite files as `path` or
+   `path:line`, or the analyses you ran. `complete_review` also takes your
+   `draft_assessment`: `omissions`, `incorrect_assumptions`,
+   `unsupported_declarations` and `confirmed` (what you checked and found
+   right). A draft you leave unchanged needs `confirmed` entries; never
+   accept it unexamined. In the outputs stage, name each uncovered
+   alternative route you leave out and why. Put what you cannot establish
+   under `uncertainties`, or record a blocker; never answer it by guessing.
 
 ## Workflow in an AI-assisted session
 

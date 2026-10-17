@@ -33,8 +33,13 @@ For each layer (identity, inputs, outputs, components, execution profiles,
 provenance), the agent investigates the pipeline's code, configs and
 documentation, authors the draft (often rewriting what `init` seeded),
 validates it, and revises while it makes progress. A layer is complete only
-when its validation passes **and** the agent has recorded a review based on
-sources it actually read; a draft that already validated is still reviewed.
+when its validation passes **and** the agent has recorded a review that
+inspected the evidence this layer needs in your pipeline, assessed the
+draft and cited its support (see
+[what a finished review needs](assisted-sessions.md#what-a-finished-review-needs));
+a draft that already validated is still reviewed. A finished run reports
+`Published and ready for SPLICE ingestion` only when every readiness
+dimension is ready; otherwise it is partial, with the reasons.
 If it cannot decide something from the evidence, it records a blocker: the
 decision, the alternatives and the evidence for each, the checks it tried
 and what would decide it. The latest useful draft stays in place, even if it
