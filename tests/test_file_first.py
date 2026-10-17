@@ -873,7 +873,7 @@ def test_ai_07_adapters_send_their_native_controls(tmp_path: Path) -> None:
     assert session._body(request, "m")["reasoning"] == {"effort": "high"}
     if not sdk_efforts():
         pytest.skip("the Claude Agent SDK is not installed")
-    import claude_agent_sdk as sdk
+    sdk = pytest.importorskip("claude_agent_sdk")
 
     claude = ClaudeSession(tmp_path, None)
     options = claude.options(sdk, request)
