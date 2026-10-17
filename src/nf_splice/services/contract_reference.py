@@ -136,7 +136,9 @@ def _components() -> dict[str, Any]:
             "require_downloadable_images": "true when ingestion needs a "
             "verified downloadable image per container (deployment decision)",
             "containers": "logical images, each with per-runtime source_images",
-            "components": "every module: id, type workflow_module, name, path, "
+            "components": "every module or inline process: id, type "
+            "(workflow_module: path is the module directory; workflow_process: "
+            "path is the .nf file and process the process name), name, "
             "namespace, tool {name, version}, evidence, container_id, "
             "conda_packages; draft-only 'unresolved' lists open problems",
         },

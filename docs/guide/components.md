@@ -38,8 +38,10 @@ folder when there is no `modules.json`) with:
 - container IDs kept from an earlier `splice/components.json`, and its
   verified image files when nf-splice can vouch for them (see below);
 - every process defined inline in a workflow file (common in custom
-  pipelines), as a component whose `path` is `<file>::<PROCESS>`, such as
-  `main.nf::TILE_SLIDE`, with the container references of its own body.
+  pipelines), as a component of `type: workflow_process` whose `path` is
+  the `.nf` file and `process` the process name (`path: main.nf`,
+  `process: TILE_SLIDE`), with the container references of its own body.
+  Module directories are `type: workflow_module` and have no `process`.
 
 What cannot be resolved statically, such as a container built from
 parameters at run time or conflicting versions, is listed under the

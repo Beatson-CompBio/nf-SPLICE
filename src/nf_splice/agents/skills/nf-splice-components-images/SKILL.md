@@ -68,7 +68,9 @@ references, or planning downloadable images for an HPC deployment.
   earlier `splice/components.json` because the lock vouches for that file
   and the container's sources are unchanged; it was not downloaded again.
 - Processes defined inline in a workflow file are components too, with
-  `path: <file>::<PROCESS>` (for example `main.nf::TILE_SLIDE`).
+  `type: workflow_process`, `path` the `.nf` file and `process` the process
+  name (for example `path: main.nf`, `process: TILE_SLIDE`). Never put the
+  process name into `path`.
 
 ## Evidence reporting
 

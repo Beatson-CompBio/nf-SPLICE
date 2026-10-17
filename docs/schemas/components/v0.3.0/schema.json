@@ -237,7 +237,10 @@
           "minLength": 1
         },
         "type": {
-          "const": "workflow_module"
+          "enum": [
+            "workflow_module",
+            "workflow_process"
+          ]
         },
         "name": {
           "type": "string",
@@ -246,6 +249,10 @@
         "path": {
           "type": "string",
           "minLength": 1
+        },
+        "process": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
         },
         "namespace": {
           "type": "string",
@@ -287,7 +294,38 @@
           }
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "workflow_process"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "required": [
+              "process"
+            ],
+            "properties": {
+              "path": {
+                "pattern": "\\.nf$"
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "process"
+              ]
+            }
+          }
+        }
+      ]
     }
   }
 }

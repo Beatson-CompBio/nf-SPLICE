@@ -119,10 +119,11 @@ Workflow modules. No other keys are allowed.
 | Key | Type | Required | Description |
 | --- | --- | --- | --- |
 | `id` | non-empty string | yes | Stable module identifier. |
-| `type` | always `"workflow_module"` | yes | Kind of component. Always `workflow_module` in this revision. |
+| `type` | one of `workflow_module`, `workflow_process` | yes | Kind of component: `workflow_module` (a module directory) or `workflow_process` (a process defined inline in a workflow file). |
 | `name` | non-empty string | yes | Module name. |
-| `path` | non-empty string | yes | Module directory in the workflow repository, or `<file>::<PROCESS>` for a process defined inline in a workflow file (for example `main.nf::TILE_SLIDE`). |
-| `namespace` | non-empty string | yes | Module namespace, such as `nf-core` or `local`; `inline` for a process defined in a workflow file. |
+| `path` | non-empty string | yes | Repository-relative source: the module directory for a `workflow_module`, the `.nf` file that defines the process for a `workflow_process`. |
+| `process` | string matching `^[A-Za-z_][A-Za-z0-9_]*$` | no | Process name, for a `workflow_process` only (for example `TILE_SLIDE`). Unique within its file. |
+| `namespace` | non-empty string | yes | Module namespace, such as `nf-core` or `local`. |
 | `tool` | object | yes | Wrapped tool. |
 | `evidence` | array of non-empty strings | yes | Repository locations the module was found from. |
 | `container_id` | `container-` followed by 12 hexadecimal characters | no | Container the module runs in. Matches a `containers[].id`. |
@@ -195,6 +196,20 @@ Tool the module wraps. No other keys are allowed.
         "modules/nf-core/fastqc/main.nf"
       ],
       "container_id": "container-72b9a77e52e7"
+    },
+    {
+      "id": "main__nf__WRITE_INDEX",
+      "type": "workflow_process",
+      "name": "WRITE_INDEX",
+      "path": "main.nf",
+      "process": "WRITE_INDEX",
+      "namespace": "local",
+      "tool": {
+        "name": "write_index"
+      },
+      "evidence": [
+        "main.nf:12"
+      ]
     }
   ]
 }

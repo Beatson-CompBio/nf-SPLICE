@@ -374,7 +374,10 @@ def _unresolved_modules(root: Path) -> list[str]:
     found = []
     for item in state.draft.data.get("components") or []:
         if isinstance(item, dict) and item.get("unresolved") and item.get("path"):
-            main = f"{item['path']}/main.nf"
+            # An inline process's code is its workflow file itself.
+            main = (
+                str(item["path"]) if item.get("process") else f"{item['path']}/main.nf"
+            )
             if (root / main).is_file():
                 found.append(main)
     return found

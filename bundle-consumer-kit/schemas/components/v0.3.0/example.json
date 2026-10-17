@@ -50,6 +50,20 @@
         "modules/nf-core/fastqc/main.nf"
       ],
       "container_id": "container-72b9a77e52e7"
+    },
+    {
+      "id": "main__nf__WRITE_INDEX",
+      "type": "workflow_process",
+      "name": "WRITE_INDEX",
+      "path": "main.nf",
+      "process": "WRITE_INDEX",
+      "namespace": "local",
+      "tool": {
+        "name": "write_index"
+      },
+      "evidence": [
+        "main.nf:12"
+      ]
     }
   ]
 }

@@ -311,7 +311,10 @@ def test_a_minimal_custom_pipeline_is_handled_honestly(tmp_path: Path) -> None:
     }
     assert _draft(root, "inputs")["properties"] == {}  # never invented
     components = _draft(root, "components")["components"]
-    assert [item["path"] for item in components] == ["main.nf::TILE_SLIDE"]
+    assert [(item["type"], item["path"], item["process"]) for item in components] == [
+        ("workflow_process", "main.nf", "TILE_SLIDE")
+    ]
+    assert components[0]["id"] == "main__nf__TILE_SLIDE"
     assert components[0]["container_id"]
     assert _draft(root, "components")["containers"][0]["source_images"] == {
         "docker": "quay.io/example/openslide-tiler:2.1.0"
@@ -400,7 +403,12 @@ def test_a_minimal_custom_pipeline_is_handled_honestly(tmp_path: Path) -> None:
     state = lifecycle(root)
     assert state.state == INGESTION_READY, state.reasons()
     components_json = _published(root, "components.json")
-    assert components_json["components"][0]["path"] == "main.nf::TILE_SLIDE"
+    published = components_json["components"][0]
+    assert (published["type"], published["path"], published["process"]) == (
+        "workflow_process",
+        "main.nf",
+        "TILE_SLIDE",
+    )
 
 
 # ------------------------------------------------------------ agents
@@ -579,3 +587,66 @@ def test_an_autonomous_run_never_guesses_an_undocumented_assay(
         read_layer(root, layer).draft is not None
         for layer in ("bundle", "inputs", "outputs", "components", "provenance")
     )
+
+
+def test_the_components_contract_types_inline_processes() -> None:
+    from nf_splice.contracts import validate_contract_document
+
+    example = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "docs"
+            / "schemas"
+            / "components"
+            / "v0.3.0"
+            / "example.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert validate_contract_document(example).valid
+    process = next(
+        item for item in example["components"] if item["type"] == "workflow_process"
+    )
+    module = next(
+        item for item in example["components"] if item["type"] == "workflow_module"
+    )
+
+    def check(component: dict[str, Any]) -> bool:
+        document = dict(example)
+        document["components"] = [component]
+        return validate_contract_document(document).valid
+
+    assert not check({k: v for k, v in process.items() if k != "process"})
+    assert not check(process | {"path": "workflows"})  # must name the .nf file
+    assert not check(module | {"process": "FASTQC"})  # modules carry no process
+    assert not check(process | {"type": "inline"})
+
+
+def test_inline_component_ids_are_stable_across_reseeding(tmp_path: Path) -> None:
+    root = _copy(MINIMAL, tmp_path, "slidetiler")
+    initialise(root, ADA)
+
+    def rename(data: dict[str, Any]) -> None:
+        data["components"][0]["id"] = "slide_tiler"
+        data["require_downloadable_images"] = False
+
+    edit_draft_file(root, "components", rename)
+    # Publish just the components, as an earlier bundle would have.
+    validation = validate_layer(root, "components")
+    assert not validation.files  # identity is not ready yet; publish by hand
+    (root / "splice").mkdir(exist_ok=True)
+    published = _draft(root, "components")
+    document = {
+        "components": [
+            {k: v for k, v in item.items() if k != "unresolved"}
+            for item in published["components"]
+        ],
+        "containers": [],
+    }
+    (root / "splice" / "components.json").write_text(
+        json.dumps(document), encoding="utf-8"
+    )
+    shutil.rmtree(root / ".splice-local")
+    initialise(root, ADA)
+    component = _draft(root, "components")["components"][0]
+    assert component["id"] == "slide_tiler"
+    assert (component["path"], component["process"]) == ("main.nf", "TILE_SLIDE")

@@ -151,17 +151,29 @@ def inline_processes(root: Path) -> list[dict[str, Any]]:
     return found
 
 
-def _declared_sources(root: Path, path: str) -> tuple[ContainerSource, ...]:
+#: Component types: a module directory, or a process defined in a
+#: workflow file (``path`` is that ``.nf`` file, ``process`` its name).
+MODULE = "workflow_module"
+PROCESS = "workflow_process"
+
+
+def code_key(item: Mapping[str, Any]) -> str:
+    """What identifies a component's code: its path, and process if inline."""
+    path = str(item.get("path") or "")
+    process = item.get("process")
+    return f"{path}#{process}" if process else path
+
+
+def _declared_sources(
+    root: Path, path: str, process: str | None = None
+) -> tuple[ContainerSource, ...]:
     """Container references a component's code declares (module or inline)."""
-    if path.endswith(".nf") and "::" not in path:
-        return ()
-    file, _, process = path.partition("::")
     if process:
         return next(
             (
                 tuple(item["sources"])
                 for item in inline_processes(root)
-                if item["file"] == file and item["process"] == process
+                if item["file"] == path and item["process"] == process
             ),
             (),
         )
@@ -171,11 +183,10 @@ def _declared_sources(root: Path, path: str) -> tuple[ContainerSource, ...]:
     return container_sources(main, f"{path}/main.nf")
 
 
-def _code_exists(root: Path, path: str) -> bool:
-    file, _, process = path.partition("::")
+def _code_exists(root: Path, path: str, process: str | None = None) -> bool:
     if process:
         return any(
-            item["file"] == file and item["process"] == process
+            item["file"] == path and item["process"] == process
             for item in inline_processes(root)
         )
     return (root / path / "main.nf").is_file()
@@ -227,6 +238,7 @@ def _discover(root: Path) -> list[dict[str, Any]]:
         discovered.append(
             {
                 "id": "component:" + relative.replace("/", "__"),
+                "type": MODULE,
                 "name": name or str(item.get("name") or Path(relative).name),
                 "path": relative,
                 "namespace": namespace
@@ -251,20 +263,25 @@ def _discover(root: Path) -> list[dict[str, Any]]:
             }
         )
     for inline in inline_processes(root):
-        # path is "<file>::<PROCESS>": a process defined in a workflow file.
-        relative = f"{inline['file']}::{inline['process']}"
+        # A process defined in a workflow file: path is the file itself.
         sources = list(inline["sources"])
         sources.extend(overrides.get(inline["process"], []))
         uris = tuple(source.raw for source in sources)
+        # Stable and unique: the file and the process name, which Nextflow
+        # requires to be unique within one file.
+        identifier = re.sub(
+            r"[^A-Za-z0-9_]+", "__", f"{inline['file']}::{inline['process']}"
+        ).strip("_")
         discovered.append(
             {
-                "id": "component:"
-                + re.sub(r"[^A-Za-z0-9_]+", "__", relative).strip("_"),
+                "id": "component:" + identifier,
+                "type": PROCESS,
                 "name": inline["process"],
-                "path": relative,
-                "namespace": "inline",
+                "path": inline["file"],
+                "process": inline["process"],
+                "namespace": "local",
                 "tool_name": inline["process"].lower(),
-                "versions": list(detected_versions({}, relative, uris)),
+                "versions": list(detected_versions({}, inline["file"], uris)),
                 "conda_packages": [],
                 "sources": [source.model_dump(mode="json") for source in sources],
                 "evidence": sorted(
@@ -378,7 +395,7 @@ def _published_inventory(
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     }
     links = {
-        str(item["path"]): (str(item["id"]), str(item.get("container_id") or ""))
+        code_key(item): (str(item["id"]), str(item.get("container_id") or ""))
         for item in loaded.get("components") or []
         if isinstance(item, dict) and item.get("id") and item.get("path")
     }
@@ -476,12 +493,13 @@ def seed_inventory(
                     )
                 }
             )
-        previous_id, previous_container = links.get(candidate["path"], ("", ""))
+        previous_id, previous_container = links.get(code_key(candidate), ("", ""))
         component: dict[str, Any] = {
             "id": previous_id or candidate["id"].removeprefix("component:"),
-            "type": "workflow_module",
+            "type": candidate.get("type", MODULE),
             "name": candidate["name"],
             "path": candidate["path"],
+            **({"process": candidate["process"]} if candidate.get("process") else {}),
             "namespace": candidate["namespace"],
             "tool": {"name": candidate["tool_name"]}
             | ({"version": versions[0]} if len(versions) == 1 else {}),
@@ -744,9 +762,10 @@ def accept_component(
     components = list(data.get("components") or [])
     component: dict[str, Any] = {
         "id": candidate["id"].removeprefix("component:"),
-        "type": "workflow_module",
+        "type": candidate.get("type", MODULE),
         "name": candidate["name"],
         "path": candidate["path"],
+        **({"process": candidate["process"]} if candidate.get("process") else {}),
         "namespace": candidate["namespace"],
         "tool": {"name": candidate["tool_name"]}
         | ({"version": version or versions[0]} if (version or versions) else {}),
@@ -900,19 +919,28 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
     issues: list[DraftIssue] = []
     # Candidate review status never gates the inventory (ADR-0057). What
     # matters is the content: unresolved items and modules left out.
-    listed_paths = {
-        str(item.get("path"))
+    listed = {
+        code_key(item)
         for item in data.get("components") or []
         if isinstance(item, dict)
     }
     missing = sorted(
         str(entry["candidate"].get("path"))
+        + (
+            f" ({entry['candidate']['process']})"
+            if entry["candidate"].get("process")
+            else ""
+        )
         for entry in review.candidates.values()
         if isinstance(entry, dict)
         and entry.get("status") != "rejected"
         and isinstance(entry.get("candidate"), dict)
-        and str(entry["candidate"].get("path")) not in listed_paths
-        and _code_exists(root, str(entry["candidate"].get("path")))
+        and code_key(entry["candidate"]) not in listed
+        and _code_exists(
+            root,
+            str(entry["candidate"].get("path")),
+            entry["candidate"].get("process"),
+        )
     )
     if missing:
         issues.append(
@@ -935,7 +963,9 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
             and not component.get(UNRESOLVED)
             and isinstance(component.get("path"), str)
         ):
-            declared = _declared_sources(root, str(component["path"]))
+            declared = _declared_sources(
+                root, str(component["path"]), component.get("process")
+            )
             if declared:
                 issues.append(
                     issue(
