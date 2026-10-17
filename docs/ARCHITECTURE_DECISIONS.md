@@ -96,6 +96,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0063 | Complete a layer review only with stage-specific evidence, an assessment of the draft and cited support | Current | — |
 | ADR-0064 | Keep outputs and components pipeline-defined and classify uncovered routes by evidence | Current | — |
 | ADR-0065 | Let agents assess, regenerate and check the RO-Crate through permission-controlled operations | Current | — |
+| ADR-0066 | Settle the maintainer's four corrective decisions: route errors, private state, process components and image reuse | Current | — |
 
 ---
 
@@ -2408,6 +2409,8 @@ restarts.
   up `.splice-local/`) until a bundle is finished; reproducible CI uses
   decision files and validates the committed `splice/`.
 
+> **Note (2026-10-17).** The staged-path guard also rejects the repository-root `.splice-local/`, including force-added files (ADR-0066).
+
 ---
 
 ## ADR-0048: Integrate in an isolated working copy and commit only the validated bundle locally
@@ -3367,6 +3370,8 @@ followed. Only one interpretation may be Current.
   rules are stated here.
 - Consumers see no contract change: `path` was already a free string.
 
+> **Note (2026-10-17).** Amended by ADR-0066: an inline process is a `workflow_process` component with `path` (its `.nf` file) and `process`, not `path: <file>::<PROCESS>`; a distribution is reused only when the lock's verification record, the distribution and the sources agree, and such reuse is a historical verification.
+
 ---
 
 ## ADR-0062: State one lifecycle: drafts valid, published, classified and ingestion ready are separate facts
@@ -3565,6 +3570,8 @@ from the inventory.
   validating catalogue.
 - No contract changes: the contract already accepted any format string.
 
+> **Note (2026-10-17).** ADR-0066 confirms established uncovered routes as errors and replaces the inline-process representation with `workflow_process` components.
+
 ---
 
 ## ADR-0065: Let agents assess, regenerate and check the RO-Crate through permission-controlled operations
@@ -3618,3 +3625,68 @@ read as a standards pass.
 
 - The provenance stage can be completed by an agent without any external
   tool; standards validation is reported as not run in that case.
+
+## ADR-0066: Settle the maintainer's four corrective decisions: route errors, private state, process components and image reuse
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-17 |
+| Source | Maintainer's decisions on the four questions left by the corrective pass of 0.3.0 (17 October 2026) |
+| Scope | Output coverage, repository hygiene, the components contract, image verification reuse |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0024, ADR-0033, ADR-0040, ADR-0047, ADR-0059, ADR-0061, ADR-0064 |
+| Implementation | `src/nf_splice/layers/outputs.py`, `scripts/check_staged_paths.py`, `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_other_pipelines.py`, `tests/test_dev_workspace.py`, `tests/test_contracts.py` |
+
+### Context
+
+The corrective pass left four questions for the maintainer: whether an
+established uncovered route should block publication, whether a
+repository-root `.splice-local/` may be staged, how a process defined
+inline in a workflow file is represented (ADR-0061 used `path:
+<file>::<PROCESS>`), and whether a lock hash is enough evidence to reuse a
+verified image file.
+
+### Decision
+
+- **Established routes stay errors** (ADR-0064, confirmed). Conditional
+  and unresolvable routes stay warnings; a justified `excluded_routes`
+  entry resolves an error; no candidate-by-candidate approval returns.
+- **Private state is never staged.** Everything under the repository-root
+  `.splice-local/` is ignored and rejected by the staged-path guard,
+  including force-added files. `splice/` and versioned fixtures under
+  `tests/fixtures/` stay committable.
+- **Inline processes are `workflow_process` components.** The components
+  contract (0.3.0, unreleased, changed in place) types a component as
+  `workflow_module` (a module directory, no `process`) or
+  `workflow_process` (`path` is the repository-relative `.nf` file,
+  `process` the process name, required). `path` is never overloaded. IDs
+  stay stable and unique (the file and the process name) and earlier
+  published IDs are kept by path and process.
+- **Image reuse needs agreeing evidence.** The lock records each published
+  verification (`distributions`: checksum, address, size, a digest of the
+  container's source images, `fresh` or `historical`). A distribution is
+  reused without downloading only when the lock vouches for
+  `components.json`, its record matches the distribution, the
+  distribution is consistent (HTTPS, `sif`/`img`, the cache name of these
+  sources) and the sources are unchanged. A reused verification is
+  `historical`: nf-splice never claims a lock hash or record proves an
+  image is reachable now. `nf-splice containers reverify --approve-network`
+  is the fresh check; it records a match as `fresh` and reports, without
+  changing, a changed or unreachable file.
+
+### Alternatives rejected
+
+- Keeping `path: <file>::<PROCESS>`: one field with two meanings, which
+  ingestion would have to parse.
+- Reusing on the lock's file hash alone: says nothing about the image
+  itself.
+
+### Consequences
+
+- The components contract gains `process` and a second `type`; consumers
+  key components by `id`.
+- Bundles built before the lock recorded verifications reuse no image file
+  until it is verified again.

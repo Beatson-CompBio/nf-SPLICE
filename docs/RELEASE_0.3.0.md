@@ -121,6 +121,9 @@ checks that every ADR exists, every path exists and every test file exists.
 | Imaging and minimal custom pipelines end to end in all three modes | ADR-0064, ADR-0063 | `tests/fixtures/spatial-imaging-0.3.0/`, `tests/fixtures/minimal-custom-0.3.0/` | `tests/test_other_pipelines.py` | Current |
 | Verified distributions kept on adoption; container mapping checked | ADR-0061 | `src/nf_splice/layers/components.py` | `tests/test_corrective.py` | Current |
 | Agentic RO-Crate assessment, nf-core generation and standards check | ADR-0065 | `src/nf_splice/services/crate_review.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
+| Root `.splice-local/` never staged, force-added files included | ADR-0066, ADR-0047 | `scripts/check_staged_paths.py` | `tests/test_dev_workspace.py` | Current |
+| Inline processes as `workflow_process` components in the contract | ADR-0066 | `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_contracts.py` | Current |
+| Verification records in the lock, guarded reuse and `containers reverify` | ADR-0066 | `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
 | Opt-in image delivery to an S3-compatible store | ADR-0059 | `src/nf_splice/services/images.py` | `tests/test_file_first.py` | Current |
 | Standards validation and archive-root RO-Crate | ADR-0060 | `src/nf_splice/services/checks.py`, `src/nf_splice/services/export.py` | `tests/test_file_first.py`, `tests/test_source_git_export.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
@@ -248,9 +251,17 @@ release and the baseline for schema compatibility (ADR-0041).
   (error), conditional (warning) or unverified (warning); exclusions with a
   `kind`; formats are any lower-case name; seeded categories are the
   pipeline's own directories.
-- **Components** (ADR-0061, ADR-0064): verified distributions kept on
-  adoption when the lock vouches for them; `container_not_mapped`; inline
-  processes inventoried; the environment-variable image store removed.
+- **Components** (ADR-0061, ADR-0064, ADR-0066): `container_not_mapped`;
+  inline processes inventoried as `workflow_process` components (`path`
+  the `.nf` file, `process` the name); the environment-variable image
+  store removed. Verified distributions are reused only when the lock's
+  verification record, the distribution and the sources agree; such reuse
+  is a historical verification, and `nf-splice containers reverify` is the
+  fresh check.
+- **Maintainer decisions** (ADR-0066): established uncovered routes stay
+  errors; the repository-root `.splice-local/` is never staged, even when
+  force-added; the components contract gains `workflow_process` and
+  `process`; image reuse needs agreeing evidence.
 - **RO-Crate for agents** (ADR-0065): assess and recommend, adopt, correct
   or regenerate, nf-core generation under `external_tools` and `network`,
   and a structural check reported apart from the standards check
@@ -481,9 +492,9 @@ Run on macOS with Python 3.12 inside the clone (`. scripts/dev-env.sh`).
 
 | Check | Result |
 | --- | --- |
-| `scripts/run-checks.sh`: dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard | exit 0: 420 passed, 7 skipped (opt-in); ruff clean; 193 files formatted; mypy clean on 170 files; `nf-splice 0.3.0` |
-| A `[dev]`-only environment with no provider SDK (no Claude Agent SDK, PyJWT or boto3) | mypy clean on 170 files; ruff clean; 395 passed, 9 skipped (the provider-specific tests skip) |
-| Wheel and sdist built; wheel installed with `[dev]` into a fresh Python 3.12 environment | the wheel carries the nine skills; full suite against the installed package: 395 passed, 9 skipped; `nf-splice --version`, `skills export` (nine skills) |
+| `scripts/run-checks.sh`: dependency check, pytest, ruff, ruff format, mypy, installed CLI, staged-path guard | exit 0: 432 passed, 7 skipped (opt-in); ruff clean; 193 files formatted; mypy clean on 170 files; `nf-splice 0.3.0` |
+| A `[dev]`-only environment with no provider SDK (no Claude Agent SDK, PyJWT or boto3) | mypy clean on 170 files; ruff clean; 407 passed, 9 skipped (the provider-specific tests skip) |
+| Wheel and sdist built; wheel installed with `[dev]` into a fresh Python 3.12 environment | the wheel carries the nine skills; full suite against the installed package: 407 passed, 9 skipped; `nf-splice --version`, `skills export` (nine skills) |
 | New fixtures against the installed wheel (`test_other_pipelines.py`, `test_corrective.py`) | 29 passed |
 | Opt-in `rocrate_validator` with rocrate-validator 0.12.2 | passed |
 | Real rocrate-validator 0.12.2 on the imaging fixture's draft graph (`nf-splice draft check-crate --allow external_tools --allow network`; fetched profile contexts over the network) | structural checks passed; Workflow RO-Crate 1.0 passed |
@@ -588,8 +599,10 @@ From specification section 18.
    family revisions, so every future release adds a row even when no family
    changes. The per-job `analysis_output.json` schema is versioned per
    workflow and is not a sixth family.
-2. **Components JSON shape.** `id`, `type` and `uri` are kept for simple
-   readers. Containers add per-runtime `source_images` and an optional
+2. **Components JSON shape.** Components are `workflow_module` (a module
+   directory) or `workflow_process` (a process in a `.nf` file, with
+   `process`), decided by the maintainer (ADR-0066). `id`, `type` and `uri`
+   are kept for simple readers. Containers add per-runtime `source_images` and an optional
    verified `distribution` (URL, SHA-256, size, cache file name). The
    unpublished `legacy_ids` field was dropped. Ingestion must be updated to
    read this shape.
@@ -717,6 +730,10 @@ From specification section 18.
 | `79aaaa6` | feat(outputs): classify uncovered publication routes by how firm the evidence is |
 | `9afec2b` | fix(components): keep verified distributions on adoption; report real deployment gaps |
 | `90e30b8` | fix: represent pipelines beyond bulk RNA-seq and nf-core honestly |
+| `d2899f7` | docs: one current statement of every decision; record the corrective pass |
+| `fd11ed7` | fix(hygiene): refuse to stage the repository-root .splice-local/ |
+| `e13e8a3` | feat(contracts)!: type inline processes as workflow_process components |
+| `9ef824d` | feat(images): reuse verified distributions only on agreeing evidence; add reverify |
 
 `git log 9ad15c1..` lists everything, including later updates to this
 record.
