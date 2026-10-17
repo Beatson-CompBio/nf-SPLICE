@@ -575,3 +575,140 @@ def test_an_outputs_review_must_address_uncovered_alternative_routes(
         ),
     )
     assert explained["success"], explained
+
+
+# ------------------------------------------------------------ components
+
+_SIF = (
+    b"#!/usr/bin/env run-singularity\n".ljust(32, b"\n") + b"SIF_MAGIC\x00" + b"x" * 500
+)
+_IMAGE = "https://images.example.net/store/quay.io-biocontainers-star.img"
+
+
+def _verified_bundle(tmp_path: Path) -> tuple[Path, str]:
+    """A published bundle with one verified image distribution."""
+    from layer_fixtures import ADA
+    from nf_splice.layers.components import verify_distribution
+    from test_containers import FakeFetcher, _ok, _public
+
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    state = read_layer(root, "components")
+    assert state.draft is not None
+    star = next(
+        item["id"]
+        for item in state.draft.data["containers"]
+        if "star" in json.dumps(item["source_images"])
+    )
+    verify_distribution(
+        root,
+        star,
+        _IMAGE,
+        ADA,
+        fetcher=FakeFetcher({_IMAGE: _ok(_SIF)}),
+        resolver=_public,
+    )
+    build(root)
+    return root, star
+
+
+def _reseed(root: Path) -> None:
+    import shutil
+
+    from layer_fixtures import ADA
+    from nf_splice.services.workspace import initialise
+
+    shutil.rmtree(root / ".splice-local")
+    initialise(root, ADA)
+
+
+def _container(root: Path, identifier: str) -> dict[str, Any]:
+    state = read_layer(root, "components")
+    assert state.draft is not None
+    found: dict[str, Any] = next(
+        item for item in state.draft.data["containers"] if item["id"] == identifier
+    )
+    return found
+
+
+def test_a_verified_distribution_survives_adoption_of_the_inventory(
+    tmp_path: Path,
+) -> None:
+    from nf_splice.layers.base import load_review_state
+
+    root, star = _verified_bundle(tmp_path)
+    published = json.loads((root / "splice" / "components.json").read_text())
+    expected = next(item for item in published["containers"] if item["id"] == star)
+    _reseed(root)
+    kept = _container(root, star)
+    assert kept["distribution"] == expected["distribution"]
+    record = load_review_state(root, "components").section("verified")[star]
+    assert record["adopted_from"] == "splice/components.json"
+    assert record["sha256"] == expected["distribution"]["sha256"]
+    codes = {item.code for item in _component_issues(root)}
+    assert "adopted_distribution" in codes and "unverified_distribution" not in codes
+
+
+def _component_issues(root: Path) -> list[Any]:
+    from nf_splice.services.lifecycle import validate_layer
+
+    return list(validate_layer(root, "components").issues)
+
+
+def test_no_distribution_is_kept_from_an_unvouched_or_changed_source(
+    tmp_path: Path,
+) -> None:
+    root, star = _verified_bundle(tmp_path / "edited")
+    path = root / "splice" / "components.json"
+    path.write_text(path.read_text().replace('"sha256"', '"sha256" ', 1))
+    _reseed(root)
+    assert _container(root, star)["distribution"] is None  # the lock disagrees
+
+    root, star = _verified_bundle(tmp_path / "changed")
+    module = root / "modules" / "local" / "star" / "main.nf"
+    module.write_text(
+        module.read_text().replace("2.7.11b--h43eeafb_0", "2.7.11b--h5ca1c30_6")
+    )
+    _reseed(root)
+    containers = read_layer(root, "components").draft.data["containers"]  # type: ignore[union-attr]
+    assert all(
+        item["distribution"] is None
+        for item in containers
+        if "star" in json.dumps(item["source_images"])
+    )
+
+
+def test_a_module_that_declares_a_container_must_be_mapped(tmp_path: Path) -> None:
+    root = copy_fixture(tmp_path)
+    author_all(root)
+
+    def unmap(data: dict[str, Any]) -> None:
+        for item in data["components"]:
+            if item["path"].endswith("/star"):
+                item.pop("container_id", None)
+
+    edit_draft_file(root, "components", unmap)
+    issues = [
+        item for item in _component_issues(root) if item.code == "container_not_mapped"
+    ]
+    assert issues and issues[0].severity.value == "error"
+    assert "modules/local/star/main.nf" in issues[0].message
+
+
+def test_conda_only_components_block_deployment_under_a_container_engine(
+    tmp_path: Path,
+) -> None:
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    build(root)
+    path = root / "splice" / "components.json"
+    document = json.loads(path.read_text())
+    document["components"][0].pop("container_id", None)
+    document["components"][0]["conda_packages"] = ["bioconda::star=2.7.11b"]
+    document["components"][1].pop("container_id", None)
+    document["components"][1].pop("conda_packages", None)
+    path.write_text(json.dumps(document))
+    deployment = assess_readiness(root).dimensions["deployment"]
+    assert deployment.status == "blocked"
+    assert any("declare only Conda packages" in item for item in deployment.blockers)
+    assert any("execution host's software" in item for item in deployment.notes)

@@ -1,7 +1,8 @@
-"""Opt-in verification, materialisation and publication of container images.
+"""Opt-in verification and materialisation of container images.
 
-Nothing here runs implicitly. Network access, image builds and uploads each
-need an explicit call, and every external URL is treated as untrusted:
+Uploading to an object store is :mod:`nf_splice.services.images`. Nothing
+here runs implicitly. Network access and image builds each need an
+explicit call, and every external URL is treated as untrusted:
 HTTPS only, no embedded credentials, no private/loopback/link-local targets
 (re-checked for every redirect hop), bounded streaming with a size quota,
 temporary files and atomic placement. No credentials, accounts or
@@ -293,77 +294,3 @@ def materialise_image(
     return MaterialisedImage(
         destination, file_sha256(destination), destination.stat().st_size, selected
     )
-
-
-@dataclass(frozen=True, slots=True)
-class ObjectStoreTarget:
-    """Operator-configured upload location; credentials stay with the user."""
-
-    base_url: str
-    allowed_hosts: frozenset[str]
-
-    @classmethod
-    def from_environment(
-        cls, environment: Mapping[str, str] | None = None
-    ) -> ObjectStoreTarget | None:
-        env = os.environ if environment is None else environment
-        base = env.get("NF_SPLICE_IMAGE_STORE_URL", "").strip()
-        if not base:
-            return None
-        hosts = frozenset(
-            item.strip()
-            for item in env.get("NF_SPLICE_IMAGE_STORE_ALLOWED_HOSTS", "").split(",")
-            if item.strip()
-        )
-        return cls(base.rstrip("/"), hosts)
-
-    def object_url(self, filename: str) -> str:
-        return f"{self.base_url}/{filename}"
-
-
-class Uploader(Protocol):
-    """Authenticated user-scope upload backend (never anonymous write)."""
-
-    def exists(self, url: str) -> str | None:
-        """Return the stored object's SHA-256 if it exists, else ``None``."""
-
-    def put(self, path: Path, url: str, sha256: str) -> None: ...
-
-
-@dataclass(frozen=True, slots=True)
-class UploadResult:
-    """Outcome of publishing one verified image."""
-
-    url: str
-    uploaded: bool
-    reused: bool
-
-
-def publish_image(
-    image: MaterialisedImage,
-    filename: str,
-    target: ObjectStoreTarget,
-    uploader: Uploader,
-    *,
-    approve_upload: bool,
-) -> UploadResult:
-    """Upload an approved image idempotently by content digest."""
-    if not approve_upload:
-        raise ContainerServiceError("uploading an image needs explicit approval")
-    url = target.object_url(filename)
-    host = urlparse(url).hostname or ""
-    if host not in target.allowed_hosts:
-        raise ContainerServiceError(
-            f"upload host {host!r} is not in NF_SPLICE_IMAGE_STORE_ALLOWED_HOSTS"
-        )
-    if urlparse(url).scheme != "https":
-        raise ContainerServiceError("uploads must target an https:// public location")
-    existing = uploader.exists(url)
-    if existing is not None:
-        if existing != image.sha256:
-            raise ContainerServiceError(
-                f"{url} already exists with a different checksum; refusing to overwrite"
-            )
-        return UploadResult(url, uploaded=False, reused=True)
-    uploader.put(image.path, url, image.sha256)
-    return UploadResult(url, uploaded=True, reused=False)

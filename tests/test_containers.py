@@ -35,9 +35,7 @@ from nf_splice.services.containers import (
     ContainerServiceError,
     FetchResponse,
     MaterialisedImage,
-    ObjectStoreTarget,
     materialise_image,
-    publish_image,
     verify_image_url,
 )
 
@@ -398,40 +396,6 @@ def test_materialisation_and_upload_require_explicit_approval(tmp_path: Path) ->
     ]
     assert image.sha256 == hashlib.sha256(SIF).hexdigest()
 
-    class Store:
-        def __init__(self, existing: str | None) -> None:
-            self.existing = existing
-            self.put_calls: list[str] = []
-
-        def exists(self, url: str) -> str | None:
-            return self.existing
-
-        def put(self, path: Path, url: str, sha256: str) -> None:
-            self.put_calls.append(url)
-
-    target = ObjectStoreTarget.from_environment(
-        {
-            "NF_SPLICE_IMAGE_STORE_URL": "https://images.example.net/store",
-            "NF_SPLICE_IMAGE_STORE_ALLOWED_HOSTS": "images.example.net",
-        }
-    )
-    assert target is not None
-    assert ObjectStoreTarget.from_environment({}) is None
-    with pytest.raises(ContainerServiceError, match="approval"):
-        publish_image(image, "x.img", target, Store(None), approve_upload=False)
-    fresh = Store(None)
-    assert publish_image(image, "x.img", target, fresh, approve_upload=True).uploaded
-    reused = publish_image(
-        image, "x.img", target, Store(image.sha256), approve_upload=True
-    )
-    assert reused.reused and not reused.uploaded
-    with pytest.raises(ContainerServiceError, match="different checksum"):
-        publish_image(image, "x.img", target, Store("0" * 64), approve_upload=True)
-    other = ObjectStoreTarget(
-        "https://other.example.net", frozenset({"images.example.net"})
-    )
-    with pytest.raises(ContainerServiceError, match="not in"):
-        publish_image(image, "x.img", other, Store(None), approve_upload=True)
     assert isinstance(image, MaterialisedImage)
 
 

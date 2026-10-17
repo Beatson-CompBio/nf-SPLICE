@@ -223,23 +223,43 @@ UNRESOLVED = "unresolved"
 SEEDED = "seeded"
 
 
+def _lock_verified(root: Path, payload: bytes) -> bool:
+    """Whether the published components.json is the file nf-splice last built.
+
+    Its hash must match the lock's record: a hand-edited or foreign file is
+    not evidence of an earlier verification.
+    """
+    try:
+        lock = json.loads(
+            (root / "splice" / "nf-splice.lock.json").read_text(encoding="utf-8")
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    record = ((lock or {}).get("managed_files") or {}).get("components.json") or {}
+    return isinstance(record, dict) and record.get("sha256") == (
+        hashlib.sha256(payload).hexdigest()
+    )
+
+
 def _published_inventory(
     root: Path,
-) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[str, str]], bool | None]:
+) -> tuple[dict[str, dict[str, Any]], dict[str, tuple[str, str]], bool | None, bool]:
     """Published containers, component (id, container id) by path, image policy.
 
     Read as evidence from ``splice/components.json`` (0.3.0 or an earlier
-    layout) so known container IDs stay stable across the migration.
+    layout) so known container IDs stay stable across the migration. The last
+    value says whether the file is the one the lock records.
     """
     path = root / "splice" / "components.json"
     if path.is_symlink() or not path.is_file():
-        return {}, {}, None
+        return {}, {}, None, False
     try:
-        loaded = json.loads(path.read_text(encoding="utf-8"))
+        payload = path.read_bytes()
+        loaded = json.loads(payload.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
-        return {}, {}, None
+        return {}, {}, None, False
     if not isinstance(loaded, dict):
-        return {}, {}, None
+        return {}, {}, None, False
     containers = {
         str(item["id"]): item
         for item in loaded.get("containers") or []
@@ -251,7 +271,40 @@ def _published_inventory(
         if isinstance(item, dict) and item.get("id") and item.get("path")
     }
     policy = loaded.get("require_downloadable_images")
-    return containers, links, policy if isinstance(policy, bool) else None
+    return (
+        containers,
+        links,
+        policy if isinstance(policy, bool) else None,
+        _lock_verified(root, payload),
+    )
+
+
+def _adopted_distribution(
+    published: Mapping[str, Any], selected: Mapping[str, str], trusted: bool
+) -> dict[str, Any] | None:
+    """A published, verified distribution that still matches the sources.
+
+    Kept only when the published file is the one nf-splice built (the lock
+    agrees), it records the distribution as verified, and the image source
+    the distribution was made from (every runtime's source) is unchanged.
+    Nothing is downloaded or invented: the checksum and address
+    are the ones nf-splice verified before.
+    """
+    distribution = published.get("distribution")
+    resolution = published.get("resolution") or {}
+    if not (
+        trusted
+        and isinstance(distribution, dict)
+        and isinstance(resolution, dict)
+        and resolution.get("status") == "verified"
+        and distribution.get("sha256")
+        and str(distribution.get("download_uri", "")).startswith("https://")
+    ):
+        return None
+    sources = published.get("source_images")
+    if not isinstance(sources, dict) or dict(sources) != dict(selected):
+        return None
+    return dict(distribution)
 
 
 def _references(container: Mapping[str, Any]) -> set[str]:
@@ -273,16 +326,19 @@ def _references(container: Mapping[str, Any]) -> set[str]:
 
 def seed_inventory(
     root: Path, discovered: Sequence[Mapping[str, Any]]
-) -> tuple[dict[str, Any], list[str]]:
+) -> tuple[dict[str, Any], list[str], dict[str, dict[str, Any]]]:
     """Build the first ``components.draft.yaml`` from the module inventory.
 
     Every module becomes a component. Containers are deduplicated by their
     per-runtime sources; a previously published container whose reference
     matches keeps its ID. Anything that cannot be resolved statically stays
     visible in the component's draft-only ``unresolved`` list instead of
-    being guessed.
+    being guessed. A verified distribution of a kept container is kept too,
+    when its source is unchanged and the lock vouches for the published
+    file; the last value returned holds those verification records.
     """
-    published, links, policy = _published_inventory(root)
+    published, links, policy, trusted = _published_inventory(root)
+    adopted: dict[str, dict[str, Any]] = {}
     containers: list[dict[str, Any]] = []
     by_sources: dict[str, str] = {}
     components: list[dict[str, Any]] = []
@@ -374,8 +430,23 @@ def seed_inventory(
                     if any(item["id"] == identifier for item in containers):
                         identifier = container_id(signature)
                 by_sources[signature] = identifier
+                distribution = (
+                    _adopted_distribution(published[identifier], selected, trusted)
+                    if identifier in published
+                    else None
+                )
+                if distribution is not None:
+                    adopted[identifier] = {
+                        "sha256": distribution["sha256"],
+                        "download_uri": distribution["download_uri"],
+                        "adopted_from": "splice/components.json",
+                    }
                 containers.append(
-                    {"id": identifier, "source_images": selected, "distribution": None}
+                    {
+                        "id": identifier,
+                        "source_images": selected,
+                        "distribution": distribution,
+                    }
                 )
             if selected:
                 component["container_id"] = identifier
@@ -393,6 +464,11 @@ def seed_inventory(
         notes.append(
             f"kept {reused} container ID(s) from the published splice/components.json"
         )
+    if adopted:
+        notes.append(
+            f"kept {len(adopted)} verified image distribution(s) whose sources are "
+            "unchanged; they were not downloaded again"
+        )
     open_items = sum(1 for item in components if item.get(UNRESOLVED))
     if open_items:
         notes.append(f"{open_items} component(s) have unresolved items to review")
@@ -403,6 +479,7 @@ def seed_inventory(
             "components": components,
         },
         notes,
+        adopted,
     )
 
 
@@ -417,7 +494,7 @@ def discover_components(
     """
     root = Path(repository_root).resolve()
     discovered = _discover(root)
-    seed, _notes = seed_inventory(root, discovered)
+    seed, _notes, adopted = seed_inventory(root, discovered)
     created = seed_draft(
         root,
         LAYER,
@@ -430,6 +507,9 @@ def discover_components(
     )
 
     def merge(state: ReviewState) -> None:
+        if created:
+            # The verification records of distributions carried over above.
+            state.section("verified").update(adopted)
         for candidate in discovered:
             existing = state.candidates.get(candidate["id"])
             if existing is None or existing.get("status") == PENDING:
@@ -738,6 +818,28 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
     for index, component in enumerate(data.get("components") or []):
         if not isinstance(component, dict):
             continue
+        if (
+            not component.get("container_id")
+            and not component.get(UNRESOLVED)
+            and isinstance(component.get("path"), str)
+        ):
+            main = root / str(component["path"]) / "main.nf"
+            declared = (
+                container_sources(main, f"{component['path']}/main.nf")
+                if main.is_file() and not main.is_symlink()
+                else ()
+            )
+            if declared:
+                issues.append(
+                    issue(
+                        LAYER,
+                        f"/components/{index}/container_id",
+                        "container_not_mapped",
+                        f"{component.get('id')}: {declared[0].location} declares a "
+                        "container, but the inventory maps none; set container_id, "
+                        f"or record what stops it under {UNRESOLVED}",
+                    )
+                )
         for item in component.get(UNRESOLVED) or []:
             issues.append(
                 issue(
@@ -793,6 +895,23 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
                 )
         distribution = container.distribution
         verified = review.section("verified").get(container.id)
+        if (
+            distribution is not None
+            and isinstance(verified, dict)
+            and verified.get("adopted_from")
+            and verified.get("sha256") == distribution.sha256
+        ):
+            issues.append(
+                issue(
+                    LAYER,
+                    f"/containers/{index}/distribution",
+                    "adopted_distribution",
+                    f"{container.id}: verified when the earlier bundle was built and "
+                    "kept because its source is unchanged; it was not downloaded "
+                    "again (`nf-splice containers verify` re-checks it)",
+                    Severity.WARNING,
+                )
+            )
         if distribution is not None:
             if (
                 not isinstance(verified, dict)
