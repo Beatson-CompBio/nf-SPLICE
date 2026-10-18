@@ -9,12 +9,15 @@ tree so comments and formatting of untouched content survive.
 
 from __future__ import annotations
 
+import copy
 import datetime
+import hashlib
 import io
 import math
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from typing import Any
 
 from ruamel.yaml import YAML
@@ -70,13 +73,40 @@ class DraftSyntaxError(ValueError):
         self.detail = message
 
 
-@dataclass(frozen=True, slots=True)
 class YamlDraft:
-    """A parsed draft: its round-trip node tree, JSON data and lint warnings."""
+    """A parsed draft: its JSON data, lint warnings and round-trip node tree.
 
-    node: Any
-    data: JsonValue
-    warnings: tuple[str, ...]
+    Reading a draft needs only the data; the round-trip tree (comments and
+    formatting) is built on first use, when the draft is edited.
+    """
+
+    __slots__ = ("_node", "data", "text", "warnings")
+
+    def __init__(
+        self,
+        text: str,
+        data: JsonValue,
+        warnings: tuple[str, ...],
+        node: Any = None,
+    ) -> None:
+        self.text = text
+        self.data = data
+        self.warnings = warnings
+        self._node = node
+
+    @property
+    def node(self) -> Any:
+        if self._node is None:
+            self._node = _yaml().load(self.text)
+        return self._node
+
+
+#: Parsed data of recently read drafts, keyed by the sha256 of their text.
+#: Re-reading an unchanged draft (validators, view models) then costs a copy
+#: rather than a parse; the bytes are the key, so an edit is never missed.
+_PARSED: OrderedDict[str, tuple[JsonValue, tuple[str, ...]]] = OrderedDict()
+_PARSED_LIMIT = 32
+_PARSED_LOCK = threading.Lock()
 
 
 def _yaml() -> YAML:
@@ -198,8 +228,21 @@ def to_node(value: JsonValue) -> Any:
     return value
 
 
+def clear_cache() -> None:
+    """Forget every parsed draft (tests of cold starts)."""
+    with _PARSED_LOCK:
+        _PARSED.clear()
+
+
 def load_yaml_draft(text: str) -> YamlDraft:
     """Parse and validate one draft without modifying it."""
+    key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    with _PARSED_LOCK:
+        cached = _PARSED.get(key)
+        if cached is not None:
+            _PARSED.move_to_end(key)
+    if cached is not None:
+        return YamlDraft(text, copy.deepcopy(cached[0]), cached[1])
     try:
         warnings = _check_events(text)
         node = _yaml().load(text)
@@ -210,7 +253,13 @@ def load_yaml_draft(text: str) -> YamlDraft:
         raise DraftSyntaxError(str(error.problem or error), line, column) from error
     except YAMLError as error:
         raise DraftSyntaxError(str(error)) from error
-    return YamlDraft(node=node, data=to_plain(node), warnings=tuple(warnings))
+    data = to_plain(node)
+    found = tuple(warnings)
+    with _PARSED_LOCK:
+        _PARSED[key] = (copy.deepcopy(data), found)
+        while len(_PARSED) > _PARSED_LIMIT:
+            _PARSED.popitem(last=False)
+    return YamlDraft(text, data, found, node)
 
 
 def dump_yaml_node(node: Any) -> str:
