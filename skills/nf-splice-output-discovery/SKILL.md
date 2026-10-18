@@ -37,7 +37,10 @@ file into `analysis_output.json` that the run did not produce.
 - `contract.schema_version` (`analysis_output_schema_version`) versions this
   workflow's `analysis_output.json` shape, not the pipeline release: set it
   with `set_output_contract_version` (for example `1.0.0`) and never copy the
-  pipeline version into it.
+  pipeline version into it. Give its `basis`: `published_catalogue` (the
+  version a published `splice/outputs.yaml` declares), `stated_by_person`, or
+  `proposed_initial` (no source states one; it is recorded as a proposed
+  decision for a person to confirm), and a `rationale`.
 - Optional: authorised example outputs (a results directory, a saved
   listing or an output index).
 
@@ -55,10 +58,10 @@ file into `analysis_output.json` that the run did not produce.
    the default rule) from **declared-only** intermediates. A process
    `output:` declaration alone never proves publication.
 2. Read the workflow, subworkflows and modules behind each route: the
-   conditions (`params.aligner == 'star'`, `params.run_salmon`,
+   conditions (`params.aligner == 'star'`, `params.save_masks`,
    `!params.skip_qc`), `saveAs` renames, dynamic prefixes and globs.
-   Alternative routes are all supported: STAR and HISAT2 alignments both
-   belong in the catalogue, as do optional outputs such as Salmon's.
+   Alternative routes are all supported: two aligners' alignments, or a
+   segmentation step's optional masks, all belong in the catalogue.
 3. Compare the current draft with that evidence, even if it validates:
    false entries, missing published outputs, wrong scopes (`job`: one per
    pipeline run; `sample`: one per sample, the pattern captures `{sample}`;

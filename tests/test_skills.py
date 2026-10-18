@@ -62,9 +62,14 @@ def test_runtime_prompts_load_the_relevant_skills() -> None:
     assert "nf-splice-validation" not in planning
     building = system_prompt("execute", Stage.BUILD)
     assert 'skill name="nf-splice-validation"' in building
-    help_prompt = system_prompt("help", None)
-    for name in skills.NAMES:
-        assert f'skill name="{name}"' in help_prompt
+    # Ask loads the page's procedure only, under read-only rules.
+    help_prompt = system_prompt("help", Stage.OUTPUTS)
+    assert 'skill name="nf-splice-output-discovery"' in help_prompt
+    assert 'skill name="nf-splice-assay-capabilities"' not in help_prompt
+    assert "read-only assistant" in help_prompt
+    assert "complete_review" not in help_prompt.split("Skills (")[0]
+    review = system_prompt("help", None)
+    assert 'skill name="nf-splice-validation"' in review
 
 
 def test_root_agents_file_points_at_real_paths() -> None:

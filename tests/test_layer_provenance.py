@@ -266,3 +266,39 @@ def test_a_json_ld_array_with_the_reviewed_value_is_not_stale() -> None:
     assert "stale_value" not in codes
     main["version"] = ["3.26.0", "3.27.0"]
     assert "stale_value" in {item.code for item in identity_findings(crate, metadata)}
+
+
+def test_correcting_a_crate_never_duplicates_a_person_it_already_names() -> None:
+    """An author the crate names under another identifier keeps that entity."""
+    from nf_splice.domain.identity import PipelineMetadata
+    from nf_splice.layers.provenance import _apply_corrections
+
+    author = type("Author", (), {})()
+    author.name = "Adam Talbot"
+    author.orcid = None
+    author.affiliation = None
+    author.type = type("Kind", (), {"value": "person"})()
+    metadata = PipelineMetadata.model_construct(
+        name="pipe",
+        version="1.0.0",
+        description=None,
+        licence=None,
+        licence_url=None,
+        repository_url=None,
+        released_at=None,
+        authors=(author,),
+    )
+    crate: dict[str, Any] = {
+        "@graph": [
+            {"@id": "./", "@type": "Dataset"},
+            {
+                "@id": "https://github.com/adam",
+                "@type": "Person",
+                "name": "Adam Talbot",
+            },
+        ]
+    }
+    _apply_corrections(crate, metadata)
+    people = [item for item in crate["@graph"] if item.get("name") == "Adam Talbot"]
+    assert len(people) == 1
+    assert crate["@graph"][0]["creator"] == [{"@id": "https://github.com/adam"}]

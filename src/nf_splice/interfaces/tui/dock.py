@@ -575,7 +575,11 @@ class AgentDock(Vertical):
 
     def context(self) -> dict[str, Any]:
         spec = page_spec(self.page_id)
-        found: dict[str, Any] = {"wizard_step": spec.title, "layer": spec.layer}
+        found: dict[str, Any] = {
+            "page": spec.title,
+            "page_id": self.page_id,
+            "layer": spec.layer,
+        }
         if self.selection:
             found["selection"] = self.selection
         return found

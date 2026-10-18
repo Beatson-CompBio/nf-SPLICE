@@ -28,6 +28,14 @@ GLOSSARY = {
     "a sample; never a workflow-engine execution.",
     "engine execution metadata": "Engine-native session, task or execution "
     "identifiers of a job, explicitly qualified by engine.",
+    "process output": "A file a Nextflow process emits into its work directory "
+    "(its output: block); not by itself a pipeline output.",
+    "published output": "A file a publishDir rule (in a process or a config) "
+    "copies to the job's results; only these belong in the output catalogue.",
+    "output catalogue": "Every output type a pipeline may publish across all its "
+    "routes, authored in outputs.draft.yaml and published as outputs.yaml.",
+    "route": "One process output together with the publishDir rule that publishes "
+    "it and the conditions under which it runs.",
 }
 
 

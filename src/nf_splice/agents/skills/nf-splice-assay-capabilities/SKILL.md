@@ -77,7 +77,9 @@ repository never names an assay.
      `add_assay_capability` (evidence documented or detected, the locations
      as sources, a one-sentence rationale);
    - alternatives the evidence cannot tell apart (for example poly(A) versus
-     total RNA-seq for a generic RNA-seq pipeline): never choose one by
+     total RNA-seq for a generic RNA-seq pipeline, WGBS versus RRBS for a
+     bisulfite pipeline, or H&E versus fluorescence slides for an imaging
+     pipeline): never choose one by
      default. **AI-assisted:** ask the person one focused question that names
      the alternatives and the evidence (`record_blocker` in a plan turn, so
      the session waits for their reply). When they answer, resolve their
@@ -93,7 +95,8 @@ repository never names an assay.
    ready only with at least one valid assay capability.
 
 Declare the union of assays the pipeline supports across its routes: a
-poly(A) example run does not mean total RNA-seq is unsupported. Review the
+poly(A) example run does not mean total RNA-seq is unsupported, and one
+slide stain in an example does not rule out another the code supports. Review the
 declared assays for omissions even when the draft already validates, and
 tell technical compatibility from the assays the pipeline is intended for.
 

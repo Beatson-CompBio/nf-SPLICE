@@ -7,6 +7,7 @@ session and leaves no state behind except an optional local log.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from nf_splice.agents.protocol import (
     require_consent,
     require_tool_calling,
 )
+from nf_splice.agents.stages import Stage
 from nf_splice.agents.state import Usage
 from nf_splice.agents.toolbox import SessionToolbox, ToolMode
 from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
@@ -37,6 +39,31 @@ class HelpAnswer:
     text: str
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     denied: list[str] = field(default_factory=list)
+
+
+#: Pages and layers a question may come from, and the stage they belong to.
+_PAGES = {
+    "identity": "identity",
+    "assays": "identity",
+    "bundle": "identity",
+    "parameters": "inputs",
+    "inputs": "inputs",
+    "outputs": "outputs",
+    "software": "components",
+    "components": "components",
+    "execution": "profiles",
+    "execution-profiles": "profiles",
+    "provenance": "provenance",
+}
+
+
+def _stage(context: Mapping[str, Any]) -> Stage | None:
+    """The stage whose procedure answers a question asked on this page."""
+    for key in ("page_id", "layer", "page"):
+        value = str(context.get(key) or "").casefold()
+        if value in _PAGES:
+            return Stage(_PAGES[value])
+    return None
 
 
 async def ask_for_help(
@@ -77,7 +104,7 @@ async def ask_for_help(
     request = TurnRequest(
         purpose="help",
         instruction=help_instruction(question, context or {}),
-        system_prompt=system_prompt("help", None),
+        system_prompt=system_prompt("help", _stage(context or {})),
         tools=toolbox,
         max_turns=12,
         timeout_seconds=timeout_seconds,

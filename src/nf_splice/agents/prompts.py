@@ -46,7 +46,9 @@ How this works:
   declarations, and what you confirmed against the evidence), cite the files
   (path or path:line) and analyses that support each conclusion, and list
   what stays uncertain. Both are refused while required evidence is
-  uninspected or when you cite a file you never read. A draft you leave
+  uninspected or when you cite a file you never read. Evidence counts per
+  stage: a file you read in an earlier stage must be read again before you
+  cite it here (re-read the lines you rely on). A draft you leave
   unchanged needs explicit confirmations; never accept it unexamined. If
   evidence cannot be inspected or a fact cannot be established, record it as
   an uncertainty or a blocker instead of answering it.
@@ -74,8 +76,10 @@ Rules you must follow:
   establish, say so (record_blocker in autonomous mode, a question in assisted
   mode).
 - An assay is not a modality. Assay capabilities come only from the SPLICE
-  vocabulary through the assay tools, with cited evidence; a file type such as
-  FASTQ never establishes a library preparation.
+  vocabulary through the assay tools, with cited evidence. A generic input or
+  tool never establishes an assay on its own: FASTQ input does not establish a
+  library preparation, nor does an OME-TIFF image establish a stain or an
+  imaging method.
 - The runtime principal 'agent' in input access policies is a SPLICE platform
   role, not you: never grant it because an AI is authoring the draft.
 - Never put secrets, personal paths or literal site accounts into a config.
@@ -186,6 +190,26 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
 }
 
 
+HELP_RULES = """You are nf-splice's read-only assistant. A developer integrating a
+Nextflow pipeline with the SPLICE platform asked a question about the page they
+are on (the context names it and what is selected).
+
+- Answer from evidence: inspect the pipeline with the read-only tools
+  (list_files, read_source, search_source, read_draft, analyse_routes,
+  route_coverage, parameter_usage, component_inventory, validate_layer and
+  others) and cite file:line or the analysis behind each statement.
+- Keep apart what the code establishes, what the documentation states and
+  what you infer; say plainly what the evidence cannot settle.
+- A process output is a file a process emits into its work directory; it is
+  a published pipeline output only when a publishDir rule (in the process or
+  a config) copies it to the results.
+- Files under splice/ and .splice-local/ are nf-splice's own output (an
+  earlier bundle, the drafts), never evidence of what the pipeline does.
+- You cannot change anything. Suggest the field to edit, the page action or
+  the nf-splice command the person could use; keep the answer concise.
+"""
+
+
 def system_prompt(purpose: str, stage: Stage | None) -> str:
     """Rules, mode, vocabulary and the relevant skills."""
     vocabulary = "\n".join(f"- {key}: {value}" for key, value in GLOSSARY.items())
@@ -193,8 +217,9 @@ def system_prompt(purpose: str, stage: Stage | None) -> str:
         f'<skill name="{item.name}">\n{item.body.strip()}\n</skill>'
         for item in skills_for(purpose, stage)
     )
+    rules = HELP_RULES if purpose == "help" else RULES
     return (
-        f"{RULES}\n{MODES[purpose]}\n\nSPLICE vocabulary:\n{vocabulary}\n\n"
+        f"{rules}\n{MODES[purpose]}\n\nSPLICE vocabulary:\n{vocabulary}\n\n"
         f"Skills (procedures to follow):\n{skills}\n"
     )
 

@@ -448,9 +448,29 @@ def _apply_corrections(crate: dict[str, Any], metadata: PipelineMetadata) -> Non
         by_id[main_id]["url"] = metadata.repository_url
     graph = crate["@graph"]
     existing = {item.get("@id") for item in graph}
+    # A person or organisation the crate already describes keeps its entity,
+    # whatever identifier it uses: never a second entity for the same name.
+    by_name = {
+        str(item.get("name")).casefold(): str(item.get("@id"))
+        for item in graph
+        if item.get("name")
+        and item.get("@id")
+        and {"Person", "Organization"}
+        & set(
+            item["@type"]
+            if isinstance(item.get("@type"), list)
+            else [item.get("@type")]
+        )
+    }
     creators = []
     for author in metadata.authors:
-        identifier = author.orcid or f"#author-{author.name.replace(' ', '-').lower()}"
+        identifier = (
+            author.orcid
+            if author.orcid in existing
+            else by_name.get(author.name.casefold())
+            or author.orcid
+            or f"#author-{author.name.replace(' ', '-').lower()}"
+        )
         creators.append({"@id": identifier})
         if identifier not in existing:
             entity: dict[str, Any] = {

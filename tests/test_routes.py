@@ -256,3 +256,13 @@ def test_a_precise_pattern_covers_a_route_with_a_run_time_name() -> None:
     pattern = r"^methylation/{sample}_(CpG|CHG|CHH)\.bedGraph$"
     examples = glob_examples("methylation/{meta.id}_*.bedGraph", [pattern])
     assert "methylation/ID1_CpG.bedGraph" in examples
+
+
+def test_a_publish_rule_switched_off_publishes_nothing(tmp_path: Path) -> None:
+    (tmp_path / "main.nf").write_text(
+        'process STEP {\n    publishDir "${params.outdir}/step", enabled: false\n'
+        "    output:\n    path 'x.txt', emit: x\n    script:\n    'touch x.txt'\n}\n"
+        "workflow { STEP() }\n",
+        encoding="utf-8",
+    )
+    assert analyse_routes(tmp_path).published == ()

@@ -515,7 +515,25 @@ def _analyse_routes(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, An
 
 
 def _route_coverage(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.inspectors.routes import glob_examples
+
     data = output_layer.route_coverage(ctx.root).to_json()
+    state = read_layer(ctx.root, "outputs")
+    patterns = [
+        str(pattern)
+        for item in (
+            state.draft.data.get("outputs") or []
+            if state.draft is not None and isinstance(state.draft.data, dict)
+            else []
+        )
+        if isinstance(item, dict)
+        for pattern in item.get("path_patterns") or []
+    ]
+    for item in data.get("uncovered") or []:
+        # The concrete paths each glob was checked as: no pattern matched them.
+        item["checked_as"] = {
+            glob: glob_examples(glob, patterns)[:4] for glob in item.get("globs") or []
+        }
     kind = str(a.get("kind") or "")
     uncovered = [
         item
@@ -1304,7 +1322,8 @@ OPERATIONS: dict[str, Operation] = {
             "excluded with a reason, and which are uncovered (established, "
             "conditional or unverified). Coverage is ingestion-readiness "
             "evidence, never a validation error of declared outputs. Uncovered "
-            "routes are paged (offset, limit) and can be filtered by kind.",
+            "routes are paged (offset, limit), filtered by kind, and show the "
+            "example paths each glob was checked as ({meta.id} as ID1, * as x).",
             _obj(
                 {
                     "kind": {
@@ -1779,12 +1798,31 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "patch_draft",
-            "JSON-pointer patch (with expected base values) to the current stage's "
-            "draft, merged three-way and validated.",
+            "Field-level changes to the current stage's draft, merged three-way "
+            "and validated. Each operation is {op: add|replace|remove, path: JSON "
+            "pointer such as /outputs/2/description, value: the new value (not "
+            "for remove), expected: the value you read there (optional; the "
+            "patch is refused if the file changed)}. For a whole section use "
+            "replace_draft.",
             _obj(
                 {
                     "layer": _LAYER,
-                    "operations": {"type": "array", "items": {"type": "object"}},
+                    "operations": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "op": {
+                                    "type": "string",
+                                    "enum": ["add", "replace", "remove"],
+                                },
+                                "path": {"type": "string"},
+                                "value": {},
+                                "expected": {},
+                            },
+                            "required": ["op", "path"],
+                        },
+                    },
                 },
                 ["layer", "operations"],
             ),

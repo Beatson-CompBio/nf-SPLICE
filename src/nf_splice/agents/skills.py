@@ -87,7 +87,12 @@ def skills_for(purpose: str, stage: Stage | None) -> tuple[Skill, ...]:
     """The skills a turn needs: operations and authoring always, plus specifics."""
     names = ["nf-splice-agent-operations", "nf-splice-authoring"]
     if purpose == "help":
-        names = list(NAMES)
+        # A read-only answer needs the page's procedure, not every skill.
+        names = ["nf-splice-authoring"] + (
+            [_STAGE_SKILLS[stage]]
+            if stage in _STAGE_SKILLS
+            else ["nf-splice-validation"]
+        )
     elif stage in _STAGE_SKILLS:
         names.append(_STAGE_SKILLS[stage])
     if stage in {Stage.VALIDATE, Stage.BUILD, Stage.VERIFY}:

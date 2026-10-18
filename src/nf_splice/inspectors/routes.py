@@ -1027,6 +1027,9 @@ def analyse_routes(repository_root: str | Path) -> RouteAnalysis:
                         )
                         continue
                     for rule in matching:
+                        if rule.enabled and rule.enabled.strip() == "false":
+                            # Switched off in the code: nothing is published.
+                            continue
                         rule_conditions = list(extra_conditions)
                         if rule.enabled and rule.enabled.strip() != "true":
                             rule_conditions.append(
