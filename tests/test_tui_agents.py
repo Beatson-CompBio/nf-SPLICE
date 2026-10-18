@@ -27,7 +27,7 @@ from nf_splice.interfaces.tui.coordinator import AgentState
 from nf_splice.interfaces.tui.modals import ConfirmDialog, QuitDialog
 from nf_splice.layers.base import read_layer
 from nf_splice.services.workspace import initialise
-from tui_helpers import press, settle, wait_agent
+from tui_helpers import press, screenshot, settle, wait_agent
 
 pytestmark = pytest.mark.asyncio
 WIDE = (180, 50)
@@ -554,3 +554,117 @@ async def test_a_provider_without_tool_calling_is_refused(tmp_path: Path) -> Non
         await settle(app, pilot)
         assert app.query_one("#assist-start", Button).disabled
         assert app.coordinator.engine is None
+
+
+# ------------------------------------------------------------ takeover sizes
+
+
+def _needs_salmon_decision(request: TurnRequest, tools: ToolInvoker) -> list[str]:
+    outputs(tools, skip=["quant"])
+    tools.call(
+        "record_blocker",
+        {
+            "decision": "Whether Salmon quantification is a platform output",
+            "reason": "The workflow runs Salmon only when a parameter enables it, "
+            "and the documentation does not say whether users need its files.",
+            "uncertainties": ["Whether quant.sf is used downstream by the platform"],
+            "artefact": ".splice-local/drafts/outputs.draft.yaml",
+            "pointer": "/outputs",
+            "attempted_checks": ["analyse_routes", "route_coverage", "main.nf:12"],
+            "suggested_resolution": "Describe quant.sf or exclude its route.",
+        },
+    )
+    return ["I cannot decide about Salmon from the evidence."]
+
+
+@pytest.mark.parametrize("size", [(80, 30), (120, 40)], ids=["80x30", "120x40"])
+async def test_a_narrow_takeover_edits_the_field_and_resumes_the_same_session(
+    tmp_path: Path, size: tuple[int, int]
+) -> None:
+    from textual.widgets import Static
+
+    root = _prepared(tmp_path)
+    agent = RouteAgent(overrides={"execute:outputs": _needs_salmon_decision})
+    app = NfSpliceApp(
+        root, user="Ada", start="overview", agent_provider=ScriptedProvider(agent)
+    )
+    async with app.run_test(size=size) as pilot:
+        await settle(app, pilot)
+        assert app.stacked
+        app.open_dock("autonomous")
+        await settle(app, pilot)
+        await press(app, pilot, "#auto-start")
+        await wait_agent(app, pilot)
+        snapshot = app.coordinator.snapshot()
+        assert snapshot.state is AgentState.AWAITING_YOU
+        session = snapshot.session_id
+        # The AI panel takes the full width; the card reads as plain sentences.
+        dock = app.query_one("#dock")
+        assert dock.display and dock.size.width >= size[0] - 2
+        text = str(app.query_one("#intervention-text", Static).render())
+        for heading in (
+            "What I need from you",
+            "Why I cannot decide",
+            "What I examined",
+            "Still uncertain",
+            "What to do next",
+        ):
+            assert heading in text
+        assert "replace_draft" not in text and "{" not in text
+        details = str(app.query_one("#intervention-diagnostics-text", Static).render())
+        assert "operation:" in details or "agent check:" in details
+        screenshot(app, f"takeover-card-{size[0]}x{size[1]}")
+        # Open the field: the page takes the full width, the bar stays.
+        await press(app, pilot, "#intervention-open")
+        assert app.current == "outputs"
+        assert not dock.display
+        assert app.query_one("#takeover-bar").display
+        screenshot(app, f"takeover-page-{size[0]}x{size[1]}")
+        # Unsaved values are never lost, and never resumed over.
+        app.show_page("identity")
+        await settle(app, pilot)
+        app.screen.query_one("#identity-version", Input).value = "9.9.9"
+        await press(app, pilot, "#takeover-resume")
+        assert "Save or discard" in str(app.query_one("#status-message").render())
+        assert app.coordinator.snapshot().state is AgentState.AWAITING_YOU
+        await pilot.press("f6")
+        await pilot.pause()
+        assert dock.display
+        await pilot.press("f6")
+        await pilot.pause()
+        assert not dock.display
+        assert app.screen.query_one("#identity-version", Input).value == "9.9.9"
+        app.current_page().discard_unsaved()  # type: ignore[union-attr]
+        app.action_reload()
+        await settle(app, pilot)
+        # The person decides; the agent continues the same session.
+        agent.overrides.clear()
+        await press(app, pilot, "#takeover-resume")
+        await wait_agent(app, pilot)
+        assert app.coordinator.snapshot().session_id == session
+        engine = app.coordinator.engine
+        assert engine is not None and engine.state.blockers[0].resolved
+        assert not app.query_one("#takeover-bar").display or (
+            app.coordinator.snapshot().interventions
+        )
+
+
+async def test_wide_terminals_keep_the_page_and_the_ai_side_by_side(
+    tmp_path: Path,
+) -> None:
+    root = _prepared(tmp_path)
+    app = NfSpliceApp(
+        root, user="Ada", start="outputs", agent_provider=ScriptedProvider(RouteAgent())
+    )
+    async with app.run_test(size=(170, 45)) as pilot:
+        await settle(app, pilot)
+        assert not app.stacked
+        app.open_dock("ask")
+        await settle(app, pilot)
+        page = app.current_page()
+        assert page is not None and page.display
+        assert app.query_one("#dock").display
+        assert page.size.width >= 60
+        await pilot.press("f6")
+        await pilot.pause()
+        assert app.query_one("#dock").display  # F6 moves focus, not the layout
