@@ -68,7 +68,7 @@ deployment sets or fixes in the second. Add any other valid configuration:
 comment line) and never regenerates it.
 
 To add a profile, create another `.draft.config` file and register it in
-the YAML, or use the wizard's *New profile*. From the command line:
+the YAML, or use **+ Add profile…** on the workspace's **Execution** page. From the command line:
 
 ```bash
 nf-splice configure execution-profiles \
@@ -78,8 +78,9 @@ nf-splice configure execution-profiles \
   --default default
 ```
 
-Profiles detected in your `nextflow.config` appear in the wizard as
-optional hints.
+Profiles detected in your `nextflow.config` are optional hints
+(`nf-splice configure execution-profiles --export-unresolved FILE` lists
+them).
 
 ## Checks
 

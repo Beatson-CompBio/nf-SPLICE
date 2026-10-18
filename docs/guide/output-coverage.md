@@ -29,9 +29,10 @@ a file is published only if a publication rule copies it to the results:
 
 It follows these rules, including `pattern` filters, `enabled` flags and
 `saveAs`, and records the `if`/`else` conditions under which each process
-runs. Only published outputs are seeded into the catalogue. Intermediates,
-such as a sorting step whose output nothing publishes, are listed
-separately and never offered.
+runs. Only published outputs count as routes. Intermediates, such as a
+sorting step whose output nothing publishes, are listed separately. Routes
+are evidence for you or an agent to read (`nf-splice draft routes`); they
+never become catalogue entries by themselves.
 
 Each published route gets a status:
 
@@ -45,13 +46,10 @@ Each published route gets a status:
 
 ## Using example results
 
-Example results are evidence from one run. Give nf-splice the results
-directory, a saved `ls -R` or `tree` listing, or an output index:
-
-```bash
-nf-splice configure outputs --example-output-tree ../results
-nf-splice configure outputs --publish-directory ../results
-```
+Example results are evidence from one run. Give `assess` the results
+directory, a saved `ls -R` or `tree` listing, or an output index (see the
+check below); agents read them with `list_example_outputs` and
+`reconcile_example_outputs`.
 
 Examples add evidence (for example, per-sample file names) and reveal
 mistakes, but never remove supported routes that the run did not take.
@@ -92,19 +90,21 @@ unclassified or ambiguous files. Use `--json` in CI.
 The pipeline aligns with STAR or HISAT2, can quantify with Salmon and can
 skip QC. You have results from one STAR run with QC.
 
-1. Create drafts and discover outputs with the example:
+1. Create the drafts and list the routes:
 
    ```bash
    nf-splice init
-   nf-splice configure outputs --example-output-tree ../results-star
+   nf-splice draft routes
    ```
 
-   The seeded catalogue has both `star_align_bam` and `hisat2_align_bam`,
-   Salmon's `quant` and MultiQC's `report`, but no samtools sorted BAM.
+   The routes include the STAR and HISAT2 alignments, Salmon's
+   quantification and MultiQC's report, but no samtools sorted BAM, which
+   nothing publishes.
 
-2. Edit `outputs.draft.yaml`: describe each output, keep every supported
-   route (HISAT2 and Salmon included), and remove or exclude anything that is
-   not a platform output (see [Outputs](outputs.md)).
+2. Describe each output in `outputs.draft.yaml` (or with the workspace's
+   output editor), keep every supported route (HISAT2 and Salmon included),
+   and exclude anything that is not a platform output, with a reason (see
+   [Outputs](outputs.md)).
 
 3. Build, then check:
 
@@ -129,11 +129,12 @@ You can integrate a pipeline without any results:
 
 ```bash
 nf-splice init
+nf-splice draft routes
 nf-splice draft validate outputs
 nf-splice assess
 ```
 
-The seeded catalogue comes from the code alone. `assess` reports observed-output
+You describe the outputs from the code alone. `assess` reports observed-output
 compatibility as *not assessed*: that is not a failure, only less evidence.
 Path patterns for per-sample files are derived from the code; check the ones
 marked `inferred_unverified` against the module source.

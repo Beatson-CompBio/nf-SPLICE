@@ -156,7 +156,7 @@ select. Only OpenCode 2.0.x is supported.
 ```bash
 nf-splice provider models opencode
 nf-splice provider select opencode --model ollama/qwen3:8b
-nf-splice --actor "Ada Lovelace" session start --mode assisted --provider opencode
+nf-splice --user "Ada Lovelace" session start --mode assisted --provider opencode
 ```
 
 - A model whose endpoint is on your computer is **local**: no remote-model
@@ -206,9 +206,9 @@ when the limit resets, with another provider, or manually:
 
 ```bash
 nf-splice session status
-nf-splice --actor "Ada Lovelace" session resume
-nf-splice --actor "Ada Lovelace" session resume --provider opencode --model ollama/qwen3:8b
-nf-splice --actor "Ada Lovelace" session resume --mode manual
+nf-splice --user "Ada Lovelace" session resume
+nf-splice --user "Ada Lovelace" session resume --provider opencode --model ollama/qwen3:8b
+nf-splice --user "Ada Lovelace" session resume --mode manual
 ```
 
 The session report states which provider, model and billing route was used,

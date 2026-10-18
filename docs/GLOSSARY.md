@@ -31,13 +31,16 @@ permits `scope: run`.
 | **Contract registry** | The packaged mapping from each nf-splice release to the revision of every contract family it emits (`nf-splice schema list`). |
 | **Draft** | An editable, authoritative working file below `.splice-local/drafts/`, named `*.draft.*` and carrying a draft marker. |
 | **Final artefact** | A validated, draft-marker-free file at its published path below `splice/`. |
-| **Seeded draft** | A draft `init` filled from repository evidence. It is a first guess: people and agents edit it freely, and no candidate needs approving before it builds. |
+| **Seeded draft** | A draft `init` filled from exact, documented metadata keys (and a published bundle, if any). Nothing scientific is inferred: no assays, and no outputs unless a published catalogue exists. People and agents edit it freely, and no candidate needs approving before it builds. |
 | **Published file** | A file below `splice/`, built only by nf-splice from the drafts; never edited by hand. |
 | **Discovery hint** | An advisory candidate in a `.review.json` sidecar. Hints never block validation or a build. |
 | **Lifecycle** | Where an integration stands, as separate facts every interface states the same way: drafts valid, published (and current), scientifically classified, ready for SPLICE ingestion. Published does not mean ready. |
 | **Review scope** | The evidence an AI review of one layer must (required) or should (advisory) inspect in this pipeline, derived from the repository; a review cannot finish while required evidence is uninspected. |
-| **Established route** | A publication route the code always takes (no branch, switch or run-time path). An uncovered established route is an error; conditional and unresolved routes are warnings. |
-| **Readiness dimension** | One of the separately reported questions `nf-splice validate` answers: contracts, scientific classification, runtime parameters, deployment, provenance and publication. |
+| **Established route** | A publication route the code always takes (no branch, switch or run-time path). An uncovered established or conditional route makes output coverage incomplete, which blocks ingestion readiness but not publication; an unresolved route leaves coverage not assessed. |
+| **Output coverage** | The readiness dimension that compares the authored output catalogue with the routes the code publishes (`nf-splice draft routes`). |
+| **Readiness dimension** | One of the separately reported questions `nf-splice validate` answers: contracts, scientific classification, output coverage, runtime parameters, deployment, provenance and publication. |
+| **Workspace** | The terminal interface (`nf-splice tui`): task pages, a step rail and an AI dock with Ask, Assist and Autonomous cards over the same drafts. |
+| **Human intervention** | A decision an agent left for a person, naming the field; the person edits it and resumes the same session. |
 | **Principal** | A role in the SPLICE platform that may set an input at run time: `user`, `platform` or `agent`. The runtime `agent` principal is unrelated to an AI that helps author a draft. |
 | **Image source** | The registry reference or URL a container runtime would pull an image from. |
 | **Image distribution** | A verified image file at an HTTPS address, with the SHA-256 nf-splice computed itself. |

@@ -28,9 +28,11 @@ AI-assisted session and an autonomous run.
   graph). Execution profiles also name native Nextflow configs in
   `.splice-local/drafts/configs/*.draft.config`, which hold the
   configuration itself.
-- `nf-splice init` seeds every draft once from repository evidence (and from
-  an earlier `splice/` bundle, if any) and never overwrites one afterwards.
-  Seeded content is provisional: correct it.
+- `nf-splice init` seeds every draft once from exact, documented metadata
+  keys (and from an earlier `splice/` bundle, if any) and never overwrites
+  one afterwards. It infers nothing scientific: no assays, and no outputs
+  unless a published catalogue exists. Check what was imported and author
+  the rest.
 - The `.review.json` sidecars below `.splice-local/reviews/` are provenance
   (events, advisory discovery candidates, verification records). They never
   hold field values and a candidate's status never blocks validation.
@@ -48,7 +50,7 @@ AI-assisted session and an autonomous run.
 3. **Author** the best complete content in one coherent revision:
    `replace_draft` for a whole section (for example `/outputs`) or the whole
    file, `write_config` for a native config, or the targeted tools
-   (`set_identity`, `set_parameter_access`, `update_output`). People simply
+   (`set_identity`, `set_parameter_access`, `add_output`, `update_output`). People simply
    edit the files in any editor.
 4. **Validate** (`validate_layer`, `nf-splice draft validate <layer>`), read
    the issues, revise and validate again. A saved draft does not have to
@@ -63,7 +65,7 @@ AI-assisted session and an autonomous run.
    SPLICE ingestion` with the reasons, until every readiness dimension is
    ready.
 
-Discovery candidates (`list_pending`, `accept_output`, `reject_output`,
+Discovery candidates for components and profiles (`list_pending`,
 `accept_unambiguous_components`, `review_profile`, `confirm_values`) are
 optional conveniences for people who prefer a table. They are never
 required: a valid draft builds with every candidate untouched.
@@ -81,11 +83,11 @@ required: a valid draft builds with every candidate untouched.
   revision on the current file; never overwrite someone's edit.
 - `unresolved` issues: a seeded entry still lacks a required value; supply it
   from evidence or leave it and say why.
-- `route_not_covered` (error): the code always publishes a path no output
-  matches; add or correct an output, or list it under `excluded_routes`
-  with a reason (`kind: false_positive` when the analysis is wrong).
-  `conditional_route_not_covered` and `route_unverified` are warnings:
-  decide them the same way, and keep alternative routes.
+- Incomplete route coverage (`route_coverage`, `nf-splice draft routes`): a
+  published route no output matches. It is not a draft error but blocks the
+  `output_coverage` readiness dimension; add or correct an output, or list
+  it under `excluded_routes` with a reason (`kind: false_positive` when the
+  analysis is wrong). Keep alternative routes.
 - `identity_not_ready` on other layers: fix the identity first.
 - `syntax`: the YAML cannot be read; it is reported, never rewritten.
 

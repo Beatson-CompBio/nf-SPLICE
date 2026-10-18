@@ -20,10 +20,9 @@ Run `nf-splice plan` to see everything still open, or
 | `placeholder` | A value looks like template text, such as `TODO`. | Replace it with the real value. |
 | `invalid_value` | A value has the wrong form, such as a malformed URL or ORCID iD. | Correct it. |
 | `recommended` | A recommended value is missing. | Optional; add it for a better listing. |
-| `unresolved` | A seeded entry still lacks a required value. | Write it into the draft; `nf-splice draft validate --help`, or the wizard's *Explain errors*. |
-| `route_not_covered` (error) | The code always publishes a path no output matches. | Add or correct an output, or list it under `excluded_routes` with a reason (`kind: false_positive` if the analysis is wrong). |
-| `conditional_route_not_covered` (warning) | A route published under a condition matches no output. | Add an output for it, or exclude it with a reason; keep alternative routes. |
-| `route_unverified` (warning) | Static analysis could not resolve a route. | Check the code; add an output or exclude it if it is published. |
+| `unresolved` | A seeded entry still lacks a required value. | Write it into the draft; `nf-splice draft validate --help`, or the workspace's Review page. |
+| Output coverage incomplete (readiness, not a draft error) | A route the code publishes, always or under a condition, matches no output. | `nf-splice draft routes` lists them. Add or correct an output, or list it under `excluded_routes` with a reason (`kind: false_positive` if the analysis is wrong); keep alternative routes. |
+| Output coverage not assessed | Static analysis could not resolve a route. | Check the code; add an output or exclude it if it is published. |
 | `container_not_mapped` | A module declares a container but its component names none. | Set `container_id`, or record what stops it under `unresolved`. |
 | `adopted_distribution` (warning) | A verified image file was reused from the earlier bundle without downloading it again: a historical verification, not proof it is reachable now. | Nothing, or check it now with `nf-splice containers reverify --approve-network`. |
 | `unresolved_component` | A module's container or version needs a decision. | Resolve it in the draft and remove the `unresolved` entry. |
@@ -67,8 +66,8 @@ current files.
 changes. Wait for it to finish, or pause it with `nf-splice session pause`.
 
 **"needs a person's actor label".** Approvals and session starts are
-recorded with your name. Pass `--actor "Your Name"` or set
-`NF_SPLICE_ACTOR`.
+recorded with your name. Pass `--user "Your Name"` or set
+`NF_SPLICE_USER`.
 
 **"sends repository context to a remote model".** Add
 `--allow-remote-model` to consent to using a remote AI provider.

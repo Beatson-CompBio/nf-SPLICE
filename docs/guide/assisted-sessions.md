@@ -34,11 +34,11 @@ explicit confirmations. The session report shows each review's basis
 From the root of your pipeline repository:
 
 ```bash
-nf-splice --actor "Ada Lovelace" session start --mode assisted --provider claude --allow-remote-model --example-output ../results
+nf-splice --user "Ada Lovelace" session start --mode assisted --provider claude --allow-remote-model --example-output ../results
 ```
 
-- `--actor` is your name as recorded with each approval. Set
-  `NF_SPLICE_ACTOR` to avoid typing it.
+- `--user` is your name as recorded with each approval. Set
+  `NF_SPLICE_USER` to avoid typing it.
 - `--example-output` is optional: the results directory (or a saved listing)
   of one completed run, which the agent may read as evidence.
 - `--reasoning-effort` (default `high`) asks the provider to reason harder;
@@ -93,7 +93,7 @@ Reply with whatever you know, in your own words, for example a paragraph
 about the pipeline, its authors, licence and funding:
 
 ```bash
-nf-splice --actor "Ada Lovelace" session reply "Bulk RNA-seq quantification from the Beatson Institute, MIT licence, version 1.2.0, written by Ada Lovelace (ORCID 0000-0002-1825-0097), funded by CRUK award A123, supports human and mouse, cite 10.5281/zenodo.1234567."
+nf-splice --user "Ada Lovelace" session reply "Bulk RNA-seq quantification from the Beatson Institute, MIT licence, version 1.2.0, written by Ada Lovelace (ORCID 0000-0002-1825-0097), funded by CRUK award A123, supports human and mouse, cite 10.5281/zenodo.1234567."
 ```
 
 The agent maps each fact to its field, checks it against the repository (and
@@ -133,7 +133,7 @@ quantification and conditional QC. Your example run used STAR.
 3. Object:
 
    ```bash
-   nf-splice --actor "Ada Lovelace" session object "HISAT2 is an alternative aligner. It must stay in the catalogue even though the example used STAR."
+   nf-splice --user "Ada Lovelace" session object "HISAT2 is an alternative aligner. It must stay in the catalogue even though the example used STAR."
    ```
 
 4. The agent reads `main.nf` and the route analysis, finds that
@@ -170,24 +170,27 @@ Switch to manual mode at any time to edit drafts yourself:
 ```bash
 nf-splice session resume --mode manual
 nf-splice configure outputs --contract-version 1.1.0
-nf-splice --actor "Ada Lovelace" session resume --mode assisted
+nf-splice --user "Ada Lovelace" session resume --mode assisted
 ```
 
 When the session continues, nf-splice notices files that changed outside
 it, checks completed stages again and withdraws any proposal made before
 your edit. An out-of-date proposal can never be approved.
 
-## In the wizard
+## In the workspace
 
 ```bash
-nf-splice tui --provider claude --allow-remote-model
+nf-splice --user "Ada Lovelace" tui --provider claude
 ```
 
-Choose **AI-assisted session** on the Welcome step. The session view shows
-the stage progress, the conversation, the proposal with its diff, and
-**Approve**, **Object**, **Reply**, **Ask**, **Continue** and **Pause**. It
+Choose the contextual **Assist** action on a page, or open the dock's
+**Assist** card, add guidance if you like and choose **Prepare a
+proposal**. The card shows the proposal with its evidence, uncertainties,
+diff and validation preview, and **Approve changes**, **Request
+revision**, **Edit manually** and **Reject**. Questions from the agent
+appear with **Answer**, **Edit directly** and **Resume**. The workspace
 uses the same session files as the commands, so you can start in one and
-continue in the other.
+continue in the other (see [The workspace](workspace.md)).
 
 ## Undo an approved change
 
@@ -195,7 +198,7 @@ Before applying each approved proposal, nf-splice saves a checkpoint of
 `splice/`. To return to one:
 
 ```bash
-nf-splice --actor "Ada Lovelace" session rollback checkpoint-3
+nf-splice --user "Ada Lovelace" session rollback checkpoint-3
 ```
 
 The session report lists the checkpoints.

@@ -12,7 +12,7 @@ python -m pip install -e '.[dev]'
 ```
 
 `scripts/dev-env.sh` sends every cache, temporary file, test output, report
-and wizard session to the ignored `.nf-splice-local/` directory inside the
+and workspace state to the ignored `.nf-splice-local/` directory inside the
 clone. Source it in each new shell.
 
 Install the staged-file guard as a Git hook:
@@ -54,15 +54,19 @@ Field descriptions for the schema reference live in
 (`bundle-consumer-kit/skills/`) are written by hand; `tests/test_consumer_kit.py`
 fails when one names a key the contracts do not define.
 
-## Wizard snapshots
+## Workspace tests and screenshots
 
-`tests/test_tui.py` compares each wizard step with reviewed text snapshots
-in `tests/snapshots/tui/`. After an intended change to the wizard, update
-them and review the difference:
+`tests/test_tui.py`, `tests/test_tui_agents.py`, `tests/test_tui_themes.py`
+and `tests/test_tui_performance.py` drive the workspace headlessly through
+its widgets over real services and files. To look at what they render, save
+SVG screenshots and open them in a browser:
 
 ```bash
-NF_SPLICE_UPDATE_SNAPSHOTS=1 pytest tests/test_tui.py
+NF_SPLICE_SCREENSHOTS=.nf-splice-local/reports/screenshots pytest tests/test_tui.py
 ```
+
+`NF_SPLICE_LATENCY_REPORT=.nf-splice-local/reports/latency.json` records the
+measured latencies of `tests/test_tui_performance.py`.
 
 ## Design decisions
 

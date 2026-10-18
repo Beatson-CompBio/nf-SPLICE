@@ -48,83 +48,53 @@ nf-splice catalogue search "spatial"
 `show` prints every path from the assay to its modalities, with each
 entity's type.
 
-## How nf-splice finds the assays
+## Declare the assays
 
-You do not need to know the vocabulary codes. nf-splice investigates what
-your pipeline does and recommends assays, without any AI:
+nf-splice does not guess which assays a pipeline processes: tools, file
+types and prose do not establish a library preparation, and a guess shown
+with a confidence still reads as a finding (ADR-0069). You declare them.
+To see where the repository names an assay, with locations:
 
 ```bash
-nf-splice catalogue recommend
+nf-splice catalogue candidates
 ```
 
-It reads:
-
-- the **tools** the pipeline runs: module, process, container and conda
-  package names (for example STAR, Salmon, RSEM, MACS2, Bismark);
-- its **parameters** and their allowed values, and **sample sheet** columns;
-- the **outputs** it publishes;
-- its **documentation**: README, `docs/` and parameter descriptions.
-
-Packaged evidence rules link this evidence to the vocabulary at the level it
-can support. Alignment and gene or transcript quantification establish
-*Short-read RNA-seq* under Bulk RNA-seq and Transcriptomics, but not whether
-the libraries were poly(A)-selected or total RNA. A rule needs several
-independent signals, and some need a specific tool, so a contamination
-screen (Kraken2) does not make an RNA-seq pipeline a metagenomics pipeline.
-
-Each recommended assay shows its vocabulary id and label, its level
-(`ASSAY_METHOD` or `ASSAY_TYPE`), the evidence with locations, and a status:
-
-| Status | Meaning |
-| --- | --- |
-| `documented` | The repository names this assay (documentation, a parameter) |
-| `supported` | The evidence establishes this level, and nothing finer applies; or a broader classification you may choose |
-| `suggested` | Evidence points to it, for example rRNA-removal steps for total RNA-seq, without confirming it |
-| `requires_verification` | Plausible, but the evidence cannot tell it apart from its alternatives |
-| `rejected` | You rejected it, with a reason |
-
-Where the evidence cannot decide, nf-splice says so and asks the question
-that would, for example: *the pipeline processes Short-read RNA-seq data; the
-repository does not establish which of poly(A) RNA-seq and Total RNA-seq it
-supports.*
-
-## Declare or reject
-
-Recommendations are never capabilities by themselves. Declare each assay the
+A mention is a pointer to read, not a capability. Declare each assay the
 pipeline supports, with a reason. With no evidence option it is your
 statement as a person (`asserted`):
 
 ```bash
-nf-splice --actor "Ada Lovelace" configure identity --add-assay polya_rnaseq --add-assay total_rnaseq --assay-rationale "The pipeline documents both library types."
+nf-splice --user "Ada Lovelace" configure identity --add-assay polya_rnaseq --add-assay total_rnaseq --assay-rationale "The pipeline documents both library types."
 ```
 
 Cite the documentation or code that shows it:
 
 ```bash
-nf-splice --actor "Ada Lovelace" configure identity --add-assay atacseq --assay-evidence documented --assay-source docs/usage.md:42 --assay-rationale "The usage guide documents the ATAC-seq route."
+nf-splice --user "Ada Lovelace" configure identity --add-assay atacseq --assay-evidence documented --assay-source docs/usage.md:42 --assay-rationale "The usage guide documents the ATAC-seq route."
 ```
 
-Reject a recommendation that does not apply, or remove a declared assay:
+Remove a declared assay:
 
 ```bash
-nf-splice --actor "Ada Lovelace" configure identity --reject-assay total_rnaseq --assay-rationale "Our protocol uses poly(A) selection only."
-nf-splice --actor "Ada Lovelace" configure identity --remove-assay total_rnaseq
+nf-splice --user "Ada Lovelace" configure identity --remove-assay total_rnaseq
 ```
 
 An assay concept that has no platform registration can be declared by its
 vocabulary id, for example `--add-assay entity:255`.
 
-In the wizard, the **Assay capabilities** step opens with the same
-assessment: the detected domain, the evidence, the recommendations with
-their status and confidence, and the open questions. Declare or reject a
-recommendation, or pick any assay from the vocabulary table. Each change is
-saved at once.
+In the workspace, **Supported assays** shows the vocabulary as a tree, from
+modalities to assay methods, with each entry's description and paths.
+Tick what the pipeline can process (Space), then **Save selections**; a
+tick is recorded as declared by you. **Suggest an addition** prepares a
+note for the vocabulary maintainers (copied to the clipboard, sent to
+`NF_SPLICE_SUPPORT_CONTACT` when that is set) when an assay is missing; it
+is never added automatically.
 
 ## Classification is required for ingestion
 
 A pipeline with no declared assay is not ready for SPLICE ingestion. Until
-one is declared, the identity draft reports `missing_assay_classification`
-(with the recommendations), the bundle is not built, and `nf-splice
+one is declared, the identity draft reports `missing_assay_classification`,
+the bundle is not built, and `nf-splice
 validate` reports three separate results:
 
 ```text
@@ -153,18 +123,19 @@ validate` resolves them again and rejects anything else. See the
 
 ## With agentic AI
 
-Agents start from the same assessment and investigate further with
-nf-splice's read-only tools.
+Agents read the pipeline with nf-splice's read-only tools and the
+vocabulary; nothing is scored for them.
 
 - **AI-assisted:** the agent explains what it found and asks one focused
   question where the evidence cannot decide, for example whether the
   pipeline supports poly(A) libraries, total RNA libraries or both. It turns
   your answer into vocabulary entries, stages them for your approval, and
   you can object or correct it as for any stage.
-- **Autonomous:** the agent declares assays the evidence establishes or the
-  repository documents. Where alternatives remain, it records a blocker
-  naming them and what would decide; the run is reported as partial, never
-  complete. Resume the same session in AI-assisted mode to answer it.
+- **Autonomous:** the agent declares assays the sources it read establish or
+  the repository documents, citing them. Where alternatives remain, it
+  records a blocker naming them and what would decide; the workspace shows
+  it as a human intervention that opens the assay tree. Tick the assays and
+  resume the same session; the run is reported as partial until then.
 
 An agent cannot assert an assay without evidence, and cannot record your
 confirmation outside an approval.

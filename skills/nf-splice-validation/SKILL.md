@@ -40,18 +40,22 @@ Drafts exist (`nf-splice init`). Building needs every layer ready.
    `nf-splice draft recover`; published files are never replaced silently,
    and configs nf-splice published earlier that nothing uses any more are
    removed in the same transaction.
-5. Validate the published bundle. Every command and the wizard state one
+5. Validate the published bundle. Every command and the workspace state one
    lifecycle: whether the drafts validate, whether the bundle is published
    and current, whether it is structurally valid and scientifically
    classified, and whether it is ready for SPLICE ingestion, with a
    headline such as `Published, but not ready for SPLICE ingestion` and the
    reason per dimension. A successful build is never ingestion readiness;
-   a dimension that could not be assessed is not ready. The six readiness
+   a dimension that could not be assessed is not ready. The seven readiness
    dimensions are: contracts, scientific classification, runtime parameters
    (indispensable inputs someone can supply; a null default supplies
    nothing), deployment (images the default profile's engine can use;
-   Conda-only components under a container engine block), provenance (RO-Crate 1.1 and identity
-   agreement) and publication consistency.
+   Conda-only components under a container engine block), provenance
+   (RO-Crate 1.1 and identity agreement), output coverage (every
+   established or conditional published route is described or excluded with
+   a reason; `nf-splice draft routes` lists them) and publication
+   consistency. Incomplete coverage never blocks publishing a valid,
+   deliberately limited catalogue; it blocks ingestion readiness.
 6. Assess: contract validity, observed-output compatibility and route
    coverage are three separate results.
 7. Optional checks run only when installed, applicable and permitted;

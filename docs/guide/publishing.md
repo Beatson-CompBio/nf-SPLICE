@@ -32,7 +32,7 @@ first, then the lock file and `bundle.json`, so a partial bundle can never
 look complete.
 
 Publishing is not the same as being ready for SPLICE ingestion. After a
-build, `build`, `status`, `validate`, `export` and the wizard all say where
+build, `build`, `status`, `validate`, `export` and the workspace all say where
 the bundle stands, with the reason for each gap:
 
 ```text

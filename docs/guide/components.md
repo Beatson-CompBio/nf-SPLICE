@@ -65,8 +65,9 @@ the `unresolved` entry). A component whose code declares a container but
 which names none is an error, `container_not_mapped`: set its
 `container_id`, or record what stops it under `unresolved`. A module added to the pipeline after `init` is
 reported as `module_not_listed`; add it, or leave it out on purpose. The
-wizard's *Add all unambiguous* and `nf-splice configure components
---accept-detected` add such modules for you; they are never required.
+workspace's *Add modules missing from the inventory…* on **Software** and
+`nf-splice configure components --accept-detected` add such modules for
+you; they are never required.
 
 ## Software the default profile can use
 

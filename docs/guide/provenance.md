@@ -129,9 +129,9 @@ address: the ingestion service records where it stores them.
 
 Every review decision is recorded with:
 
-- an **actor label**, from `--actor`, `NF_SPLICE_ACTOR` or the CI identity,
+- an **actor label**, from `--user`, `NF_SPLICE_USER` or the CI identity,
   otherwise `unattributed`;
-- the layer, action, fields, origin (command line, wizard, assistant) and time.
+- the layer, action, fields, origin (command line, workspace, assistant) and time.
 
 These records are stored in `.splice-local/reviews/` and contain no contact
 details. Your Git name and e-mail address are offered only as a suggestion

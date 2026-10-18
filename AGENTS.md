@@ -29,8 +29,10 @@ The drafts on disk are always the source of truth (ADR-0057).
 
 ### The three modes share one engine
 
-- Manual mode is the CLI and the wizard. *Ask AI* (`nf-splice ask`, Ctrl+A in
-  the wizard) answers questions with read-only tools and never changes files.
+- Manual mode is the CLI and the workspace (`nf-splice tui`, ADR-0067). *Ask
+  AI* (`nf-splice ask`, or the workspace's AI dock) answers questions with
+  read-only tools and never changes files. The workspace's
+  `AgentCoordinator` owns agent work; closing the dock never stops it.
 - AI-assisted and autonomous sessions run in
   `src/nf_splice/agents/engine.py`, a typed stage machine. Every agent action
   goes through `src/nf_splice/agents/operations.py`, the typed operation
@@ -76,8 +78,12 @@ approval `agent_policy`, never as human review.
 
 - Never make a discovery candidate's review status a validation error, and
   never seed a discoverable list empty to force a review queue. Validate
-  the draft's content; report substantive gaps (route coverage, unlisted
-  modules, unresolved containers, unbound required inputs).
+  the draft's content; report substantive gaps (unlisted modules,
+  unresolved containers, unbound required inputs). The output catalogue is
+  authored, not discovered: it starts empty, and route coverage is the
+  `output_coverage` readiness dimension, not a draft error (ADR-0068).
+- Infer no science deterministically: identity comes from documented keys
+  only and people declare assays (ADR-0069).
 - Re-running discovery never changes an existing draft or config.
 - Change contract files only through the services; never hand-write
   `outputs.schema.json`, `outputs.yaml`, `bundle.json` or `analysis_output.json`.

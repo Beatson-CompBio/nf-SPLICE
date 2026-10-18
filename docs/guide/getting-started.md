@@ -16,8 +16,9 @@ works offline unless you choose to use agentic AI.
 
 ## Install
 
-nf-splice is installed from GitHub; it is not published on PyPI. Use a
-virtual environment so it does not affect other Python tools:
+nf-splice is installed from GitHub; it is not published on PyPI. Install it
+in its own environment so it does not affect other Python tools. With a
+virtual environment:
 
 ```bash
 python -m venv ~/.venvs/nf-splice
@@ -25,6 +26,18 @@ python -m venv ~/.venvs/nf-splice
 python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
 nf-splice --version
 ```
+
+Or with Conda (or Mamba), for example alongside nf-core tools:
+
+```bash
+conda create -n nf-splice python=3.12 git
+conda activate nf-splice
+python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
+nf-splice --version
+```
+
+Then open the workspace from your working copy (step 1 below) with
+`nf-splice --user "Your Name" tui`, or follow the commands on this page.
 
 To try a branch before it is merged, add `@<branch>` to the address, for
 example `"git+https://github.com/Beatson-CompBio/nf-SPLICE.git@wip/nf-splice-v0.3.0"`. If Git asks for credentials, sign in
@@ -49,14 +62,14 @@ From the root of the working copy:
 nf-splice init
 ```
 
-`init` reads your repository and writes six draft files, already filled in
-with what the evidence supports:
+`init` reads your repository and writes six draft files, filled in from
+exact, documented metadata (nothing scientific is guessed):
 
 | Draft (in `.splice-local/drafts/`) | Seeded from |
 | --- | --- |
-| `bundle.draft.yaml` | `nextflow.config`, `CITATION.cff`, `README.md`, Git, a root RO-Crate |
+| `bundle.draft.yaml` | documented keys in `nextflow.config`, `CITATION.cff` and a root RO-Crate; the upstream remote; a Git release tag |
 | `inputs.draft.yaml` | every parameter in `nextflow_schema.json`, nobody allowed to change it yet |
-| `outputs.draft.yaml` | an earlier `splice/outputs.yaml`, or one entry per published route |
+| `outputs.draft.yaml` | an earlier `splice/outputs.yaml`, otherwise empty: you describe the outputs |
 | `components.draft.yaml` | every module in `modules.json` with its container per runtime |
 | `execution-profiles.draft.yaml` and `configs/default.draft.config` | a default profile and a native Nextflow config, or an earlier bundle's profiles |
 | `provenance.draft.yaml` | a copy of your root `ro-crate-metadata.json`, or one built from the identity |
@@ -88,8 +101,8 @@ the field (a JSON pointer such as `/outputs/3/scopes`) and what to do; a file
 that does not parse is reported and left as it is. You never have to accept
 or reject discovery candidates: a valid draft builds as it is.
 
-If you prefer forms, the wizard shows the same files with tables, Open YAML,
-Reload, Validate and Preview buttons:
+If you prefer forms, the workspace shows the same files as guided pages, with
+Ask AI and Assist on every page (see [The workspace](workspace.md)):
 
 ```bash
 nf-splice tui

@@ -36,9 +36,9 @@ Importing `nf_splice.agents` never imports a provider SDK.
 | Stage | Gate (deterministic) | Draft operations offered |
 | --- | --- | --- |
 | discover | every draft exists and parses | `initialise_drafts` (run without a model) |
-| identity | `bundle` layer valid | `replace_draft`, `set_identity`, `patch_draft`, `add_assay_capability`, `remove_assay_capability`, `reject_assay_candidate`, `confirm_values` |
+| identity | `bundle` layer valid | `replace_draft`, `set_identity`, `patch_draft`, `add_assay_capability`, `remove_assay_capability`, `confirm_values` |
 | inputs | `inputs` layer valid | `replace_draft`, `set_parameter_access`, `sync_identity`, `reimport_inputs`, `patch_draft`, `confirm_values` |
-| outputs | `outputs` layer valid | `replace_draft`, `update_output`, `set_output_contract_version`, `discover_outputs`, `accept_output`, `reject_output`, `merge_outputs`, `split_output`, `patch_draft`, `confirm_values` |
+| outputs | `outputs` layer valid | `replace_draft`, `add_output`, `update_output`, `remove_output`, `set_output_contract_version`, `patch_draft`, `confirm_values` |
 | components | `components` layer valid | `replace_draft`, `set_image_policy`, `discover_components`, `accept_component`, `accept_unambiguous_components`, `reject_component`, `patch_draft`, `confirm_values` |
 | profiles | `execution-profiles` layer valid | `replace_draft`, `write_config`, `set_default_profile`, `discover_profiles`, `review_profile`, `reject_profile`, `add_slurm_default_profile`, `patch_draft`, `confirm_values` |
 | provenance | `provenance` layer valid | `replace_draft`, `provenance_strategy`, `generate_ro_crate` (`external_tools` and `network`), `patch_draft`, `confirm_values` |
@@ -95,7 +95,7 @@ Every stage also offers the read operations: `workspace_status`,
 `inspect_draft`, `read_draft`, `contract_reference`, `read_source`,
 `search_source`, `parameter_usage`, `component_inventory`,
 `analyse_execution`, `read_config`, `list_pending`, `analyse_routes`,
-`list_example_outputs`, `reconcile_example_outputs`, `preview_build`,
+`route_coverage`, `list_example_outputs`, `reconcile_example_outputs`, `preview_build`,
 `validate_layer`, `validate_bundle`, `assess`, `explain_term`,
 `classify_container`, `analyse_ro_crate`, `validate_ro_crate`, the assay
 tools and `read_skill`.
@@ -106,6 +106,26 @@ Session-control tools record intent without touching files:
 
 `nf-splice session tools` prints every schema; `--stage outputs` shows one
 stage's offer.
+
+## Focused assistance, interventions and resume
+
+`SessionEngine.assist(stage, actor, guidance)` plans one stage on a
+person's request (the workspace's *Assist*) and stops at its proposal; it
+never moves on to other stages unasked. `reject(actor, reason)` withdraws a
+proposal with the person's reason. A `record_blocker` call may name the
+`pointer` of the field the decision concerns; the engine keeps it with a
+checkpoint, and `open_interventions()` lists the unresolved ones. After the
+person edits the drafts, `resume(actor, note)` continues the **same**
+session: blocked stages reopen with the note as their resolution, stale
+proposals are withdrawn and the finishing stages are planned again. A
+cancelled session never resumes.
+
+In the workspace, `AgentCoordinator`
+(`src/nf_splice/interfaces/tui/coordinator.py`) owns this work in one
+background thread, independent of the dock. It reports *pause requested*
+until the engine stops at a safe point (`request_cancel`), refuses manual
+writes while the agent may write drafts, and reopens the latest unfinished
+session as paused when the workspace starts again (ADR-0067).
 
 ## Reasoning effort
 
@@ -231,12 +251,12 @@ endpoints, so they cost nothing.
 
 ### Assay capabilities
 
-Assay operations (`assess_assays`, `search_assay_catalogue`, `show_assay`,
-`list_assay_candidates`, `add_assay_capability`, `remove_assay_capability`,
-`reject_assay_candidate`) use the deterministic discovery service in
-`src/nf_splice/services/assay_discovery.py`, the one resolver in
-`src/nf_splice/catalogue/` and the identity layer service, exactly as the
-CLI and wizard do. `patch_draft` and `set_identity` refuse to write
+Assay operations (`search_assay_catalogue`, `show_assay`,
+`list_assay_candidates`, `add_assay_capability`, `remove_assay_capability`)
+use the one resolver in `src/nf_splice/catalogue/` and the identity layer
+service, exactly as the CLI and the workspace do. Nothing scores or infers
+an assay (ADR-0069): `list_assay_candidates` returns only the assays the
+repository names, with locations, and the agent reads the pipeline itself. `patch_draft` and `set_identity` refuse to write
 capabilities. Only a person may assert a capability without evidence; an
 agent cites documented or detected evidence. An autonomous stage with a
 recorded blocker stays open even when validation passes.

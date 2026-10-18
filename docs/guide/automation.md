@@ -40,23 +40,23 @@ Use it in scripts rather than parsing the text output.
 ## Non-interactive publishing
 
 ```bash
-nf-splice --actor "ci" build all --non-interactive --replace-existing
+nf-splice --user "ci" build all --non-interactive --replace-existing
 ```
 
-`--non-interactive` never prompts and fails on any blocker. Set an actor
-label so decisions made in CI are attributed. When no label is given, a CI
+`--non-interactive` never prompts and fails on any blocker. Set `--user`
+(or `NF_SPLICE_USER`) so decisions made in CI are attributed. When no label is given, a CI
 identity from the environment is used where available.
 
 ## Reproducible authoring
 
 The drafts are the record: keep `.splice-local/drafts/` with the working
-copy (or regenerate it with `init` and apply your edits as files). Decision
-files remain available for teams that prefer them:
+copy (or regenerate it with `init` and apply your edits as files). Files of
+complete outputs and of parameter policies can also be applied in one step:
 
 ```bash
-nf-splice configure outputs --decision-file output-decisions.yaml
+nf-splice configure outputs --add-output qc-outputs.yaml
 nf-splice configure inputs --decision-file input-access.json
 ```
 
-See [Outputs](outputs.md#discovery-hints-optional) and
+See [Outputs](outputs.md#author-the-catalogue) and
 [Inputs](inputs.md#access-policies) for the formats.

@@ -45,7 +45,7 @@ New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 | [Ask AI in manual mode](guide/ask-ai.md) | Doing it yourself, with read-only answers to your questions |
 | [AI-assisted sessions](guide/assisted-sessions.md) | The agent proposes each stage; you approve, object or ask |
 | [Autonomous integration](guide/autonomous.md) | The agent integrates the pipeline within a scope you approve |
-| [The guided wizard](guide/wizard.md) | Reviewing everything step by step in the terminal |
+| [The workspace](guide/workspace.md) | Authoring by hand, with Ask AI, Assist or autonomy, in the terminal |
 | [Automation and CI](guide/automation.md) | Checks, JSON output and reproducible review in CI |
 
 ## Tutorials

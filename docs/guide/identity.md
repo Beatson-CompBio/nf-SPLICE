@@ -10,9 +10,14 @@ citation. It is published as `bundle.json`.
 
 ## Where values come from
 
-`nf-splice init` reads the Nextflow metadata in `nextflow.config`, the Git
-remote, `CITATION.cff`, `README.md` and any root `ro-crate-metadata.json`,
-and fills every field the sources agree on. Every other authorable field is
+`nf-splice init` imports only documented keys from structured sources: the
+Nextflow metadata block in `nextflow.config`, `CITATION.cff`, the root
+dataset of any `ro-crate-metadata.json`, the upstream remote recorded for an
+integration copy, and an exact Git release tag (ADR-0069). It fills every
+field the sources agree on. The README and other prose are never copied
+into a field; a description longer than 600 characters is left for you to
+summarise. ORCID iDs are checked and stored as `https://orcid.org/…`; one
+with a wrong check digit is not imported. Every other authorable field is
 in the draft too, as `null` or an empty list, so you can see and fill all of
 them: `title`, `description`, `long_description`, `readme`, the URLs,
 `authors`, `funders`, `citation`, `licence`, `licence_url`, the Nextflow
@@ -66,7 +71,7 @@ standards-conformant RO-Crate; see [Provenance](provenance.md).
 ## With an assistant
 
 In an AI-assisted session you can paste what you know in one go, for
-example a paragraph from a grant or a README. The agent maps each fact to
+example a paragraph from a grant or the README. The agent maps each fact to
 its field, checks it against the repository, says which claims the
 repository contradicts, and proposes all of it as one change for you to
 approve. If you have nothing more to add, say so: optional fields stay

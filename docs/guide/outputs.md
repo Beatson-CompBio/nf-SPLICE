@@ -11,34 +11,32 @@ optional routes are found and checked.
 - **Published:** `outputs.schema.json` (with the catalogue) and
   `outputs.yaml` (a readable copy)
 
-## The seeded catalogue
+## The starting catalogue
 
-`nf-splice init` fills the draft for you:
-
-- from a previously published `splice/outputs.yaml` (the 0.3.0 layout or an
-  earlier one), which people already reviewed; otherwise
-- with one entry per output the pipeline publishes, found by tracing its
-  publication rules (`publishDir` in processes and configuration) across
-  every route. Outputs a process declares but nothing publishes are not
-  included.
-
-Seeded entries are first guesses: titles from emit names, categories from
-the directory the pipeline publishes to (`^segmentation/...` gives
-`segmentation`; nf-splice prescribes no category list), formats from file
-names, scopes from the path. What cannot be known is empty, for example a
-description, and validation says so (`unresolved`). Example results from a
-real run add evidence:
+`nf-splice init` starts the catalogue empty, unless a previously published
+`splice/outputs.yaml` (the 0.3.0 layout or an earlier one) exists: people
+wrote that, so its entries are kept. nf-splice does not turn published
+routes into entries: titles, descriptions and scientific meaning are yours
+to write (ADR-0068). The routes are evidence you can list at any time:
 
 ```bash
-nf-splice configure outputs --example-output-tree example-results
+nf-splice draft routes
 ```
 
-That updates discovery hints; it never changes your draft.
+It lists every route the code publishes, whether an output covers it, is
+excluded with a reason, or is missing, and never writes a file. Until the
+catalogue has an entry, validation says *describe at least one output
+SPLICE should expose*.
 
 ## Author the catalogue
 
-Edit the file. You may correct any entry, add outputs discovery never saw,
-delete false ones, or replace the whole list:
+Edit the file, or add complete entries from a file:
+
+```bash
+nf-splice configure outputs --add-output qc-outputs.yaml
+```
+
+A draft looks like this:
 
 ```yaml
 contract:
@@ -108,39 +106,45 @@ paths relative to the job's publish directory:
 
 ## Coverage
 
-Validation compares the catalogue with the routes the pipeline publishes,
-and says how firm the evidence for each uncovered route is:
+Coverage compares the catalogue with the routes the pipeline publishes. It
+is not a draft error: a valid catalogue that deliberately describes only
+some outputs can be published. It is the `output_coverage` readiness
+dimension, so such a bundle is *published, but not ready for SPLICE
+ingestion* until every route is covered or excluded:
 
-| Finding | When | Severity |
+| Uncovered route | When | Effect |
 | --- | --- | --- |
-| `route_not_covered` | The code always publishes the path: no branch, `when:`, switch, `saveAs` or run-time path | error |
-| `conditional_route_not_covered` | The route runs only under a condition (named in the message), or its paths depend on configuration | warning |
-| `route_unverified` | Static analysis could not resolve whether or what the route publishes | warning |
+| established | The code always publishes the path: no branch, `when:`, switch, `saveAs` or run-time path | coverage incomplete |
+| conditional | The route runs only under a condition (named), or its paths depend on configuration | coverage incomplete |
+| unverified | Static analysis could not resolve whether or what the route publishes | coverage not assessed |
 
 Resolve each by adding or correcting an output, or by excluding the route
 with a reason (`kind: false_positive` when the analysis is wrong). An
 alternative route stays in the catalogue even if your example run took
-another branch: the catalogue is the union of every route. Only
-established routes block the build, because static analysis over-reports
-routes decided at run time.
+another branch: the catalogue is the union of every route.
 
 ## Set the job output schema version
 
 Each job's `analysis_output.json` is validated by a schema whose version you
-choose. `init` starts it at the pipeline's version when that is X.Y.Z; raise
-it when the outputs change:
+choose. It versions the shape of that document, not the pipeline: it is
+never copied from the pipeline release. `init` takes it from a published
+catalogue, otherwise leaves it empty for you to set, and you raise it when
+the outputs change:
 
 ```bash
 nf-splice configure outputs --contract-version 1.0.0
 ```
 
-## Discovery hints (optional)
+## In the workspace
 
-The wizard lists discovery candidates under *Discovery hints* and can turn
-one into an entry (accept, merge, split) or record that it does not apply
-(reject). `nf-splice configure outputs --decision-file` applies such actions
-from a file, which some teams like in CI. None of this is required: a valid
-catalogue builds with every hint untouched.
+The **Outputs** page lists the catalogue with each entry's scope, formats
+and patterns. **+ Add output** opens a two-step editor: first what is
+produced (title, a key generated from it, description, category, formats),
+then where it is published, with a path-pattern builder that turns an
+example path such as `quantification/SAMPLE1/counts.tsv` into
+`^quantification/{sample}/counts\.tsv$` and checks it. **Duplicate**,
+**Edit** and **Remove** work on the selected entry. **Browse routes** shows
+the routes read-only and excludes one with a reason.
 
 ## Preview the result
 

@@ -9,7 +9,7 @@ reported as a blocker for you to resolve afterwards.
 ## Approve the scope and start
 
 ```bash
-nf-splice --actor "Ada Lovelace" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results --max-tool-calls 300 --max-budget-usd 5
+nf-splice --user "Ada Lovelace" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results --max-tool-calls 300 --max-budget-usd 5
 ```
 
 By starting the run you approve its scope:
@@ -109,7 +109,7 @@ other result is reported as `partial`, with its blockers.
 2. Resume the same session in assisted mode:
 
    ```bash
-   nf-splice --actor "Ada Lovelace" session resume --mode assisted
+   nf-splice --user "Ada Lovelace" session resume --mode assisted
    ```
 
    Completed stages are not repeated. The agent proposes the outputs stage
@@ -122,18 +122,23 @@ other result is reported as `partial`, with its blockers.
 
 ## Stop or switch
 
-Press **Stop** in the wizard, or switch the paused session to another mode:
+Press **Stop** in the workspace's dock, or switch the paused session to another mode:
 
 ```bash
 nf-splice session pause
-nf-splice --actor "Ada Lovelace" session resume --mode assisted
+nf-splice --user "Ada Lovelace" session resume --mode assisted
 ```
 
 Switching keeps the drafts, the evidence and the history.
 
-## In the wizard
+## In the workspace
 
-Choose **Autonomous integration** on the Welcome step. The form shows the
-scope; **Approve scope and start** begins the run. The view shows progress,
-a **Stop** button and, at the end, the report and **Resume in assisted
-mode**.
+Choose **Start autonomous integration** on Welcome, or the dock's
+**Autonomous** card. The card shows the scope: reading sources and editing
+the private drafts always, and publishing, replacing published files,
+exports and external checkers as separate grants, with a tool-call budget.
+**Approve scope and start** begins the run. The card shows each stage, the
+recent activity, **Request pause** (the header says *pause requested* until
+the agent has reached a safe point) and **Stop**. A **human intervention**
+card names the decision, why, the evidence, and **Open the field**; edit it
+and choose **Resume same session**. See [The workspace](workspace.md).

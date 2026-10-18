@@ -37,8 +37,9 @@ again rather than trusting what you remember.
 Investigation (read-only): `read_draft`, `contract_reference`,
 `inspect_draft`, `read_source`, `search_source`, `analyse_routes`,
 `parameter_usage`, `component_inventory`, `analyse_execution`,
-`read_config`, `analyse_ro_crate`, `assess_assays`, `search_assay_catalogue`,
-`show_assay`, `list_example_outputs`, `reconcile_example_outputs`,
+`read_config`, `analyse_ro_crate`, `list_assay_candidates`,
+`search_assay_catalogue`, `show_assay`, `route_coverage`,
+`list_example_outputs`, `reconcile_example_outputs`,
 `validate_layer`, `preview_build`, `validate_bundle`, `assess`,
 `explain_term`, `classify_container`, `read_skill`, `run_optional_checks`,
 `validate_ro_crate`.
@@ -46,18 +47,24 @@ Investigation (read-only): `read_draft`, `contract_reference`,
 Authoring (permission `draft_edit`): `replace_draft` (a whole draft or a
 section, with the sha256 you read), `write_config` (a native profile config),
 and targeted tools such as `set_identity`, `add_assay_capability`,
-`set_parameter_access`, `update_output`, `set_image_policy`,
+`set_parameter_access`, `add_output`, `update_output`, `remove_output`,
+`set_image_policy`,
 `set_default_profile`, `provenance_strategy`, and `generate_ro_crate`
 (permission `external_tools`, and `network`). Optional discovery
-conveniences (`list_pending`,
-`accept_output`, `accept_unambiguous_components`, `review_profile`,
-`confirm_values`) are never required.
+conveniences for components and profiles (`list_pending`,
+`accept_unambiguous_components`, `review_profile`, `confirm_values`) are
+never required.
 
 Publication (permission `build`): `build_bundle`. Local commit (permission
 `git_commit`, only on request): `git_commit`. Pushing is never available.
 
 Session control: `review_scope`, `submit_stage_proposal`,
 `complete_review`, `assess_objection`, `record_blocker`, `record_evidence`.
+Give `record_blocker` the JSON `pointer` of the field the decision concerns
+(for example `/pipeline/assay_capabilities` or `/outputs`): the workspace
+opens that field for the person, who edits it and resumes the same session.
+A person may also ask you about one stage only (Assist): prepare that
+stage's proposal and stop.
 
 ## Workflow: every layer stage
 
@@ -99,9 +106,9 @@ Session control: `review_scope`, `submit_stage_proposal`,
   silence are never approval.
 
 ```bash
-nf-splice --actor "Ada Lovelace" session start --mode assisted --provider claude --allow-remote-model --reasoning-effort high
-nf-splice --actor "Ada Lovelace" session approve
-nf-splice --actor "Ada Lovelace" session object "HISAT2 is an alternative aligner"
+nf-splice --user "Ada Lovelace" session start --mode assisted --provider claude --allow-remote-model --reasoning-effort high
+nf-splice --user "Ada Lovelace" session approve
+nf-splice --user "Ada Lovelace" session object "HISAT2 is an alternative aligner"
 nf-splice session ask "Why is this output sample-scoped?"
 ```
 
@@ -117,8 +124,8 @@ nf-splice session ask "Why is this output sample-scoped?"
   and continues manually.
 
 ```bash
-nf-splice --actor "Ada Lovelace" session start --mode autonomous --provider codex --allow-remote-model --example-output results/
-nf-splice --actor "Ada Lovelace" session resume --mode assisted
+nf-splice --user "Ada Lovelace" session start --mode autonomous --provider codex --allow-remote-model --example-output results/
+nf-splice --user "Ada Lovelace" session resume --mode assisted
 ```
 
 ## Reasoning effort

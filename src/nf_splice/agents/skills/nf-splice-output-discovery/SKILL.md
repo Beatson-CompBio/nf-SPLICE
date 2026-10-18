@@ -1,6 +1,6 @@
 ---
 name: nf-splice-output-discovery
-description: Author the output catalogue for a Nextflow pipeline as a skilled bioinformatician would - the union of outputs it may publish across all routes (alternative aligners, optional steps, conditional QC) - rewriting the seeded draft where the evidence says so, using example results correctly and keeping the catalogue distinct from a job's analysis_output.json.
+description: Author the output catalogue for a Nextflow pipeline as a skilled bioinformatician would - the union of outputs it may publish across all routes (alternative aligners, optional steps, conditional QC) - authoring every entry from the routes and code, using example results correctly and keeping the catalogue distinct from a job's analysis_output.json.
 ---
 
 # nf-splice output discovery and scientific authoring
@@ -26,22 +26,24 @@ file into `analysis_output.json` that the run did not produce.
 ## Prerequisites
 
 - The identity layer is ready (outputs compile against it).
-- `nf-splice init` has seeded the draft: from a previously published
-  `splice/outputs.yaml` when one exists, otherwise one provisional entry per
-  published route. Seeded categories (the pipeline's own publish
-  directories), scopes and titles are first guesses; nf-splice prescribes
-  no category list, and formats are any lower-case names (`bam`,
-  `ome-tiff`, `zarr`).
+- `nf-splice init` has written the draft: entries only from a previously
+  published `splice/outputs.yaml`, otherwise an empty catalogue. Published
+  routes are evidence to read (`route_coverage`, `analyse_routes`), never
+  entries: you author every output. nf-splice prescribes no category list,
+  and formats are any lower-case names (`bam`, `ome-tiff`, `zarr`).
+- `contract.schema_version` (`analysis_output_schema_version`) versions this
+  workflow's `analysis_output.json` shape, not the pipeline release: set it
+  with `set_output_contract_version` (for example `1.0.0`) and never copy the
+  pipeline version into it.
 - Optional: authorised example outputs (a results directory, a saved
   listing or an output index).
 
 ## Tools
 
-`read_draft`, `contract_reference`, `analyse_routes`, `read_source`,
-`search_source`, `list_example_outputs`, `reconcile_example_outputs`,
-`replace_draft`, `update_output`, `set_output_contract_version`,
-`validate_layer`, `assess`. Optional hints: `list_pending`, `accept_output`,
-`reject_output`, `merge_outputs`, `split_output`.
+`read_draft`, `contract_reference`, `analyse_routes`, `route_coverage`,
+`read_source`, `search_source`, `list_example_outputs`,
+`reconcile_example_outputs`, `replace_draft`, `add_output`, `update_output`,
+`remove_output`, `set_output_contract_version`, `validate_layer`, `assess`.
 
 ## Workflow
 
@@ -59,8 +61,8 @@ file into `analysis_output.json` that the run did not produce.
    pipeline run; `sample`: one per sample, the pattern captures `{sample}`;
    `run`: one per platform file-level run, the pattern captures `{run}`),
    poor categories or descriptions, patterns that are too broad or narrow.
-4. Write the corrected catalogue as one revision: `replace_draft` with
-   section `/outputs` (and `/categories`). Keep semantically different
+4. Write the catalogue as one revision: `replace_draft` with section
+   `/outputs` (and `/categories`), or `add_output` per complete entry. Keep semantically different
    outputs apart, merge only true duplicates, and add outputs discovery
    missed when the source shows they are published. List published routes
    you deliberately leave out under `excluded_routes` with a reason and,
@@ -70,12 +72,15 @@ file into `analysis_output.json` that the run did not produce.
 5. With an example, `reconcile_example_outputs`: every observed file should
    classify to exactly one output; unobserved types may belong to other
    routes. Never infer a product from a file extension alone.
-6. `validate_layer`, read the issues, revise and repeat. Uncovered routes
-   come in three classes: `route_not_covered` (an error: the code always
-   publishes it), `conditional_route_not_covered` (a warning naming the
-   condition) and `route_unverified` (a warning: static analysis could not
-   resolve it). Resolve each; never drop an alternative route because an
-   example run took another branch.
+6. `validate_layer` checks the entries themselves; read the issues, revise
+   and repeat. Then `route_coverage`: uncovered routes are *established*
+   (the code always publishes them), *conditional* (named condition) or
+   *unverified* (static analysis could not resolve them). Coverage is not a
+   validation error: it is the `output_coverage` readiness dimension, so a
+   deliberately limited catalogue still publishes but is not ingestion
+   ready while an established or conditional route is neither described nor
+   excluded with a reason. Resolve each; never drop an alternative route
+   because an example run took another branch.
 7. `review_scope`, then `complete_review`: the outputs review needs the
    entry workflow and every workflow file, every config that declares
    `publishDir` and the examples supplied, and must name each uncovered
@@ -84,12 +89,14 @@ file into `analysis_output.json` that the run did not produce.
 ## Verification gates
 
 - `validate_layer` on `outputs` reports no errors; both files compile.
-- `assess` reports coverage: every published route is covered or
-  deliberately excluded, and the example reconciles with no unclassified or
-  ambiguous file.
+- `route_coverage` reports `complete`: every published route is covered or
+  deliberately excluded. With an example, `assess` reconciles it with no
+  unclassified or ambiguous file.
 
 ## Failure handling
 
+- `missing_required` at `/outputs`: the catalogue is empty; describe at least
+  one output SPLICE should expose.
 - `unresolved`: a seeded entry lacks a required field; supply it from the
   module's documentation or code.
 - A pattern that matches nothing in an example may still be right for

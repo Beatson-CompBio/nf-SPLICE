@@ -27,7 +27,7 @@ unattended within a scope you approve. Or do it all yourself: AI is optional.
 
 | | You | The agent |
 | --- | --- | --- |
-| **Manual** | Review each step in the wizard or with commands | Answers questions (*Ask AI*); never changes anything |
+| **Manual** | Author each part in the workspace or with commands | Answers questions (*Ask AI*); never changes anything |
 | **AI-assisted** | Approve, question or object to each proposal | Proposes each stage with its diff and validation, then waits |
 | **Autonomous** | Approve the scope once, read the report | Does the whole integration and reports what is done or blocked |
 
@@ -41,9 +41,10 @@ You can switch between them at any point; the work done so far is kept.
 - **Every output route.** nf-splice traces Nextflow publication rules across
   alternative and optional routes, so the output catalogue covers what the
   pipeline *may* publish, not only what one run produced.
-- **Nothing is guessed.** Values found in your repository are suggestions
-  until confirmed; open questions are listed until resolved; a model's word
-  is never treated as validation.
+- **Nothing is guessed.** Only documented metadata keys are imported;
+  assays and outputs are declared by people (or by an agent, with cited
+  evidence, for your approval); open questions are listed until resolved;
+  a model's word is never treated as validation.
 - **Safe publishing.** Only valid bundles are published, existing files are
   never replaced silently, and an interrupted publication can be recovered.
 - **Standard formats.** Five versioned JSON contracts based on JSON Schema,
@@ -70,8 +71,8 @@ Claude, OpenAI (including your ChatGPT Plus or Pro plan), Codex and OpenCode
 ## Quick start
 
 From the root of your pipeline repository, `init` writes six editable drafts
-already filled with what the repository supports. Edit them in any editor
-(or the wizard) and build:
+filled from exact metadata in the repository. Edit them in any editor (or
+the workspace) and build:
 
 ```bash
 nf-splice init
@@ -87,13 +88,13 @@ or let an agent investigate the pipeline and propose each stage's revision
 for your approval:
 
 ```bash
-nf-splice --actor "Your Name" session start --mode assisted --provider claude --allow-remote-model
+nf-splice --user "Your Name" session start --mode assisted --provider claude --allow-remote-model
 ```
 
 or let it do the whole integration unattended and report back:
 
 ```bash
-nf-splice --actor "Your Name" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results
+nf-splice --user "Your Name" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results
 ```
 
 Follow the [Getting started guide](docs/guide/getting-started.md) for the

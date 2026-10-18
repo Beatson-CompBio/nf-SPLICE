@@ -1,6 +1,6 @@
 ---
 name: nf-splice-assay-capabilities
-description: Author a pipeline's identity (from the pipeline metadata block, CITATION.cff, README, Git and RO-Crate evidence and a person's free text) and declare every assay it can process, classified by the SPLICE modality vocabulary, with evidence. Use at the identity stage, for questions about assays or modalities, and when evidence is ambiguous.
+description: Author a pipeline's identity (from exact keys in the pipeline metadata block, CITATION.cff, the root RO-Crate and the integration record, and a person's free text) and declare every assay it can process, classified by the SPLICE modality vocabulary, with evidence. Use at the identity stage, for questions about assays or modalities, and when evidence is ambiguous.
 ---
 
 # Assay capabilities
@@ -40,15 +40,19 @@ modality and an assay.
 
 1. Read `bundle.draft.yaml` and `contract_reference` for layer `bundle`:
    every authorable field is in the draft, null when unknown.
-2. Compare the evidence: `nextflow.config`'s pipeline metadata,
-   `CITATION.cff`, README, LICENSE, Git remote and tags, and the root
-   RO-Crate. Pipeline version, source tag, nf-splice's version and the
+2. Compare the evidence: nf-splice imports only documented keys of
+   `nextflow.config`'s pipeline metadata, `CITATION.cff`, the root RO-Crate,
+   the integration record's upstream remote and an exact Git release tag.
+   The README and other prose are sources to read and cite, never copied
+   into a field; a description over 600 characters is not imported. Pipeline version, source tag, nf-splice's version and the
    bundle schema version are different things. A recorded
    `conflicting_evidence` needs the right value written, or one question.
 3. When the person gives free text, map each reliable fact to its nested
    field (authors, funders, citation, licence, URLs, keywords), check it
    against the repository and say which claims the evidence contradicts.
-   Never guess an ORCID, DOI, licence, address or authorship.
+   Never guess an ORCID, DOI, licence, address or authorship; an ORCID iD
+   is stored as `https://orcid.org/…` and one with a wrong check digit is
+   refused.
 4. Apply the identity as one revision (`set_identity` or `replace_draft`).
    Maintainers are public contacts: only a person approves publishing them
    (`maintainers_publication_approved`).
@@ -59,20 +63,18 @@ Assay classification is required: a pipeline without a declared assay is not
 ready for SPLICE ingestion. Investigate it in every session, even when the
 repository never names an assay.
 
-1. Run `assess_assays`. It reads the pipeline's tools, parameters, sample
-   sheet columns, outputs and documentation, applies nf-splice's evidence
-   rules, and returns the scientific domains, candidate assays (each with
-   vocabulary ids, classification level, status, confidence, evidence and
-   alternatives) and the questions the evidence cannot answer. The rules
-   are a starting point, not a ceiling: investigate every route yourself and
-   use `search_assay_catalogue` for assays they do not cover.
-2. Check the evidence yourself with `read_source` and `search_source`: does
-   a route, parameter or document distinguish the alternatives (for example a
-   library-type parameter, rRNA-depletion steps, a protocol section)?
-3. Decide, with `show_assay` for exact classifications:
-   - a `documented` or `supported` candidate whose evidence you have checked:
-     declare it with `add_assay_capability` (evidence documented or detected,
-     the locations as sources, a one-sentence rationale);
+1. nf-splice infers no assay: there is no scoring and no default. Start
+   from `list_assay_candidates` (assays the repository names, with
+   locations) and the declared capabilities, then read the pipeline: its
+   tools and routes, parameters and allowed values, sample sheet columns,
+   outputs and documentation (`read_source`, `search_source`). Use
+   `search_assay_catalogue` and `show_assay` for exact classifications.
+2. Look for what distinguishes the alternatives (for example a
+   library-type parameter, rRNA-depletion steps, a protocol section).
+3. Decide:
+   - an assay the sources establish, which you have read: declare it with
+     `add_assay_capability` (evidence documented or detected, the locations
+     as sources, a one-sentence rationale);
    - alternatives the evidence cannot tell apart (for example poly(A) versus
      total RNA-seq for a generic RNA-seq pipeline): never choose one by
      default. **AI-assisted:** ask the person one focused question that names
@@ -82,10 +84,10 @@ repository never names an assay.
      `search_assay_catalogue`, declare each with evidence `confirmed`, the
      conversation as the source and their answer in the rationale, then
      submit the stage for approval. **Autonomous:** call `record_blocker`
-     with the alternatives, the evidence for each and the information that
-     would decide it; the stage stays open until it is resolved;
-   - a candidate that does not apply: `reject_assay_candidate` with the
-     reason.
+     with the alternatives, the evidence for each, the field
+     (`pointer: /pipeline/assay_capabilities`) and the information that
+     would decide it; the stage stays open until a person resolves it and
+     resumes the session.
 4. Check the identity draft with `inspect_draft` for the bundle layer: it is
    ready only with at least one valid assay capability.
 
@@ -106,18 +108,19 @@ tell technical compatibility from the assays the pipeline is intended for.
 - Unknown code, wrong type (a modality or subtype is not an assay), duplicate,
   or mismatched label: the tool says which; correct the reference.
 - Evidence is a generic file type or tool (FASTQ, an aligner): that does not
-  establish a library preparation. It does establish a broader domain; use
-  `assess_assays` to find the candidates, then ask (AI-assisted) or record a
-  blocker (autonomous) naming them.
+  establish a library preparation. It does establish a broader domain; find
+  the vocabulary entries below it with `search_assay_catalogue`, then ask
+  (AI-assisted) or record a blocker (autonomous) naming them.
 - An assay the person knows is supported without repository evidence: only
-  the person can assert it (`nf-splice configure bundle --add-assay`); you
-  cannot use asserted evidence.
+  the person can assert it (ticking it on the workspace's Supported assays
+  page, or `nf-splice configure bundle --add-assay CODE`); you cannot use
+  asserted evidence.
 
 ## Evidence reporting
 
 For each capability, report the registered code or entity id, the exact
 label and type from `show_assay`, every modality it belongs to, the evidence
-kind, and the cited locations. Say which candidates you did not declare and
+kind, and the cited locations. Say which named assays you did not declare and
 why.
 
 ## Safety boundaries

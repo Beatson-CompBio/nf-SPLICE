@@ -30,10 +30,11 @@ your private workspace: nf-splice adds it to the repository's `.gitignore`,
 and it is never published, committed or archived. Only the finished files in
 `splice/` are shared.
 
-- `nf-splice init` fills every draft once with what the repository supports.
-  Unknown values are `null` and first guesses are marked; nothing is
-  invented. Running `init` again never changes a draft or a config.
-- Edit them in any editor, in the wizard or with nf-splice commands; all
+- `nf-splice init` fills every draft once from exact, documented metadata
+  in the repository. Unknown values are `null`; nothing scientific is
+  inferred (no assays, and no outputs unless a published catalogue exists).
+  Nothing is invented. Running `init` again never changes a draft or a config.
+- Edit them in any editor, in the workspace or with nf-splice commands; all
   count equally. nf-splice's own edits change only what they are asked to,
   keep your comments, and refuse to overwrite an edit made at the same time.
 - A saved draft does not have to be valid yet. Validation reads the current
@@ -46,23 +47,23 @@ keep working in the same copy, until the bundle is finished.
 
 ## Evidence
 
-nf-splice finds information in your repository, such as a version in
-`nextflow.config` or an output path in a `publishDir`, and uses it to seed
-the drafts. A seeded value is your value until you change it; it is not
+nf-splice reads documented keys in your repository, such as a version in
+`nextflow.config`, and uses them to seed the drafts. Other findings, such as
+the routes a `publishDir` publishes, are evidence you browse. A seeded value is your value until you change it; it is not
 waiting for approval. Where sources disagree, the field is left empty and
 the conflict is reported.
 
-Discovery also records *candidates* (an output it found, a module added
-since `init`, a profile in `nextflow.config`). They are hints: the wizard
-and `nf-splice configure` can turn one into a draft entry for you, but
-nothing waits for them, and a valid draft builds with every candidate
-untouched. What blocks is the draft's content: a missing required value, a
-route the code always publishes that no output covers, an unresolved
-container. Conditional and unresolvable routes are warnings.
+Discovery also records *candidates* (a module added since `init`, a profile
+in `nextflow.config`). They are hints: the workspace and `nf-splice
+configure` can turn one into a draft entry for you, but nothing waits for
+them, and a valid draft builds with every candidate untouched. What blocks
+publication is the draft's content: a missing required value, an unresolved
+container. Routes no output covers block ingestion readiness, not
+publication (`output_coverage`).
 
 ## Readiness
 
-Four facts are kept apart, and every command and the wizard state them the
+Four facts are kept apart, and every command and the workspace state them the
 same way:
 
 | Fact | Means |
@@ -102,11 +103,11 @@ precise definitions.
 
 ## Attribution
 
-Review decisions are recorded with an actor label. Set it with `--actor` or
-the `NF_SPLICE_ACTOR` environment variable:
+Review decisions are recorded with an actor label. Set it with `--user` or
+the `NF_SPLICE_USER` environment variable:
 
 ```bash
-nf-splice --actor "Ada Lovelace" configure outputs
+nf-splice --user "Ada Lovelace" configure outputs
 ```
 
 The label is public. Contact details, if any, are kept only in a private
