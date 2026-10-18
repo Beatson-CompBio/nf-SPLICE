@@ -248,3 +248,11 @@ def test_a_branching_publish_path_is_unresolved_not_a_comparison_operand(
     assert "summary" not in (route.published_glob or "")
     assert route.publication is not None
     assert route.publication.directory is None
+
+
+def test_a_precise_pattern_covers_a_route_with_a_run_time_name() -> None:
+    from nf_splice.inspectors.routes import glob_examples
+
+    pattern = r"^methylation/{sample}_(CpG|CHG|CHH)\.bedGraph$"
+    examples = glob_examples("methylation/{meta.id}_*.bedGraph", [pattern])
+    assert "methylation/ID1_CpG.bedGraph" in examples

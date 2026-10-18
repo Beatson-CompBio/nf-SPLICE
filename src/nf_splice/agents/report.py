@@ -154,27 +154,38 @@ def build_report(
         if record.get("mode") == "execute" and record.get("outcome") == "ok":
             key = f"{record.get('session_mode', state.mode.value)}"
             origins[key] = origins.get(key, 0) + 1
-    statement = (
-        "Complete: every stage passed its deterministic checks, and the published "
-        "bundle is ready for SPLICE ingestion."
-        if complete
-        else "Partial: "
-        + (f"{len(blockers)} unresolved blocker(s); " if blockers else "")
-        + ("the bundle is not built and valid. " if not built.passed else "")
-        + (
-            "the pipeline's assays are not classified, so it is not ready for "
-            "ingestion. "
-            if not readiness["scientifically_classified"]
-            else ""
+    if complete:
+        statement = (
+            "Complete: every stage passed its deterministic checks, and the "
+            "published bundle is ready for SPLICE ingestion."
         )
-        + ("supplied example output is incompatible. " if incompatible else "")
-        + (
-            f"{readiness['headline']}: " + "; ".join(readiness["reasons"][:5]) + ". "
-            if built.passed and not readiness["ingestion_ready"]
-            else ""
+    else:
+        clauses = []
+        if blockers:
+            clauses.append(f"{len(blockers)} decision(s) wait for a person")
+        if not built.passed:
+            clauses.append("the bundle is not built and valid")
+        if not readiness["assay_capabilities"]:
+            clauses.append(
+                "no assay is declared, so the pipeline is not scientifically "
+                "classified or ready for ingestion"
+            )
+        elif not readiness["bundle_published"]:
+            clauses.append(
+                "the declared assays ("
+                + ", ".join(readiness["assay_capabilities"])
+                + ") are verified when the bundle is published"
+            )
+        if incompatible:
+            clauses.append("the supplied example output is incompatible")
+        if built.passed and not readiness["ingestion_ready"]:
+            clauses.append(
+                f"{readiness['headline'].rstrip('.')}: "
+                + "; ".join(readiness["reasons"][:5])
+            )
+        statement = (
+            "Partial: " + "; ".join(clauses) + ". See the stages and blockers below."
         )
-        + "See the stages and blockers below."
-    )
     return {
         "session": state.id,
         "mode": state.mode.value,

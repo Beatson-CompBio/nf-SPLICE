@@ -313,7 +313,7 @@ class Catalogue:
     # ---------------------------------------------------------------- search
 
     def search(self, text: str) -> tuple[SearchHit, ...]:
-        """Entities whose label, alias, registration code or id contains ``text``."""
+        """Entities whose label, alias, code, id or description contains ``text``."""
         query = _fold(text.removeprefix("entity:"))
         if not query:
             return ()
@@ -329,6 +329,8 @@ class Catalogue:
                 matched.append("alias")
             if any(query in item.code.casefold() for item in registrations):
                 matched.append("registered_code")
+            if query in _fold(entity.description or ""):
+                matched.append("description")
             if matched and entity.entity_type is not EntityType.ROOT:
                 hits.append(
                     SearchHit(

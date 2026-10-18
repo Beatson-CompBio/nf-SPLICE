@@ -19,7 +19,7 @@ import fnmatch
 import hashlib
 import os
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
@@ -1113,6 +1113,31 @@ def glob_to_regex(value: str) -> str:
             parts.append(re.escape(char))
         index += 1
     return "^" + "".join(parts) + "$"
+
+
+_ALTERNATION = re.compile(r"\((?:\?:)?([^()]*\|[^()]*)\)")
+
+
+def glob_examples(glob: str, patterns: Sequence[str] = ()) -> list[str]:
+    """Illustrative paths for a glob, for checking catalogue coverage.
+
+    A ``*`` stands for a run-time value. Besides a neutral filler, each
+    literal alternative a catalogue pattern names (``(CpG|CHG|CHH)``) is
+    tried in its place, so a precise pattern covers the route without being
+    weakened to ``{any}``.
+    """
+    examples = [example_path(glob)]
+    if "*" not in glob.replace("**", ""):
+        return examples
+    for pattern in patterns:
+        for group in _ALTERNATION.findall(pattern):
+            for option in group.split("|"):
+                literal = re.sub(r"\\(.)", r"\1", option)
+                if re.fullmatch(r"[A-Za-z0-9_.+-]+", literal):
+                    candidate = example_path(re.sub(r"(?<!\*)\*(?!\*)", literal, glob))
+                    if candidate not in examples:
+                        examples.append(candidate)
+    return examples
 
 
 def example_path(glob: str) -> str:

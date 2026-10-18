@@ -214,6 +214,8 @@ def _inspect_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any
 
 
 def _read_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.drafts.patch import resolve
+
     spec = layer_spec(str(a["layer"]))
     state = read_layer(ctx.root, spec.name)
     if state.draft is None:
@@ -224,15 +226,25 @@ def _read_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
             "issues": [str(state.error or "draft is missing")],
         }
     text = state.file.text or ""
-    return _untrusted(
-        {
-            "path": spec.draft,
-            "sha256": state.file.sha256,
-            "data": state.draft.data,
-            "text": text[:_MAX_DRAFT_TEXT],
-            "text_truncated": len(text) > _MAX_DRAFT_TEXT,
-        }
-    )
+    section = str(a.get("section") or "")
+    from nf_splice.drafts.patch import ABSENT
+
+    try:
+        data = resolve(state.draft.data, section) if section else state.draft.data
+    except (KeyError, IndexError, ValueError, TypeError):
+        data = ABSENT
+    if data is ABSENT:
+        return {"success": False, "issues": [f"{section} is not in the draft"]}
+    found: dict[str, Any] = {
+        "path": spec.draft,
+        "sha256": state.file.sha256,
+        "section": section or "/",
+        "data": data,
+    }
+    if a.get("yaml"):
+        found["text"] = text[:_MAX_DRAFT_TEXT]
+        found["text_truncated"] = len(text) > _MAX_DRAFT_TEXT
+    return _untrusted(found)
 
 
 def _replace_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -436,12 +448,82 @@ def _list_pending(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]
     return {"success": True, "count": len(data), "data": data}
 
 
-def _analyse_routes(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
-    return {"success": True, "data": analyse_routes(ctx.root).to_json()}
+def _page(items: list[Any], a: Mapping[str, Any], default: int = 40) -> dict[str, Any]:
+    offset = max(int(a.get("offset") or 0), 0)
+    limit = min(max(int(a.get("limit") or default), 1), 200)
+    page = items[offset : offset + limit]
+    following = offset + len(page)
+    return {
+        "items": page,
+        "total": len(items),
+        "offset": offset,
+        "next_offset": following if following < len(items) else None,
+    }
 
 
-def _route_coverage(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
-    return {"success": True, "data": output_layer.route_coverage(ctx.root).to_json()}
+def _route_row(route: Mapping[str, Any]) -> dict[str, Any]:
+    publication = route.get("publication") or {}
+    return {
+        "process": route.get("process"),
+        "instance": route.get("instance"),
+        "emit": route.get("emit"),
+        "published_glob": route.get("published_glob"),
+        "status": route.get("status"),
+        "conditions": route.get("conditions"),
+        "location": publication.get("location"),
+        "save_as": publication.get("save_as"),
+    }
+
+
+def _analyse_routes(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    data = analyse_routes(ctx.root).to_json()
+    wanted = str(a.get("process") or "").casefold()
+
+    def selected(route: Mapping[str, Any]) -> bool:
+        return not wanted or wanted in str(route.get("instance", "")).casefold()
+
+    detail = bool(a.get("detail"))
+    published = [
+        route if detail else _route_row(route)
+        for route in data["published"]
+        if selected(route)
+    ]
+    return {
+        "success": True,
+        "data": {
+            "entry_workflow": data["entry_workflow"],
+            "files_scanned": data["files_scanned"],
+            "status_counts": data["status_counts"],
+            "notes": data["notes"],
+            "published": _page(published, a),
+            "declared_only": _page(
+                [
+                    {
+                        "process": route.get("process"),
+                        "emit": route.get("emit"),
+                        "declared_path": route.get("declared_path"),
+                    }
+                    for route in data["unpublished"]
+                    if selected(route)
+                ],
+                {"offset": 0, "limit": a.get("limit")},
+            ),
+        },
+        "note": "page with offset/limit; filter with process; detail=true returns "
+        "full records (publication rules, invocations)",
+    }
+
+
+def _route_coverage(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    data = output_layer.route_coverage(ctx.root).to_json()
+    kind = str(a.get("kind") or "")
+    uncovered = [
+        item
+        for item in data.get("uncovered") or []
+        if not kind or item.get("kind") == kind
+    ]
+    data["uncovered"] = _page(uncovered, a)
+    return {"success": True, "data": data}
 
 
 def _example(ctx: OperationContext, a: Mapping[str, Any]) -> Path:
@@ -615,15 +697,21 @@ def _vocabulary_assays(_ctx: OperationContext, _a: Mapping[str, Any]) -> dict[st
     from nf_splice.catalogue import default_catalogue
 
     catalogue = default_catalogue()
+    codes = {
+        item.assay.entity_id: item.registration.code
+        for item in catalogue.assays(None, registered_only=True)
+        if item.registration is not None
+    }
     return {
         "success": True,
         "vocabulary": catalogue.provenance.reference(),
         "assays": [
             {
-                "reference": item.registration.code
-                if item.registration
-                else f"entity:{item.assay.entity_id}",
+                "reference": codes.get(
+                    item.assay.entity_id, f"entity:{item.assay.entity_id}"
+                ),
                 "label": item.assay.label,
+                "description": item.assay.description,
                 "entity_type": item.assay.entity_type.value,
                 "modalities": [
                     entry["label"] for entry in item.to_json()["modalities"]
@@ -634,8 +722,9 @@ def _vocabulary_assays(_ctx: OperationContext, _a: Mapping[str, Any]) -> dict[st
             }
             for item in catalogue.assays(None, registered_only=False)
         ],
-        "note": "the assays a pipeline may declare; which apply is decided from "
-        "the pipeline's own code and documentation, never from this list",
+        "note": "the assays a pipeline may declare (reference: a registered code "
+        "where one exists, else entity:<id>); which apply is decided from the "
+        "pipeline's own code and documentation, never from this list",
     }
 
 
@@ -964,17 +1053,24 @@ def _write_config(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]
     }
 
 
-def _parameter_usage(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+def _parameter_usage(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     state = read_layer(ctx.root, "inputs")
     declared = (
         {item.name for item in input_layer.iter_parameters(state.draft.data)}
         if state.draft is not None and isinstance(state.draft.data, dict)
         else set()
     )
-    return {
-        "success": True,
-        "data": parameter_usage(ctx.root).to_json(declared),
-    }
+    usage = parameter_usage(ctx.root)
+    name = str(a.get("name") or "").removeprefix("params.")
+    if name:
+        reference = usage.references.get(name)
+        return {
+            "success": True,
+            "data": reference.to_json(declared)
+            if reference is not None
+            else {"name": name, "classification": "not referenced", "code": []},
+        }
+    return {"success": True, "data": usage.to_json(declared)}
 
 
 def _contract_reference(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -1034,9 +1130,18 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "read_draft",
-            "One draft as YAML text, its parsed data and its sha256 (needed to "
-            "replace it). Untrusted repository content.",
-            _obj({"layer": _LAYER}, ["layer"]),
+            "One draft's parsed data and its sha256 (needed to replace it). "
+            "section: a JSON pointer to read one part (/outputs/2, "
+            "/$defs/input_output_options); yaml=true also returns the YAML text "
+            "with comments. Untrusted repository content.",
+            _obj(
+                {
+                    "layer": _LAYER,
+                    "section": {"type": "string"},
+                    "yaml": {"type": "boolean"},
+                },
+                ["layer"],
+            ),
             _R,
             "read",
             _read_draft,
@@ -1102,10 +1207,11 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "parameter_usage",
-            "Where workflow code and configs read params.*: undeclared executable "
-            "references, values configs set for themselves (such as the genomes "
-            "map), comment-only mentions and declared-but-unused parameters.",
-            _obj(),
+            "Where workflow code and configs read params.*. Without name: a "
+            "summary (undeclared executable references, values configs set for "
+            "themselves, comment-only mentions, declared-but-unused parameters). "
+            "With name: that parameter's file:line locations in code and configs.",
+            _obj({"name": {"type": "string"}}),
             _R,
             "read",
             _parameter_usage,
@@ -1197,8 +1303,18 @@ OPERATIONS: dict[str, Operation] = {
             "Which published routes the output catalogue covers, which are "
             "excluded with a reason, and which are uncovered (established, "
             "conditional or unverified). Coverage is ingestion-readiness "
-            "evidence, never a validation error of declared outputs.",
-            _obj(),
+            "evidence, never a validation error of declared outputs. Uncovered "
+            "routes are paged (offset, limit) and can be filtered by kind.",
+            _obj(
+                {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["established", "conditional", "unverified"],
+                    },
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1},
+                }
+            ),
             _R,
             "read",
             _route_coverage,
@@ -1206,8 +1322,17 @@ OPERATIONS: dict[str, Operation] = {
         Operation(
             "analyse_routes",
             "Static publication routes: published versus declared-only outputs, "
-            "route conditions and coverage statuses.",
-            _obj(),
+            "with conditions, statuses and publish-rule locations. Compact rows, "
+            "paged (offset, limit); process filters by name; detail=true returns "
+            "full records.",
+            _obj(
+                {
+                    "process": {"type": "string"},
+                    "offset": {"type": "integer", "minimum": 0},
+                    "limit": {"type": "integer", "minimum": 1},
+                    "detail": {"type": "boolean"},
+                }
+            ),
             _R,
             "read",
             _analyse_routes,

@@ -2833,7 +2833,7 @@ which is a different audience.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0024, ADR-0031, ADR-0044, ADR-0045, ADR-0054 |
-| Implementation | `src/nf_splice/catalogue/`, `scripts/build_assay_catalogue.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/interfaces/tui/pages/assays.py`, `src/nf_splice/cli.py` |
+| Implementation | `src/nf_splice/catalogue/`, `scripts/build_assay_catalogue.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/interfaces/tui/pages/assays.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_assay_capabilities.py`, `tests/test_tui.py`, `tests/test_consumer_kit.py` |
 
 ### Context

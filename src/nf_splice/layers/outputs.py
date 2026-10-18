@@ -25,7 +25,12 @@ from nf_splice.domain import (
 )
 from nf_splice.drafts import ABSENT, PatchOp, resolve
 from nf_splice.inspectors.outputs import published_catalogue
-from nf_splice.inspectors.routes import CoverageStatus, analyse_routes, example_path
+from nf_splice.inspectors.routes import (
+    CoverageStatus,
+    analyse_routes,
+    example_path,
+    glob_examples,
+)
 from nf_splice.layers.base import (
     ChangeContext,
     DraftIssue,
@@ -611,7 +616,7 @@ def route_coverage(
         ):
             excluded_routes.append((route.instance, glob))
             continue
-        examples = [example_path(glob)]
+        examples = glob_examples(glob, patterns)
         if glob.startswith("*/"):
             examples.extend(
                 example_path(f"{name}/{glob[2:]}") for name in first_directories

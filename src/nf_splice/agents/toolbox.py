@@ -42,7 +42,7 @@ from nf_splice.services.audit import redact
 from nf_splice.services.containers import ContainerServiceError
 from nf_splice.services.lifecycle import LifecycleError
 
-_MAX_RESULT = 12_000
+_MAX_RESULT = 24_000
 
 
 class ToolMode(str, Enum):
@@ -125,7 +125,13 @@ def _clip(value: Any) -> Any:
     text = json.dumps(value, ensure_ascii=False, default=str)
     if len(text) <= _MAX_RESULT:
         return json.loads(redact(text))
-    return {"truncated": True, "preview": redact(text[:_MAX_RESULT])}
+    return {
+        "truncated": True,
+        "total_chars": len(text),
+        "hint": "the result is too large to return whole: narrow the call (a "
+        "section, a process, a path, start_line/end_line, or offset/limit)",
+        "preview": redact(text[:_MAX_RESULT]),
+    }
 
 
 class SessionToolbox:

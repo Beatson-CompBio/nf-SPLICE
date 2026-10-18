@@ -31,7 +31,7 @@ from nf_splice.inspectors.routes import (
     CoverageStatus,
     RouteAnalysis,
     analyse_routes,
-    example_path,
+    glob_examples,
     glob_to_regex,
 )
 from nf_splice.layers import LayerError
@@ -364,10 +364,12 @@ def _route_catalogue_keys(
 ) -> list[str]:
     if glob is None:
         return []
-    sample = example_path(glob)
+    samples = glob_examples(glob, [item[1].pattern for item in compiled])
     return list(
         dict.fromkeys(
-            key for key, expression, _e, _s in compiled if expression.match(sample)
+            key
+            for key, expression, _e, _s in compiled
+            if any(expression.match(sample) for sample in samples)
         )
     )
 

@@ -114,7 +114,7 @@ def test_manual_mode_loads_no_ai_and_ask_ai_cannot_change_anything(
         attempt = tools.call("set_identity", {"changes": {"title": "Changed"}})
         build = tools.call("build_bundle", {})
         return [
-            f"{len(routes['data']['published'])} published routes",
+            f"{routes['data']['published']['total']} published routes",
             json.dumps([attempt.get("denied"), build.get("denied")]),
         ]
 
@@ -200,10 +200,10 @@ def _drop_hisat2(request: TurnRequest, tools: ToolInvoker) -> list[str]:
 def _investigate(request: TurnRequest, tools: ToolInvoker) -> list[str]:
     source = tools.call("read_source", {"path": "main.nf"})
     assert "HISAT2_ALIGN(reads)" in source["data"]["text"]
-    routes = tools.call("analyse_routes", {})
+    routes = tools.call("analyse_routes", {"process": "HISAT2_ALIGN", "detail": True})
     hisat2 = [
         item
-        for item in routes["data"]["published"]
+        for item in routes["data"]["published"]["items"]
         if item["instance"] == "HISAT2_ALIGN"
     ]
     reconciliation = tools.call("reconcile_example_outputs", {"example": 0})
@@ -232,7 +232,7 @@ def _investigate(request: TurnRequest, tools: ToolInvoker) -> list[str]:
 
 def _not_supported(request: TurnRequest, tools: ToolInvoker) -> list[str]:
     routes = tools.call("analyse_routes", {})
-    unpublished = {item["instance"] for item in routes["data"]["unpublished"]}
+    unpublished = {item["process"] for item in routes["data"]["declared_only"]["items"]}
     assert "SAMTOOLS_SORT" in unpublished
     tools.call(
         "assess_objection",

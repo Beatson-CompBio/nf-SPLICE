@@ -561,6 +561,23 @@ def validate_inputs_draft(repository_root: str | Path) -> LayerValidation:
                     "secret-like parameters must not carry default values",
                 )
             )
+    from nf_splice.services.readiness import indispensable_parameters
+
+    policies = {item.name: item for item in iter_parameters(document)}
+    for name, why in indispensable_parameters(document):
+        required = policies.get(name)
+        if required is not None and not required.editable_by:
+            issues.append(
+                issue(
+                    LAYER,
+                    f"{required.pointer}/x-splice-access",
+                    "unsupplied_required",
+                    f"{name} ({why}) has no default and nobody may supply it; a "
+                    "job cannot start unless a principal may set it or the "
+                    "default profile's config sets it",
+                    Severity.WARNING,
+                )
+            )
     declared = {item.name for item in iter_parameters(document)}
     for usage in parameter_usage(root).undeclared(declared)[:25]:
         issues.append(

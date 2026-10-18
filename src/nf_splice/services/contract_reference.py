@@ -115,9 +115,13 @@ def _outputs() -> dict[str, Any]:
             "out, each {glob: <published glob> | process: <instance>, reason}",
         },
         "output_schema": _schema(ReviewedOutput),
-        "placeholders": "path_patterns are anchored regexes; {sample}, {run}, "
-        "{library}, {aligner}, {stage}, {read}, {any}, {anypath} expand to "
-        "named captures",
+        "placeholders": "path_patterns are regular expressions that must start "
+        "with ^ and end with $, relative to the job's publish directory "
+        "(^report/summary\\.html$). Placeholders: {sample} and {run} capture the "
+        "owning unit; {any} matches one path segment and {anypath} any depth; "
+        "{library}, {aligner}, {stage} and {read} are optional named labels",
+        "excluded_route_globs": "an excluded_routes glob is copied exactly as "
+        "route_coverage or analyse_routes shows it, {meta.id} included",
         "scopes": {
             "job": "belongs to one whole Nextflow job",
             "sample": "one biological sample (or its aggregate result); "
