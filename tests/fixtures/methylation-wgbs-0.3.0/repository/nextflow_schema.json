@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema",
+  "title": "example-org/methylseq-lite pipeline parameters",
+  "type": "object",
+  "required": ["input", "outdir", "genome"],
+  "properties": {
+    "input": {
+      "type": "string",
+      "format": "file-path",
+      "schema": "assets/schema_input.json",
+      "description": "Sample sheet (sample, fastq_1, fastq_2)."
+    },
+    "outdir": {"type": "string", "format": "directory-path", "description": "Results directory."},
+    "genome": {"type": "string", "description": "Bisulfite-converted reference genome directory.", "format": "directory-path"},
+    "skip_dedup": {"type": "boolean", "default": false, "description": "Skip duplicate removal (use for RRBS-like libraries)."},
+    "min_depth": {"type": "integer", "default": 5, "minimum": 1, "description": "Minimum read depth to report a CpG."},
+    "context": {"type": "string", "default": "CpG", "enum": ["CpG", "CHG", "CHH"], "description": "Cytosine context to call.", "help_text": "CHG and CHH are mostly relevant for plant genomes."}
+  }
+}

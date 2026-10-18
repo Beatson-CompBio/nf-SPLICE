@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/example-org/histoseg/main/nextflow_schema.json",
+  "title": "example-org/histoseg pipeline parameters",
+  "description": "Nuclear segmentation and morphology features for H&E whole-slide images.",
+  "type": "object",
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "required": ["input", "outdir"],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "mimetype": "text/csv",
+          "pattern": "^\\S+\\.csv$",
+          "description": "CSV listing slide_id and the path of each OME-TIFF slide.",
+          "help_text": "Columns: slide_id, image. Images must be pyramidal OME-TIFF."
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Directory for the results."
+        }
+      }
+    },
+    "segmentation_options": {
+      "title": "Segmentation options",
+      "type": "object",
+      "properties": {
+        "tile_size": {
+          "type": "integer",
+          "default": 1024,
+          "minimum": 256,
+          "maximum": 4096,
+          "description": "Tile edge length in pixels."
+        },
+        "normalisation": {
+          "type": "string",
+          "default": "macenko",
+          "enum": ["macenko", "vahadane", "none"],
+          "description": "Stain normalisation method.",
+          "help_text": "Use none when slides were normalised upstream."
+        },
+        "min_area_px": {
+          "type": "integer",
+          "default": 30,
+          "minimum": 1,
+          "description": "Smallest nucleus kept, in pixels."
+        },
+        "save_masks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish the label masks."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {"$ref": "#/$defs/input_output_options"},
+    {"$ref": "#/$defs/segmentation_options"}
+  ]
+}
