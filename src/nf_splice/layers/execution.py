@@ -1243,7 +1243,7 @@ def validate_execution_draft(repository_root: str | Path) -> LayerValidation:
                 )
             )
     identity = validate_bundle_draft(root)
-    if identity.metadata is None or not identity.ready:
+    if identity.metadata is None or not identity.usable:
         issues.append(issue(LAYER, "", "identity_not_ready", "identity is not ready"))
     if (
         any(item.severity is Severity.ERROR for item in issues)

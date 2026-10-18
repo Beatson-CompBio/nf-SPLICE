@@ -138,7 +138,8 @@ def inline_processes(root: Path) -> list[dict[str, Any]]:
         ):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for match in re.finditer(r"^\s*process\s+([A-Za-z0-9_]+)\s*\{", text, re.M):
+        # [ \t]*, not \s*: a preceding blank line must not move the line.
+        for match in re.finditer(r"^[ \t]*process\s+([A-Za-z0-9_]+)\s*\{", text, re.M):
             start = text.index("{", match.start())
             end = _block_end(text, start)
             name = match.group(1)
@@ -254,6 +255,9 @@ def _discover(root: Path) -> list[dict[str, Any]]:
                     else "local"
                 ),
                 "tool_name": tool_name(metadata, item, relative),
+                "tool_name_basis": "meta.yml tools"
+                if isinstance(metadata.get("tools"), list) and metadata["tools"]
+                else "module name (no tool declared)",
                 "versions": list(detected_versions(item, relative, uris)),
                 "conda_packages": list(conda_packages(module)),
                 "sources": [source.model_dump(mode="json") for source in sources],
@@ -286,6 +290,7 @@ def _discover(root: Path) -> list[dict[str, Any]]:
                 "process": inline["process"],
                 "namespace": "local",
                 "tool_name": inline["process"].lower(),
+                "tool_name_basis": "process name (no tool declared)",
                 "versions": list(detected_versions({}, inline["file"], uris)),
                 "conda_packages": [],
                 "sources": [source.model_dump(mode="json") for source in sources],
@@ -1047,7 +1052,7 @@ def reverify_distributions(
 
 def _pipeline(root: Path) -> tuple[dict[str, str] | None, list[DraftIssue]]:
     identity = validate_bundle_draft(root)
-    if not identity.ready or identity.metadata is None:
+    if not identity.usable or identity.metadata is None:
         return None, [issue(LAYER, "", "identity_not_ready", "identity is not ready")]
     return identity.metadata.reference(), []
 

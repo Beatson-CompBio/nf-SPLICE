@@ -72,6 +72,7 @@ _MAX_READ_BYTES = 64_000
 _MAX_DRAFT_TEXT = 200_000
 _MAX_LINES = 400
 _MAX_MATCHES = 200
+_MAX_LISTED = 1000
 _SEARCH_SUFFIXES = {
     ".nf",
     ".config",
@@ -332,6 +333,46 @@ def _read_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
+def _glob_matches(name: str, relative: str, glob: str) -> bool:
+    """A glob matches a file's name (``*.config``) or its relative path
+    (``conf/*.config``, ``modules/**/main.nf``; ``**`` spans folders)."""
+    return (
+        fnmatch.fnmatch(name, glob)
+        or fnmatch.fnmatch(relative, glob)
+        or (glob.startswith("**/") and fnmatch.fnmatch(relative, glob[3:]))
+    )
+
+
+def _list_files(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    root = ctx.root.resolve()
+    base = _readable(ctx, str(a.get("directory") or "."))
+    if not base.is_dir():
+        return {"success": False, "issues": [f"{a.get('directory')} is not a folder"]}
+    glob = str(a.get("glob") or "*")
+    files: list[str] = []
+    for current, directories, names in os.walk(base, followlinks=False):
+        directories[:] = sorted(
+            item for item in directories if item not in _SKIP_DIRECTORIES
+        )
+        for name in sorted(names):
+            path = Path(current) / name
+            relative = path.relative_to(root).as_posix()
+            if path.is_symlink() or _secret_like(path):
+                continue
+            if _glob_matches(name, relative, glob):
+                files.append(relative)
+            if len(files) >= _MAX_LISTED:
+                return _untrusted({"files": files, "truncated": True})
+    return _untrusted(
+        {
+            "files": files,
+            "truncated": False,
+            "note": "splice/ holds an earlier published bundle, if any: nf-splice's "
+            "own output, never evidence of what the pipeline does",
+        }
+    )
+
+
 def _search_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     pattern_text = str(a["pattern"])
     if len(pattern_text) > 200:
@@ -353,7 +394,7 @@ def _search_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any
                 path.is_symlink()
                 or path.suffix.lower() not in _SEARCH_SUFFIXES
                 or _secret_like(path)
-                or not fnmatch.fnmatch(name, glob)
+                or not _glob_matches(name, path.relative_to(root).as_posix(), glob)
             ):
                 continue
             try:
@@ -944,7 +985,14 @@ def _component_inventory(
     ctx: OperationContext, _a: Mapping[str, Any]
 ) -> dict[str, Any]:
     discovered = component_layer.discovered_modules(ctx.root)
-    return {"success": True, "count": len(discovered), "data": discovered}
+    return {
+        "success": True,
+        "count": len(discovered),
+        "data": discovered,
+        "note": "tool_name_basis says where a tool name came from; a module or "
+        "process name is only a placeholder: name the tool the code runs when "
+        "you can establish it",
+    }
 
 
 def _analyse_execution(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -1100,7 +1148,10 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "search_source",
-            "Search repository text files with a regular expression.",
+            "Search repository text files (.nf, .config, .json, .yml, .md and "
+            "similar) with a regular expression; returns path:line: text. glob "
+            "filters by file name (*.config) or relative path (conf/*.config, "
+            "modules/**/main.nf).",
             _obj(
                 {"pattern": {"type": "string"}, "glob": {"type": "string"}},
                 ["pattern"],
@@ -1108,6 +1159,19 @@ OPERATIONS: dict[str, Operation] = {
             _R,
             "read",
             _search_source,
+        ),
+        Operation(
+            "list_files",
+            "List repository files below a folder (default the root), "
+            "optionally filtered by a glob on the name or relative path. Use it "
+            "to find what exists before reading.",
+            _obj(
+                {"directory": {"type": "string"}, "glob": {"type": "string"}},
+                [],
+            ),
+            _R,
+            "read",
+            _list_files,
         ),
         Operation(
             "list_pending",
@@ -1717,7 +1781,9 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
         "decision: what the person must decide or supply; reason: why you "
         "cannot decide it; attempted_checks: the sources you read and analyses "
         "you ran (file:line or tool name); uncertainties: what remains "
-        "unknown; suggested_resolution: what the person should do next.",
+        "unknown; suggested_resolution: what the person should do next; "
+        "pointer: the JSON pointer of the field in the stage's draft; "
+        "artefact: the file concerned (defaults to the stage's draft).",
         "input_schema": _obj(
             {
                 "decision": {"type": "string"},
@@ -1732,7 +1798,7 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
                 "attempted_checks": _STRINGS,
                 "suggested_resolution": {"type": "string"},
             },
-            ["decision", "artefact"],
+            ["decision"],
         ),
     },
     "record_evidence": {

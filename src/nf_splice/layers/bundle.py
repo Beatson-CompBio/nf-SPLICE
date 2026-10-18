@@ -169,6 +169,24 @@ class BundleValidation:
             item.severity is Severity.ERROR for item in self.issues
         )
 
+    @property
+    def usable(self) -> bool:
+        """Whether other layers can compile against this identity.
+
+        They need its name, version and identifiers, not its scientific
+        classification: a missing assay keeps the bundle from publication
+        and ingestion (its own error), but does not make every other layer
+        repeat that the identity is not ready.
+        """
+        return self.metadata is not None and not any(
+            item.severity is Severity.ERROR and item.code not in CLASSIFICATION_CODES
+            for item in self.issues
+        )
+
+
+#: Errors about scientific classification only (see BundleValidation.usable).
+CLASSIFICATION_CODES = frozenset({"missing_assay_classification"})
+
 
 def _issue(
     pointer: str, code: str, message: str, severity: Severity = Severity.ERROR

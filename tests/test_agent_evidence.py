@@ -73,3 +73,69 @@ def test_the_removed_inference_tools_are_gone() -> None:
     for name in ("assess_assays", "list_assay_candidates", "discover_outputs"):
         assert name not in OPERATIONS
     assert "list_vocabulary_assays" in OPERATIONS
+
+
+def test_an_assay_question_does_not_stop_the_independent_stages(
+    tmp_path: Path,
+) -> None:
+    """Only validation and publication wait for the person's assay answer."""
+    import asyncio
+    import shutil
+
+    from nf_splice.agents import InteractionMode, SessionEngine
+    from nf_splice.agents.protocol import ToolInvoker, TurnRequest
+    from nf_splice.agents.providers.scripted import ScriptedProvider
+    from nf_splice.agents.stages import Stage
+
+    root = tmp_path / "ambiguous"
+    shutil.copytree(
+        Path(__file__).parent / "fixtures" / "ambiguous-reads-0.3.0" / "repository",
+        root,
+    )
+
+    def agent(request: TurnRequest, tools: ToolInvoker) -> list[str]:
+        if request.stage == "identity":
+            tools.call(
+                "record_blocker",
+                {
+                    "decision": "Which assay the pipeline processes",
+                    "reason": "Nothing states the molecule or library sequenced.",
+                    "pointer": "/pipeline/assay_capabilities",
+                },
+            )
+        return ["Done for this stage."]
+
+    engine = SessionEngine.create(
+        root,
+        mode=InteractionMode.AUTONOMOUS,
+        provider=ScriptedProvider(agent),
+        objective="integrate",
+        policy=ExecutionPolicy(),
+        actor=ADA.actor,
+    )
+    asyncio.run(engine.advance())
+    stages = engine.state.stages
+    assert stages[Stage.IDENTITY].status.value == "blocked"
+    for stage in (Stage.INPUTS, Stage.OUTPUTS, Stage.COMPONENTS, Stage.PROVENANCE):
+        assert stages[stage].attempts >= 1, stage
+        assert "depends on identity" not in stages[stage].notes, stage
+    assert any("depends on" in note for note in stages[Stage.VALIDATE].notes)
+
+
+def test_files_can_be_listed_and_searched_by_path_glob(tmp_path: Path) -> None:
+    root = copy_fixture(tmp_path)
+    initialise(root, ADA)
+    context = _context(root)
+    listed = OPERATIONS["list_files"].handler(context, {"glob": "**/*.nf"})
+    assert "main.nf" in listed["data"]["files"]
+    assert not any(item.startswith(".splice-local") for item in listed["data"]["files"])
+    found = OPERATIONS["search_source"].handler(
+        context, {"pattern": "publishDir", "glob": "modules/**/main.nf"}
+    )
+    assert found["data"]["matches"] and all(
+        item.startswith("modules/") for item in found["data"]["matches"]
+    )
+    everything = OPERATIONS["search_source"].handler(
+        context, {"pattern": "publishDir", "glob": "**/*"}
+    )
+    assert everything["data"]["matches"]

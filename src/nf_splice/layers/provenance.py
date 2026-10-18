@@ -348,7 +348,7 @@ class CrateAnalysis:
 
 def _identity(root: Path) -> PipelineMetadata | None:
     validation = validate_bundle_draft(root)
-    return validation.metadata if validation.ready else None
+    return validation.metadata if validation.usable else None
 
 
 def analyse_ro_crate(repository_root: str | Path) -> CrateAnalysis:

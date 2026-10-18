@@ -397,10 +397,12 @@ class SessionEngine:
                 continue
             if record.status is StageStatus.BLOCKED and not assisted:
                 continue
+            usable = self._identity_usable(stage)
             blocked = [
                 item
                 for item in spec(stage).depends_on
                 if self.state.stages[item].status is StageStatus.BLOCKED
+                and not (item is Stage.IDENTITY and usable)
             ]
             if blocked:
                 if not assisted:
@@ -412,11 +414,28 @@ class SessionEngine:
             if any(
                 self.state.stages[item].status
                 not in {StageStatus.COMPLETED, StageStatus.SKIPPED}
+                and not (item is Stage.IDENTITY and usable)
                 for item in spec(stage).depends_on
             ):
                 continue
             return stage
         return None
+
+    def _identity_usable(self, stage: Stage) -> bool:
+        """Whether a layer stage may proceed while identity waits for a person.
+
+        An identity blocked only on its scientific classification (an assay
+        a person must name) still gives the other layers everything they
+        compile against, so their stages continue; validation, build and
+        everything after them still wait for the identity stage itself.
+        """
+        if stage is Stage.IDENTITY or stage not in LAYER_FOR_STAGE:
+            return False
+        if self.state.stages[Stage.IDENTITY].status is not StageStatus.BLOCKED:
+            return False
+        from nf_splice.layers.bundle import validate_bundle_draft
+
+        return validate_bundle_draft(self.root).usable
 
     def _complete(self, stage: Stage, result: GateResult, note: str = "") -> None:
         record = self.state.stages[stage]
@@ -1736,6 +1755,12 @@ class SessionEngine:
                     "suggested_resolution": "resume the session (or review the "
                     "draft yourself and continue manually)",
                 }
+            )
+        if reviewed is not None:
+            # Keep the review that was made: the stage stays blocked on the
+            # recorded decision, and the report shows both.
+            self._record_review(
+                stage, "blocked: " + ("changed" if attempted else "no_change"), reviewed
             )
         self._block(
             stage,

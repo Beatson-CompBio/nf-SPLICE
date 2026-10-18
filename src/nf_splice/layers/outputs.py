@@ -289,7 +289,7 @@ def update_output(
 
 def _pipeline(root: Path) -> tuple[OutputPipeline | None, list[DraftIssue]]:
     identity = validate_bundle_draft(root)
-    if not identity.ready or identity.metadata is None:
+    if not identity.usable or identity.metadata is None:
         return None, [
             issue(
                 LAYER,
