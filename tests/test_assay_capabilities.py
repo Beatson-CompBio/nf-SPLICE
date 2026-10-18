@@ -202,7 +202,7 @@ def test_two_capabilities_round_trip_to_a_valid_deterministic_bundle(
     result = runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "build",
             "all",
@@ -230,7 +230,7 @@ def test_two_capabilities_round_trip_to_a_valid_deterministic_bundle(
     runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "build",
             "all",
@@ -259,7 +259,7 @@ def test_a_hand_edited_published_capability_fails_validation(tmp_path: Path) -> 
     runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "build",
             "all",
@@ -620,14 +620,14 @@ def test_a_generic_fastq_pipeline_gets_no_assay_candidates(tmp_path: Path) -> No
     assert detect_assay_candidates(tmp_path) == ()
     result = runner.invoke(
         app,
-        ["--actor", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
+        ["--user", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
     )
     assert result.exit_code == 0, result.output
     assert declared_capabilities(tmp_path) == []
     result = runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "configure",
             "identity",

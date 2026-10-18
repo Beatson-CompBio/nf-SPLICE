@@ -868,9 +868,9 @@ def _capability_issues(bundle: Mapping[str, Any]) -> list[BundleIssue]:
                 where,
                 "missing_assay_classification",
                 "the bundle declares no assay capability, so it is not ready for "
-                "SPLICE ingestion; see `nf-splice catalogue recommend` for the "
-                "assays the pipeline appears to process, declare them with "
-                "`nf-splice configure identity --add-assay CODE` and rebuild",
+                "SPLICE ingestion; declare the assays it can process with "
+                "`nf-splice configure identity --add-assay CODE` "
+                "(`nf-splice catalogue assays` lists them) and rebuild",
             )
         )
         return found
