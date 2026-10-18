@@ -91,8 +91,10 @@ def test_core_01_02_init_seeds_every_layer_once_and_changes_no_source(
     assert sorted(report.created) == sorted(item.name for item in LAYERS)
     assert _sources(root) == before  # CORE-01: the pipeline is untouched
 
-    outputs = _draft(root, "outputs")["outputs"]
-    assert {item["key"] for item in outputs} >= {"star_align_bam", "hisat2_align_bam"}
+    # ADR-0068: no speculative output entries; the person describes them.
+    outputs = _draft(root, "outputs")
+    assert outputs["outputs"] == []
+    assert outputs["contract"]["schema_version"] is None  # never the release
     components = _draft(root, "components")
     assert components["components"] and components["containers"]
     profiles = _draft(root, "execution-profiles")
@@ -113,14 +115,13 @@ def test_core_01_02_init_seeds_every_layer_once_and_changes_no_source(
         for path in (root / ".splice-local" / "drafts").rglob("*")
         if path.is_file()
     }
-    candidates = len(load_review_state(root, "outputs").candidates)
     initialise(root, ADA)
     assert files == {
         path.relative_to(root).as_posix(): path.read_bytes()
         for path in (root / ".splice-local" / "drafts").rglob("*")
         if path.is_file()
     }
-    assert len(load_review_state(root, "outputs").candidates) == candidates
+    assert not load_review_state(root, "outputs").candidates
 
 
 def test_core_03_externally_authored_drafts_build_without_candidate_decisions(
@@ -173,9 +174,13 @@ def test_core_04_05_errors_are_precise_and_files_are_never_rewritten(
 
 def test_core_06_replacement_from_a_stale_read_is_refused(tmp_path: Path) -> None:
     root = copy_fixture(tmp_path)
-    initialise(root, ADA)
+    author_all(root)
     state = read_layer(root, "outputs")
-    edit_draft_file(root, "outputs", lambda data: data.update(categories={}))
+
+    def edit(data: dict[str, Any]) -> None:
+        data["outputs"][0]["description"] = "Changed in an editor."
+
+    edit_draft_file(root, "outputs", edit)
     with pytest.raises(DraftConflictError, match="changed on disk"):
         replace_draft(
             root,
@@ -432,21 +437,22 @@ def test_in_05_an_unbound_required_input_blocks_ingestion_readiness(
 # ------------------------------------------------------------ outputs
 
 
-def test_out_01_03_04_07_routes_seed_a_catalogue_and_coverage_is_substantive(
+def test_out_01_03_04_07_routes_are_evidence_and_coverage_is_substantive(
     tmp_path: Path,
 ) -> None:
+    from nf_splice.layers.outputs import route_coverage
+
     root = copy_fixture(tmp_path)
     initialise(root, ADA)
-    keys = {item["key"] for item in _draft(root, "outputs")["outputs"]}
+    # ADR-0068: routes are evidence to browse, never seeded entries.
+    assert _draft(root, "outputs")["outputs"] == []
+    coverage = route_coverage(root)
+    instances = {item.instance for item in coverage.uncovered}
     # Both aligner routes are published alternatives (one example uses STAR).
-    assert {"star_align_bam", "hisat2_align_bam", "quant"} <= keys
+    assert {"STAR_ALIGN", "HISAT2_ALIGN", "SALMON_QUANT"} <= instances
     # SAMTOOLS_SORT declares a BAM no rule publishes: an intermediate.
-    patterns = " ".join(
-        pattern
-        for item in _draft(root, "outputs")["outputs"]
-        for pattern in item["path_patterns"]
-    )
-    assert r"\.sorted\.bam" not in patterns
+    globs = " ".join(glob for item in coverage.uncovered for glob in item.globs)
+    assert ".sorted.bam" not in globs
     root = copy_fixture(tmp_path / "authored")
     author_all(root)
     edit_draft_file(
@@ -459,12 +465,13 @@ def test_out_01_03_04_07_routes_seed_a_catalogue_and_coverage_is_substantive(
         ),
     )
     issues = validate_layer(root, "outputs").issues
-    # HISAT2 is an alternative route: a classified warning, never dropped.
-    covered = [item for item in issues if item.code == "conditional_route_not_covered"]
-    assert covered and "HISAT2_ALIGN" in covered[0].message
-    assert "when " in covered[0].message
-    assert all(item.severity.value == "warning" for item in covered)
+    assert not any("route" in item.code for item in issues)
     assert "pending_candidate" not in {item.code for item in issues}
+    # HISAT2 is an alternative route: reported as coverage, never dropped.
+    coverage = route_coverage(root)
+    conditional = [item for item in coverage.uncovered if item.kind == "conditional"]
+    assert conditional and conditional[0].instance == "HISAT2_ALIGN"
+    assert "when " in (conditional[0].condition or "")
 
 
 # ------------------------------------------------------------ components

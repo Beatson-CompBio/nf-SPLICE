@@ -12,32 +12,15 @@ from layer_fixtures import ADA, ready_identity
 from nf_splice.layers import LayerError
 from nf_splice.layers.base import load_review_state
 from nf_splice.layers.outputs import (
-    accept_output,
-    apply_decision_file,
+    add_output,
     discover_outputs,
-    merge_outputs,
-    pending_candidates,
     preview_outputs,
-    split_output,
+    set_contract_version,
     update_output,
     validate_outputs_draft,
 )
 
 DRAFT = ".splice-local/drafts/outputs.draft.yaml"
-
-
-def _tree(root: Path) -> Path:
-    tree = root / "example-tree"
-    for relative in (
-        "multiqc/multiqc_report.html",
-        "quant/S1/counts.tsv",
-        "quant/S2/counts.tsv",
-        "pipeline_info/trace.txt",
-    ):
-        path = tree / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("x", encoding="utf-8")
-    return tree
 
 
 def _output(key: str, pattern: str, scope: str = "job", category: str = "job_report"):  # type: ignore[no-untyped-def]
@@ -57,47 +40,27 @@ def _codes(root: Path) -> set[str]:
     return {item.code for item in validate_outputs_draft(root).issues}
 
 
-def _candidate_ids(root: Path) -> list[str]:
-    return sorted(load_review_state(root, "outputs").candidates)
-
-
-def _clear_catalogue(root: Path) -> None:
-    from layer_fixtures import edit_draft_file
-
-    def clear(data: dict) -> None:  # type: ignore[type-arg]
-        data["outputs"] = []
-        data["categories"] = {}
-
-    edit_draft_file(root, "outputs", clear)
-
-
-def test_discovery_seeds_a_useful_catalogue_finished_by_editing_the_file(
+def test_a_new_catalogue_starts_empty_and_is_authored_in_the_file(
     tmp_path: Path,
 ) -> None:
+    """ADR-0068: no speculative entries and no version taken from the release."""
     ready_identity(tmp_path)
-    discovery = discover_outputs(tmp_path, example_output_tree=_tree(tmp_path))
+    discovery = discover_outputs(tmp_path)
     assert discovery.created_draft and discovery.notes
     draft = yaml.safe_load((tmp_path / DRAFT).read_text(encoding="utf-8"))
-    by_pattern = {item["path_patterns"][0]: item for item in draft["outputs"]}
-    # Seeded, not empty: every observed output is an editable entry.
-    assert set(by_pattern) == {
-        r"^multiqc/multiqc_report\.html$",
-        r"^quant/{sample}/counts\.tsv$",
-        r"^pipeline_info/trace\.txt$",
+    assert draft["outputs"] == []
+    # The analysis-output data version is not the pipeline release (1.2.0).
+    assert draft["contract"]["schema_version"] is None
+    assert not load_review_state(tmp_path, "outputs").candidates
+    validation = validate_outputs_draft(tmp_path)
+    issues = {item.pointer: item.code for item in validation.issues}
+    assert issues == {
+        "/contract/schema_version": "missing_required",
+        "/outputs": "missing_required",
     }
-    counts = by_pattern[r"^quant/{sample}/counts\.tsv$"]
-    # The category is the pipeline's own directory; nf-splice prescribes none.
-    assert counts["scopes"] == ["sample"] and counts["category"] == "quant"
-    # The contract version comes from the identity (X.Y.Z), unknowns stay empty.
-    assert draft["contract"]["schema_version"] == "1.2.0"
-    assert discovery.pending == ()
-    codes = _codes(tmp_path)
-    assert "pending_candidate" not in codes
-    assert codes == {"unresolved"}  # descriptions nobody can know from a tree
 
-    text = (tmp_path / DRAFT).read_text(encoding="utf-8")
-    text = text.replace("description: null", "description: Written by the author.", 3)
-    (tmp_path / DRAFT).write_text(text, encoding="utf-8")
+    add_output(tmp_path, _output("report", r"^multiqc/multiqc_report\.html$"), ADA)
+    set_contract_version(tmp_path, "1.0.0", ADA)
     validation = validate_outputs_draft(tmp_path)
     assert validation.ready, validation.issues
     assert sorted(validation.files) == ["outputs.schema.json", "outputs.yaml"]
@@ -110,26 +73,51 @@ def test_discovery_seeds_a_useful_catalogue_finished_by_editing_the_file(
         path.name for path in (tmp_path / "splice").rglob("*") if path.is_file()
     )
     assert "outputs.schema.json" not in written  # preview never writes
-    # No candidate decision was recorded: the authored file is the decision.
-    statuses = {
-        entry["status"]
-        for entry in load_review_state(tmp_path, "outputs").candidates.values()
-    }
-    assert statuses == {"seeded"}
 
     before = (tmp_path / DRAFT).read_bytes()
-    rediscovered = discover_outputs(tmp_path, example_output_tree=_tree(tmp_path))
-    assert not rediscovered.created_draft and rediscovered.pending == ()
+    rediscovered = discover_outputs(tmp_path)
+    assert not rediscovered.created_draft
     assert (tmp_path / DRAFT).read_bytes() == before
+
+
+def test_a_published_catalogue_seeds_the_draft_with_its_own_version(
+    tmp_path: Path,
+) -> None:
+    ready_identity(tmp_path)
+    splice = tmp_path / "splice"
+    splice.mkdir()
+    (splice / "outputs.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "catalogue_format_version": "0.3.0",
+                "analysis_output_schema_version": "2.1.0",
+                "outputs": [
+                    {
+                        "key": "report",
+                        "title": "Report",
+                        "description": "Job report.",
+                        "category": "job_report",
+                        "format": "html",
+                        "scope": "job",
+                        "entity_type": "file",
+                        "path_patterns": ["^report\\.html$"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    discover_outputs(tmp_path)
+    draft = yaml.safe_load((tmp_path / DRAFT).read_text(encoding="utf-8"))
+    assert [item["key"] for item in draft["outputs"]] == ["report"]
+    assert draft["contract"]["schema_version"] == "2.1.0"
 
 
 def test_a_replaced_catalogue_with_undiscovered_outputs_compiles(
     tmp_path: Path,
 ) -> None:
     ready_identity(tmp_path)
-    discover_outputs(
-        tmp_path, example_output_tree=_tree(tmp_path), schema_version="1.0.0"
-    )
+    discover_outputs(tmp_path, schema_version="1.0.0")
     path = tmp_path / DRAFT
     head = path.read_text(encoding="utf-8").split("outputs:", 1)[0]
     path.write_text(
@@ -155,19 +143,14 @@ def test_a_replaced_catalogue_with_undiscovered_outputs_compiles(
         encoding="utf-8",
     )
     assert validate_outputs_draft(tmp_path).ready
-    # Optional tool reviews add to the file and keep the author's comments.
-    candidate = _candidate_ids(tmp_path)[0]
-    accept_output(
-        tmp_path, candidate, _output("report", r"^multiqc/multiqc_report\.html$"), ADA
-    )
+    # Edits through the service add to the file and keep the author's comments.
+    add_output(tmp_path, _output("report", r"^multiqc/multiqc_report\.html$"), ADA)
     after = path.read_text(encoding="utf-8")
     assert "# curated by hand" in after and "key: never_discovered" in after
     assert "key: report" in after
 
     with pytest.raises(LayerError, match="already defined"):
-        accept_output(tmp_path, candidate, _output("trace", r"^x\.txt$"), ADA)
-    with pytest.raises(LayerError, match="unknown output candidate"):
-        accept_output(tmp_path, "output:invented", _output("y", r"^y\.txt$"), ADA)
+        add_output(tmp_path, _output("trace", r"^x\.txt$"), ADA)
     with pytest.raises(LayerError, match="invalid reviewed output"):
         update_output(tmp_path, "trace", {"scopes": ["sample"]}, ADA)
 
@@ -183,44 +166,6 @@ def test_a_replaced_catalogue_with_undiscovered_outputs_compiles(
         if item.code == "invalid_value"
     }
     assert any(pointer.startswith("/outputs/0/scopes") for pointer in pointers)
-
-
-def test_optional_merge_split_and_decision_files(tmp_path: Path) -> None:
-    ready_identity(tmp_path)
-    tree = _tree(tmp_path)
-    (tree / "multiqc" / "extra.txt").write_text("x", encoding="utf-8")
-    discover_outputs(tmp_path, example_output_tree=tree)
-    _clear_catalogue(tmp_path)
-    ids = _candidate_ids(tmp_path)
-    assert len(ids) == 4
-    merge_outputs(tmp_path, ids[:2], _output("combined", r"^multiqc/.+\.html$"), ADA)
-    split_output(
-        tmp_path,
-        ids[2],
-        [
-            _output("first", r"^quant/{sample}/counts\.tsv$", "sample"),
-            _output("second", r"^quant/{sample}/other\.tsv$", "sample"),
-        ],
-        ADA,
-    )
-    apply_decision_file(
-        tmp_path,
-        {
-            "actions": [
-                {"action": "reject", "candidate_id": ids[3], "reason": "Not needed"},
-                {"action": "version", "schema_version": "2.0.0"},
-            ]
-        },
-        ADA,
-    )
-    assert pending_candidates(tmp_path) == ()
-    candidates = load_review_state(tmp_path, "outputs").candidates
-    assert candidates[ids[1]]["status"] == "merged"
-    assert candidates[ids[1]]["merged_into"] == ids[0]
-    assert candidates[ids[2]]["output_keys"] == ["first", "second"]
-    assert validate_outputs_draft(tmp_path).ready
-    with pytest.raises(LayerError, match="at least two"):
-        merge_outputs(tmp_path, ids[:1], _output("x", r"^x\.html$"), ADA)
 
 
 def test_identity_must_be_ready_before_outputs_compile(tmp_path: Path) -> None:

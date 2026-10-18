@@ -446,6 +446,8 @@ class PublishedCatalogue:
     outputs: tuple[dict[str, object], ...]
     categories: dict[str, dict[str, str]]
     notes: tuple[str, ...]
+    #: The published ``analysis_output_schema_version`` (X.Y.Z), if any.
+    schema_version: str | None = None
 
 
 def _listed(value: object) -> list[str]:
@@ -529,8 +531,16 @@ def published_catalogue(root: Path) -> PublishedCatalogue | None:
                 for name in ("title", "description")
                 if details.get(name)
             }
+    version = loaded.get("analysis_output_schema_version")
     return PublishedCatalogue(
-        "splice/outputs.yaml", layout, tuple(outputs), categories, tuple(notes)
+        "splice/outputs.yaml",
+        layout,
+        tuple(outputs),
+        categories,
+        tuple(notes),
+        str(version)
+        if isinstance(version, str) and re.fullmatch(r"\d+\.\d+\.\d+", version)
+        else None,
     )
 
 

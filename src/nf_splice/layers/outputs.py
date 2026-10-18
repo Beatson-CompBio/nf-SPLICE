@@ -9,8 +9,6 @@ output draft; JSON previews are derived and never written.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -22,13 +20,10 @@ from pydantic import ValidationError
 
 from nf_splice.contracts import OUTPUTS_FAMILY, validate_contract_document
 from nf_splice.domain import (
-    OutputCandidate,
-    OutputScope,
     ReviewedOutput,
     expand_output_path_pattern,
 )
 from nf_splice.drafts import ABSENT, PatchOp, resolve
-from nf_splice.inspectors import discover_output_candidates
 from nf_splice.inspectors.outputs import published_catalogue
 from nf_splice.inspectors.routes import CoverageStatus, analyse_routes, example_path
 from nf_splice.layers.base import (
@@ -37,17 +32,13 @@ from nf_splice.layers.base import (
     EditResult,
     LayerError,
     LayerValidation,
-    ReviewState,
     Severity,
     edit_draft,
     issue,
-    load_review_state,
     ops_for,
     read_layer,
-    record_decision,
     seed_draft,
     strip_marker,
-    update_review_state,
 )
 from nf_splice.layers.bundle import validate_bundle_draft
 from nf_splice.renderers.outputs import (
@@ -59,19 +50,11 @@ from nf_splice.renderers.outputs import (
 )
 
 LAYER = "outputs"
-PENDING = "pending"
-ACCEPTED = "accepted"
-REJECTED = "rejected"
-MERGED = "merged"
-SPLIT = "split"
 
 
 #: Fields of ``outputs.draft.yaml``. ``excluded_routes`` is draft-only: it
 #: records published routes the author deliberately leaves out, with why.
 DRAFT_FIELDS = ("contract", "categories", "outputs", "excluded_routes")
-SEEDED = "seeded"
-_SEMVER = re.compile(r"^v?(\d+\.\d+\.\d+)$")
-_REFERENCE_PREFIXES = ("genome/", "reference/", "references/", "index/")
 
 
 def _empty_draft(schema_version: str | None) -> dict[str, Any]:
@@ -83,86 +66,35 @@ def _empty_draft(schema_version: str | None) -> dict[str, Any]:
     }
 
 
-def _directory_category(pattern: str) -> str | None:
-    """The pipeline's own grouping: the first literal directory it publishes to.
+def _contract_version(explicit: str | None, published: str | None) -> str | None:
+    """The analysis-output schema version, never the pipeline's release.
 
-    nf-splice prescribes no category vocabulary; a seeded category is the
-    directory the pipeline itself chose (``^fastqc/...`` gives ``fastqc``),
-    skipping a leading run-time directory. Without one it stays empty for
-    the author.
+    ``analysis_output_schema_version`` versions this workflow's
+    ``analysis_output.json`` document; it changes when that document's shape
+    changes, independently of the pipeline release. It is taken from an
+    explicit value or a previously published catalogue; otherwise it stays
+    null for the author to choose (ADR-0068).
     """
-    parts = pattern.removeprefix("^").split("/")[:-1]
-    for part in parts:
-        if re.fullmatch(r"[A-Za-z0-9_.-]+", part.replace("\\.", ".")):
-            name = re.sub(r"[^a-z0-9_]+", "_", part.replace("\\.", ".").lower())
-            return name.strip("_") or None
-    return None
-
-
-def _contract_version(root: Path, explicit: str | None) -> str | None:
-    """The analysis-output schema version: explicit, else the pipeline's X.Y.Z."""
-    if explicit is not None:
-        return explicit
-    state = read_layer(root, "bundle")
-    if state.draft is None or not isinstance(state.draft.data, dict):
-        return None
-    version = resolve(state.draft.data, "/pipeline/version")
-    match = _SEMVER.match(str(version)) if isinstance(version, str) else None
-    return match.group(1) if match else None
-
-
-def _route_entry(candidate: OutputCandidate) -> dict[str, Any] | None:
-    """A provisional draft entry for one published-route candidate."""
-    pattern = candidate.path_pattern
-    if pattern is None or pattern.endswith(r"versions\.yml$"):
-        # nf-core modules emit versions.yml for provenance; nf-core pipelines
-        # collect them into pipeline_info rather than publishing each one.
-        return None
-    scope = candidate.likely_scope
-    body = pattern.removeprefix("^")
-    if body.startswith(_REFERENCE_PREFIXES):
-        # A capture inside a reference directory names a genome or index,
-        # not a sample: reference files belong to the whole job.
-        pattern = pattern.replace("(?P<sample_id>[^/]+)", "[^/]+")
-        scope = OutputScope.JOB
-    elif scope is None:
-        scope = OutputScope.SAMPLE if "(?P<sample_id>" in pattern else OutputScope.JOB
-    entity = candidate.likely_entity_type
-    entry: dict[str, Any] = {
-        "key": candidate.suggested_key,
-        "title": candidate.suggested_title,
-        "description": candidate.suggested_description,
-        "category": _directory_category(pattern),
-        "formats": [candidate.suggested_format.value]
-        if candidate.suggested_format
-        else [],
-        "scopes": [scope.value],
-        "entity_types": [entity.value] if entity else [],
-        "path_patterns": [pattern],
-    }
-    return entry
+    return explicit if explicit is not None else published
 
 
 def seed_catalogue(
-    root: Path,
-    discovered: Sequence[Any],
-    schema_version: str | None,
-) -> tuple[dict[str, Any], dict[str, str], list[str]]:
-    """Build the first ``outputs.draft.yaml`` from evidence.
+    root: Path, schema_version: str | None
+) -> tuple[dict[str, Any], list[str]]:
+    """Build the first ``outputs.draft.yaml``.
 
-    A previously published catalogue (``splice/outputs.yaml``, in 0.3.0 or an
-    earlier layout) is the richest evidence: it was written by people, so it
-    seeds the draft whole. Otherwise every statically published route becomes
-    one provisional entry; identical patterns are one entry. Unknown values
-    stay empty and are reported by validation, never invented.
-
-    Returns the draft, the candidate ids each entry was seeded from (by key)
-    and notes for the author.
+    Only a previously published catalogue (``splice/outputs.yaml``, in 0.3.0
+    or an earlier layout) seeds entries: people wrote it. Otherwise the
+    catalogue starts with no entries; published routes are evidence to browse
+    (:func:`route_coverage`), never provisional entries (ADR-0068).
     """
-    draft = _empty_draft(_contract_version(root, schema_version))
-    notes: list[str] = []
-    seeded_from: dict[str, str] = {}
     published = published_catalogue(root)
+    draft = _empty_draft(
+        _contract_version(
+            schema_version, published.schema_version if published else None
+        )
+    )
+    notes: list[str] = []
     if published is not None and published.outputs:
         draft["outputs"] = [dict(item) for item in published.outputs]
         used = {item.get("category") for item in published.outputs}
@@ -176,150 +108,43 @@ def seed_catalogue(
             f"{published.location} ({published.format} layout)"
         )
         notes.extend(published.notes)
-        return draft, seeded_from, notes
-    keys: set[str] = set()
-    patterns: set[str] = set()
-    # Route evidence names outputs after their emits; prefer it to names
-    # made up from an example's file names when both describe one pattern.
-    ordered = sorted(
-        discovered, key=lambda item: (not item.candidate.processes, item.candidate.id)
-    )
-    for item in ordered:
-        candidate = item.candidate
-        entry = _route_entry(candidate)
-        if entry is None or entry["path_patterns"][0] in patterns:
-            continue
-        patterns.add(entry["path_patterns"][0])
-        key = entry["key"]
-        if key in keys and candidate.processes:
-            key = re.sub(
-                r"[^a-z0-9_]+", "_", f"{candidate.processes[0]}_{key}".lower()
-            ).strip("_")
-        base, number = key, 2
-        while key in keys:
-            key, number = f"{base}_{number}", number + 1
-        keys.add(key)
-        entry["key"] = key
-        draft["outputs"].append(entry)
-        seeded_from[key] = candidate.id
-    if draft["outputs"]:
-        notes.append(
-            f"seeded {len(draft['outputs'])} provisional output(s) from published "
-            "routes; descriptions, categories and scopes are first guesses"
-        )
     else:
-        notes.append("no published output route was found; the catalogue is empty")
-    return draft, seeded_from, notes
+        notes.append(
+            "the output catalogue starts empty: describe the outputs SPLICE should "
+            "expose; published routes can be browsed as evidence"
+        )
+    return draft, notes
 
 
 @dataclass(frozen=True, slots=True)
 class OutputDiscovery:
-    """Result of seeding the draft and refreshing the advisory candidates."""
+    """Result of seeding the draft."""
 
     created_draft: bool
-    pending: tuple[OutputCandidate, ...]
-    new_candidates: tuple[str, ...]
     notes: tuple[str, ...] = ()
 
 
 def discover_outputs(
-    repository_root: str | Path,
-    *,
-    example_output_tree: str | Path | None = None,
-    publish_directory: str | Path | None = None,
-    schema_version: str | None = None,
+    repository_root: str | Path, *, schema_version: str | None = None
 ) -> OutputDiscovery:
-    """Seed a populated draft if absent; refresh advisory candidates.
+    """Seed ``outputs.draft.yaml`` if it does not exist; never change it after.
 
-    The first run writes a useful catalogue into ``outputs.draft.yaml``.
-    Later runs never touch the draft: new evidence only updates the advisory
-    candidates in the sidecar, which never block validation. Candidate IDs
-    are stable hashes of key and pattern.
+    Re-running changes no byte of an existing draft (ADR-0057).
     """
     root = Path(repository_root).resolve()
-    discovered = discover_output_candidates(
-        root,
-        example_output_tree=example_output_tree,
-        publish_directory=publish_directory,
-    )
-    seed, seeded_from, notes = seed_catalogue(root, discovered, schema_version)
+    seed, notes = seed_catalogue(root, schema_version)
     created = seed_draft(
         root,
         LAYER,
         seed,
         header=(
             "nf-SPLICE output catalogue draft (authoritative, editable).",
-            "Seeded from published routes or the published catalogue: rewrite "
-            "anything,",
-            "add outputs discovery missed, or list deliberate omissions in "
-            "excluded_routes.",
+            "Describe each output SPLICE should expose; list published routes "
+            "you deliberately",
+            "leave out under excluded_routes, with a reason.",
         ),
     )
-    if not created:
-        notes = []
-    added: list[str] = []
-    seeded_ids = set(seeded_from.values()) if created else set()
-
-    def merge(state: ReviewState) -> None:
-        for item in discovered:
-            candidate = item.candidate.model_dump(mode="json")
-            evidence = [entry.model_dump(mode="json") for entry in item.evidence]
-            existing = state.candidates.get(item.candidate.id)
-            if existing is None:
-                added.append(item.candidate.id)
-                state.candidates[item.candidate.id] = {
-                    "status": SEEDED if item.candidate.id in seeded_ids else PENDING,
-                    "candidate": candidate,
-                    "evidence": evidence,
-                }
-            else:
-                if existing.get("status") == PENDING:
-                    existing["candidate"] = candidate
-                known = {
-                    json.dumps(entry, sort_keys=True)
-                    for entry in existing.get("evidence", [])
-                }
-                existing["evidence"] = existing.get("evidence", []) + [
-                    entry
-                    for entry in evidence
-                    if json.dumps(entry, sort_keys=True) not in known
-                ]
-
-    update_review_state(root, LAYER, merge)
-    return OutputDiscovery(
-        created, pending_candidates(root), tuple(sorted(added)), tuple(notes)
-    )
-
-
-def pending_candidates(repository_root: str | Path) -> tuple[OutputCandidate, ...]:
-    """Advisory candidates nobody has acted on (never a validation gate)."""
-    state = load_review_state(Path(repository_root).resolve(), LAYER)
-    return tuple(
-        OutputCandidate.model_validate(entry["candidate"])
-        for _, entry in sorted(state.candidates.items())
-        if entry.get("status") == PENDING
-    )
-
-
-def all_candidates(repository_root: str | Path) -> tuple[OutputCandidate, ...]:
-    """Every advisory candidate discovery recorded, whatever its status."""
-    state = load_review_state(Path(repository_root).resolve(), LAYER)
-    return tuple(
-        OutputCandidate.model_validate(entry["candidate"])
-        for _, entry in sorted(state.candidates.items())
-        if isinstance(entry, dict) and isinstance(entry.get("candidate"), dict)
-    )
-
-
-def candidate_evidence(
-    repository_root: str | Path, candidate_id: str
-) -> tuple[dict[str, Any], ...]:
-    """Return the evidence recorded for one candidate."""
-    state = load_review_state(Path(repository_root).resolve(), LAYER)
-    entry = state.candidates.get(candidate_id)
-    if entry is None:
-        raise LayerError(f"unknown output candidate {candidate_id!r}")
-    return tuple(entry.get("evidence", []))
+    return OutputDiscovery(created, tuple(notes) if created else ())
 
 
 def _draft(root: Path) -> dict[str, Any]:
@@ -330,13 +155,6 @@ def _draft(root: Path) -> dict[str, Any]:
         )
     data: dict[str, Any] = state.draft.data
     return data
-
-
-def _require_candidate(state: ReviewState, candidate_id: str) -> dict[str, Any]:
-    entry = state.candidates.get(candidate_id)
-    if not isinstance(entry, dict):
-        raise LayerError(f"unknown output candidate {candidate_id!r}")
-    return entry
 
 
 def _reviewed(output: ReviewedOutput | Mapping[str, Any]) -> ReviewedOutput:
@@ -375,114 +193,6 @@ def _append_ops(
             )
         )
     return operations
-
-
-def accept_output(
-    repository_root: str | Path,
-    candidate_id: str,
-    output: ReviewedOutput | Mapping[str, Any],
-    context: ChangeContext,
-) -> EditResult:
-    """Add one complete reviewed output to the draft for a candidate."""
-    root = Path(repository_root).resolve()
-    reviewed = _reviewed(output)
-    _require_candidate(load_review_state(root, LAYER), candidate_id)
-
-    def mark(state: ReviewState) -> None:
-        entry = _require_candidate(state, candidate_id)
-        entry.update({"status": ACCEPTED, "output_keys": [reviewed.key]})
-
-    return edit_draft(
-        root,
-        LAYER,
-        _append_ops(_draft(root), [reviewed]),
-        context,
-        action="accept_output",
-        review=mark,
-    )
-
-
-def reject_output(
-    repository_root: str | Path,
-    candidate_id: str,
-    reason: str,
-    context: ChangeContext,
-) -> None:
-    """Reject a candidate; the rejection survives rediscovery."""
-    if not reason.strip():
-        raise LayerError("rejecting an output candidate requires a reason")
-    root = Path(repository_root).resolve()
-    _require_candidate(load_review_state(root, LAYER), candidate_id)
-
-    def mark(state: ReviewState) -> None:
-        _require_candidate(state, candidate_id).update(
-            {"status": REJECTED, "reason": reason.strip()}
-        )
-
-    record_decision(root, LAYER, "reject_output", context, (), mark)
-
-
-def merge_outputs(
-    repository_root: str | Path,
-    candidate_ids: Sequence[str],
-    output: ReviewedOutput | Mapping[str, Any],
-    context: ChangeContext,
-) -> EditResult:
-    """Merge several candidates into one reviewed output."""
-    if len(candidate_ids) < 2 or len(set(candidate_ids)) != len(candidate_ids):
-        raise LayerError("merge requires at least two unique candidate ids")
-    root = Path(repository_root).resolve()
-    reviewed = _reviewed(output)
-    state = load_review_state(root, LAYER)
-    for item in candidate_ids:
-        _require_candidate(state, item)
-
-    def mark(review: ReviewState) -> None:
-        for index, item in enumerate(candidate_ids):
-            _require_candidate(review, item).update(
-                {
-                    "status": ACCEPTED if index == 0 else MERGED,
-                    "output_keys": [reviewed.key],
-                }
-                | ({} if index == 0 else {"merged_into": candidate_ids[0]})
-            )
-
-    return edit_draft(
-        root,
-        LAYER,
-        _append_ops(_draft(root), [reviewed]),
-        context,
-        action="merge_outputs",
-        review=mark,
-    )
-
-
-def split_output(
-    repository_root: str | Path,
-    candidate_id: str,
-    outputs: Sequence[ReviewedOutput | Mapping[str, Any]],
-    context: ChangeContext,
-) -> EditResult:
-    """Replace one broad candidate with two or more narrower reviewed outputs."""
-    if len(outputs) < 2:
-        raise LayerError("split requires at least two reviewed outputs")
-    root = Path(repository_root).resolve()
-    reviewed = [_reviewed(item) for item in outputs]
-    _require_candidate(load_review_state(root, LAYER), candidate_id)
-
-    def mark(state: ReviewState) -> None:
-        _require_candidate(state, candidate_id).update(
-            {"status": SPLIT, "output_keys": [item.key for item in reviewed]}
-        )
-
-    return edit_draft(
-        root,
-        LAYER,
-        _append_ops(_draft(root), reviewed),
-        context,
-        action="split_output",
-        review=mark,
-    )
 
 
 def set_contract_version(
@@ -574,53 +284,6 @@ def update_output(
         context,
         action="update_output",
     )
-
-
-def apply_decision_file(
-    repository_root: str | Path, decisions: Mapping[str, Any], context: ChangeContext
-) -> None:
-    """Apply explicit accept/reject/merge/split actions (CI-reproducible)."""
-    actions = decisions.get("actions")
-    if not isinstance(actions, list):
-        raise LayerError("decision file must contain an actions list")
-    for index, action in enumerate(actions):
-        if not isinstance(action, dict):
-            raise LayerError(f"decision action {index} is invalid")
-        kind = action.get("action")
-        if kind == "accept":
-            accept_output(
-                repository_root,
-                str(action.get("candidate_id")),
-                action.get("output") or {},
-                context,
-            )
-        elif kind == "reject":
-            reject_output(
-                repository_root,
-                str(action.get("candidate_id")),
-                str(action.get("reason", "")),
-                context,
-            )
-        elif kind == "merge":
-            merge_outputs(
-                repository_root,
-                [str(item) for item in action.get("candidate_ids") or []],
-                action.get("output") or {},
-                context,
-            )
-        elif kind == "split":
-            split_output(
-                repository_root,
-                str(action.get("candidate_id")),
-                list(action.get("outputs") or []),
-                context,
-            )
-        elif kind == "version":
-            set_contract_version(
-                repository_root, str(action.get("schema_version")), context
-            )
-        else:
-            raise LayerError(f"unknown output review action {kind!r}")
 
 
 def _pipeline(root: Path) -> tuple[OutputPipeline | None, list[DraftIssue]]:
@@ -758,34 +421,155 @@ def _exclusions(
     return found, issues
 
 
-def _coverage_issues(
-    root: Path,
-    patterns: Sequence[str],
-    exclusions: Sequence[tuple[str, str]],
-) -> list[DraftIssue]:
-    """Published routes no catalogue entry matches, by how firm the evidence is.
+#: Overall route coverage of the catalogue (ADR-0068).
+COMPLETE = "complete"
+INCOMPLETE = "incomplete"
+UNVERIFIED_ROUTES = "unverified"
+NOT_ASSESSED = "not_assessed"
 
-    - *Established* (confirmed from the code, with no condition, switch or
-      dynamic path): an error, ``route_not_covered``. The catalogue is the
-      union of what the pipeline publishes, so an established output may not
-      be silently missing. Resolve it by adding or correcting an output, or
-      by listing it under ``excluded_routes`` with a reason (``kind:
-      false_positive`` when static discovery is wrong).
-    - *Conditional* (a workflow branch, ``when:``, ``ext.when``, an
-      ``enabled`` switch or a dynamic path): a warning,
-      ``conditional_route_not_covered``. The union of routes still applies:
-      an example run that took another branch is no reason to drop it.
-    - *Unverified* (static analysis could not resolve the route): a warning,
-      ``route_unverified``. Never a blocker.
 
-    Excluded routes, ``versions.yml`` and unreachable code are not reported.
-    This replaces the former candidate-review gate: what matters is what the
-    catalogue covers, not whether each heuristic candidate was clicked.
+@dataclass(frozen=True, slots=True)
+class UncoveredRoute:
+    """Published paths of one process instance that no output pattern matches."""
+
+    kind: str
+    instance: str
+    globs: tuple[str, ...]
+    location: str | None = None
+    condition: str | None = None
+
+    def message(self) -> str:
+        place = f" ({self.location})" if self.location else ""
+        paths = ", ".join(self.globs)
+        if self.kind == ESTABLISHED:
+            return (
+                f"{self.instance} always publishes {len(self.globs)} path(s) no "
+                f"output pattern matches{place}: {paths}"
+            )
+        if self.kind == CONDITIONAL:
+            when = f" ({self.condition})" if self.condition else ""
+            return (
+                f"{self.instance} publishes {len(self.globs)} path(s){when}{place} "
+                f"that no output pattern matches: {paths}"
+            )
+        return (
+            f"static analysis could not establish whether {self.instance} "
+            f"publishes {paths}{place}"
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "instance": self.instance,
+            "globs": list(self.globs),
+            "location": self.location,
+            "condition": self.condition,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RouteCoverage:
+    """How far the catalogue covers the routes the pipeline publishes.
+
+    Coverage is evidence for ingestion readiness, never a validation error of
+    the entries an author declared (ADR-0068):
+
+    - *established* routes (always published, from the code) and
+      *conditional* routes (a branch, ``when:``, an ``enabled`` switch or a
+      dynamic path) that no pattern matches make coverage ``incomplete``;
+    - *unverified* routes (static analysis could not resolve them) leave
+      coverage ``unverified``: it cannot be stated complete;
+    - ``not_assessed`` when the routes could not be analysed at all.
+
+    A justified ``excluded_routes`` entry removes a route from the count.
     """
+
+    status: str
+    routes: int = 0
+    covered: int = 0
+    excluded: int = 0
+    uncovered: tuple[UncoveredRoute, ...] = ()
+    reason: str = ""
+    #: (process instance, published glob) of every covered and excluded route.
+    covered_routes: tuple[tuple[str, str], ...] = ()
+    excluded_routes: tuple[tuple[str, str], ...] = ()
+
+    def of_kind(self, kind: str) -> tuple[UncoveredRoute, ...]:
+        return tuple(item for item in self.uncovered if item.kind == kind)
+
+    def summary(self) -> str:
+        if self.status == NOT_ASSESSED:
+            return f"output coverage not assessed ({self.reason})"
+        if self.status == COMPLETE:
+            return (
+                f"every published route is covered ({self.covered} covered, "
+                f"{self.excluded} excluded with a reason)"
+            )
+        counts = ", ".join(
+            f"{len(self.of_kind(kind))} {kind}"
+            for kind in (ESTABLISHED, CONDITIONAL, UNVERIFIED)
+            if self.of_kind(kind)
+        )
+        if self.status == INCOMPLETE:
+            return f"output coverage incomplete: {counts} route(s) not in the catalogue"
+        return f"output coverage not established: {counts} route(s) to check"
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "status": self.status,
+            "summary": self.summary(),
+            "routes": self.routes,
+            "covered": self.covered,
+            "excluded": self.excluded,
+            "uncovered": [item.to_json() for item in self.uncovered],
+            "reason": self.reason,
+        }
+
+
+def _draft_patterns(
+    data: Mapping[str, Any],
+) -> tuple[list[str], list[tuple[str, str]]]:
+    raw_outputs = data.get("outputs") if isinstance(data.get("outputs"), list) else []
+    patterns = [
+        str(pattern)
+        for item in raw_outputs or []
+        if isinstance(item, Mapping)
+        for pattern in item.get("path_patterns") or []
+        if isinstance(pattern, str)
+    ]
+    exclusions, _issues = _exclusions(data)
+    return patterns, exclusions
+
+
+def route_coverage(
+    repository_root: str | Path,
+    *,
+    patterns: Sequence[str] | None = None,
+    exclusions: Sequence[tuple[str, str]] | None = None,
+) -> RouteCoverage:
+    """Classify every published route as covered, excluded or uncovered.
+
+    ``patterns`` and ``exclusions`` default to the draft's; a caller assessing
+    a published bundle passes the published patterns. Read-only and offline.
+    """
+    root = Path(repository_root).resolve()
+    if patterns is None or exclusions is None:
+        state = read_layer(root, LAYER)
+        if state.draft is None or not isinstance(state.draft.data, dict):
+            if patterns is None:
+                return RouteCoverage(NOT_ASSESSED, reason="no readable output draft")
+            data: Mapping[str, Any] = {}
+        else:
+            data = strip_marker(state.draft.data)
+        draft_patterns, draft_exclusions = _draft_patterns(data)
+        patterns = draft_patterns if patterns is None else patterns
+        exclusions = draft_exclusions if exclusions is None else exclusions
     try:
         analysis = analyse_routes(root)
-    except (OSError, ValueError):
-        return []
+    except (OSError, ValueError) as error:
+        return RouteCoverage(
+            NOT_ASSESSED, reason=f"routes could not be analysed: {error}"
+        )
     compiled = []
     for pattern in patterns:
         try:
@@ -807,6 +591,8 @@ def _coverage_issues(
     where: dict[str, str] = {}
     conditions: dict[str, str] = {}
     seen: set[str] = set()
+    covered_routes: list[tuple[str, str]] = []
+    excluded_routes: list[tuple[str, str]] = []
     for route in analysis.published:
         glob = route.published_glob
         if (
@@ -814,12 +600,16 @@ def _coverage_issues(
             or glob in seen
             or route.status is CoverageStatus.NOT_REACHABLE
             or glob.endswith("versions.yml")
-            or glob in excluded_globs
-            or route.instance in excluded_processes
-            or route.process in excluded_processes
         ):
             continue
         seen.add(glob)
+        if (
+            glob in excluded_globs
+            or route.instance in excluded_processes
+            or route.process in excluded_processes
+        ):
+            excluded_routes.append((route.instance, glob))
+            continue
         examples = [example_path(glob)]
         if glob.startswith("*/"):
             examples.extend(
@@ -828,6 +618,7 @@ def _coverage_issues(
         if any(
             expression.match(sample) for expression in compiled for sample in examples
         ):
+            covered_routes.append((route.instance, glob))
             continue
         kind = route_class(route)
         uncovered.setdefault((kind, route.instance), []).append(glob)
@@ -838,49 +629,33 @@ def _coverage_issues(
             conditions.setdefault(route.instance, "when " + " and ".join(path)[:160])
         elif route.notes:
             conditions.setdefault(route.instance, route.notes[0])
-    found = []
-    for (kind, instance), globs in sorted(uncovered.items()):
-        place = f" ({where[instance]})" if instance in where else ""
-        paths = ", ".join(sorted(globs))
-        if kind == ESTABLISHED:
-            found.append(
-                issue(
-                    LAYER,
-                    "/outputs",
-                    "route_not_covered",
-                    f"{instance} always publishes {len(globs)} path(s) no output "
-                    f"pattern matches{place}: {paths}. Add or correct outputs for "
-                    "them, or list them under excluded_routes with a reason (kind: "
-                    "intermediate, false_positive or out_of_scope)",
-                )
-            )
-        elif kind == CONDITIONAL:
-            when = f" ({conditions[instance]})" if instance in conditions else ""
-            found.append(
-                issue(
-                    LAYER,
-                    "/outputs",
-                    "conditional_route_not_covered",
-                    f"{instance} publishes {len(globs)} path(s){when}{place} that no "
-                    f"output pattern matches: {paths}. The catalogue is the union "
-                    "of every route; add outputs for them, or exclude them with a "
-                    "reason",
-                    Severity.WARNING,
-                )
-            )
-        else:
-            found.append(
-                issue(
-                    LAYER,
-                    "/outputs",
-                    "route_unverified",
-                    f"static analysis could not establish whether {instance} "
-                    f"publishes {paths}{place}; check the code and catalogue or "
-                    "exclude it if it is published",
-                    Severity.WARNING,
-                )
-            )
-    return found
+    found = tuple(
+        UncoveredRoute(
+            kind,
+            instance,
+            tuple(sorted(globs)),
+            where.get(instance),
+            conditions.get(instance) if kind == CONDITIONAL else None,
+        )
+        for (kind, instance), globs in sorted(uncovered.items())
+    )
+    kinds = {item.kind for item in found}
+    status = (
+        INCOMPLETE
+        if kinds & {ESTABLISHED, CONDITIONAL}
+        else UNVERIFIED_ROUTES
+        if kinds
+        else COMPLETE
+    )
+    return RouteCoverage(
+        status,
+        len(seen),
+        len(covered_routes),
+        len(excluded_routes),
+        found,
+        covered_routes=tuple(covered_routes),
+        excluded_routes=tuple(excluded_routes),
+    )
 
 
 def _contract_input(
@@ -911,7 +686,12 @@ def _contract_input(
         raw_outputs = []
     if not raw_outputs:
         issues.append(
-            issue(LAYER, "/outputs", "missing_required", "review at least one output")
+            issue(
+                LAYER,
+                "/outputs",
+                "missing_required",
+                "describe at least one output SPLICE should expose",
+            )
         )
     seen: dict[str, int] = {}
     for index, item in enumerate(raw_outputs):
@@ -975,17 +755,10 @@ def _contract_input(
         categories[label] = CategoryDetails(
             title=details.get("title"), description=details.get("description")
         )
-    exclusions, exclusion_issues = _exclusions(data)
+    # Route coverage is ingestion-readiness evidence (route_coverage), not a
+    # validation error of the declared entries (ADR-0068).
+    _exclusions_found, exclusion_issues = _exclusions(data)
     issues.extend(exclusion_issues)
-    # Every pattern the author wrote counts, even on an unfinished entry.
-    patterns = [
-        str(pattern)
-        for item in raw_outputs
-        if isinstance(item, Mapping)
-        for pattern in item.get("path_patterns") or []
-        if isinstance(pattern, str)
-    ]
-    issues.extend(_coverage_issues(root, patterns, exclusions))
     pipeline, identity_issues = _pipeline(root)
     issues.extend(identity_issues)
     if pipeline is None or any(item.severity is Severity.ERROR for item in issues):
@@ -1016,8 +789,6 @@ def validate_outputs_draft(repository_root: str | Path) -> LayerValidation:
         issue(LAYER, "", "yaml_warning", warning, Severity.WARNING)
         for warning in state.draft.warnings
     ]
-    # Advisory candidates in the sidecar never gate the catalogue (ADR-0057);
-    # route coverage is checked against the catalogue's actual content.
     contract, contract_issues = _contract_input(root, strip_marker(state.draft.data))
     issues.extend(contract_issues)
     if contract is None or any(item.severity is Severity.ERROR for item in issues):
@@ -1071,8 +842,3 @@ def preview_outputs(repository_root: str | Path, output_format: str = "json") ->
     if name is None:
         raise LayerError("preview format must be json or yaml")
     return validation.files[name].decode("utf-8")
-
-
-def candidate_digest(candidate_id: str) -> str:
-    """Short display form of a stable candidate ID."""
-    return hashlib.sha256(candidate_id.encode()).hexdigest()[:8]

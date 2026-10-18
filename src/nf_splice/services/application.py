@@ -102,23 +102,13 @@ class ApplicationService:
     ) -> output_layer.OutputDiscovery:
         return output_layer.discover_outputs(repository, **options)
 
-    def accept_output(
+    def add_output(
         self,
         repository: str | Path,
-        candidate_id: str,
         output: Mapping[str, Any],
         context: ChangeContext,
     ) -> EditResult:
-        return output_layer.accept_output(repository, candidate_id, output, context)
-
-    def reject_output(
-        self,
-        repository: str | Path,
-        candidate_id: str,
-        reason: str,
-        context: ChangeContext,
-    ) -> None:
-        output_layer.reject_output(repository, candidate_id, reason, context)
+        return output_layer.add_output(repository, output, context)
 
     def discover_components(self, repository: str | Path) -> object:
         return component_layer.discover_components(repository)

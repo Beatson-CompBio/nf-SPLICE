@@ -7,7 +7,9 @@ these functions instead of duplicating business rules (ADR-0014).
 
 from __future__ import annotations
 
+import datetime
 import json
+import shutil
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -37,6 +39,7 @@ from nf_splice.layers.inputs import SOURCE as INPUT_SOURCE
 from nf_splice.layers.inputs import import_inputs
 from nf_splice.layers.outputs import discover_outputs
 from nf_splice.layers.provenance import seed_provenance
+from nf_splice.layout import DRAFTS_DIR, PRIVATE_DIR, REVIEWS_DIR
 from nf_splice.services.lifecycle import (
     JOURNAL,
     ArtifactStatus,
@@ -122,8 +125,6 @@ def initialise(
     *,
     identity: Mapping[str, Any] | None = None,
     accept_detected: bool = False,
-    example_output_tree: str | Path | None = None,
-    publish_directory: str | Path | None = None,
     contract_version: str | None = None,
 ) -> InitialisationReport:
     """Seed every applicable draft from evidence; existing drafts are kept."""
@@ -143,12 +144,7 @@ def initialise(
             "complete by hand"
         )
     import_inputs(root)
-    outputs = discover_outputs(
-        root,
-        example_output_tree=example_output_tree,
-        publish_directory=publish_directory,
-        schema_version=contract_version,
-    )
+    outputs = discover_outputs(root, schema_version=contract_version)
     notes.extend(outputs.notes)
     if not (root / "modules.json").is_file():
         notes.append(
@@ -170,6 +166,38 @@ def initialise(
         confirmed=confirmed,
         notes=tuple(notes),
     )
+
+
+@dataclass(frozen=True, slots=True)
+class FreshStart:
+    """Where the earlier drafts were backed up, and what was recreated."""
+
+    backup: str
+    report: InitialisationReport
+
+
+def start_fresh(repository_root: str | Path, context: ChangeContext) -> FreshStart:
+    """Back up every draft, config and review record, then initialise again.
+
+    For drafts made by an earlier version that seeded guessed entries: the
+    old files are copied to ``.splice-local/backups/drafts-<time>/`` first,
+    and only then removed and recreated from exact metadata. ``splice/`` is
+    never touched. The caller must have the person's explicit confirmation.
+    """
+    root = Path(repository_root).resolve()
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = root / PRIVATE_DIR / "backups" / f"drafts-{stamp}"
+    backup.mkdir(parents=True, exist_ok=False)
+    for relative in (DRAFTS_DIR, REVIEWS_DIR):
+        source = root / relative
+        if source.is_dir():
+            shutil.copytree(source, backup / Path(relative).name, symlinks=True)
+    for relative in (DRAFTS_DIR, REVIEWS_DIR):
+        source = root / relative
+        if source.is_dir():
+            shutil.rmtree(source)
+    report = initialise(root, context)
+    return FreshStart(backup.relative_to(root).as_posix(), report)
 
 
 def plan_patch(

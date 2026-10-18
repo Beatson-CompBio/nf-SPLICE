@@ -15,7 +15,7 @@ runner = CliRunner()
 
 def _ok(root: Path, *arguments: str) -> str:
     result = runner.invoke(
-        app, ["--actor", "Ada", *arguments, "--repository", str(root)]
+        app, ["--user", "Ada", *arguments, "--repository", str(root)]
     )
     assert result.exit_code == 0, result.output
     return result.output
@@ -50,7 +50,16 @@ def author_with_cli(root: Path) -> None:
         "--set",
         "outdir=platform",
     )
-    # The seeded catalogue already holds the published route; finish it by key.
+    # The catalogue starts empty (ADR-0068): describe the output, then refine it.
+    output = root / ".splice-local" / "report-output.yaml"
+    output.parent.mkdir(exist_ok=True)
+    output.write_text(
+        "key: report\ntitle: Report\ndescription: Draft.\ncategory: report\n"
+        "formats: [html]\nscopes: [job]\nentity_types: [file]\n"
+        "path_patterns: ['^reports/report\\.html$']\n",
+        encoding="utf-8",
+    )
+    _ok(root, "configure", "outputs", "--add-output", str(output))
     _ok(
         root,
         "configure",

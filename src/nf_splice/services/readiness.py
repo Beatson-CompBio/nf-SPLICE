@@ -32,6 +32,7 @@ NOT_ASSESSED = "not_assessed"
 DIMENSIONS = (
     "contracts",
     "scientific_classification",
+    "output_coverage",
     "runtime_parameters",
     "deployment",
     "provenance",
@@ -377,7 +378,48 @@ def assess_readiness(
     )
     if not output_types:
         dimensions["scientific_classification"].block("the output catalogue is empty")
+    _coverage(root, output_types, dimensions["output_coverage"])
     return Readiness(dimensions)
+
+
+def _coverage(root: Path, output_types: list[Any], dimension: Dimension) -> None:
+    """Whether the published catalogue covers the routes the code publishes.
+
+    Route coverage never blocks publication: a deliberately limited, valid
+    catalogue may be published, but it is not ingestion ready while coverage
+    is incomplete or cannot be established (ADR-0068). Exclusions are
+    authored in the private output draft; without it they are unknown.
+    """
+    from nf_splice.layers import outputs as output_layer
+    from nf_splice.layers.base import read_layer
+
+    patterns = [
+        str(pattern)
+        for item in output_types
+        if isinstance(item, dict)
+        for pattern in item.get("path_patterns") or []
+    ]
+    state = read_layer(root, output_layer.LAYER)
+    if state.draft is None or not isinstance(state.draft.data, dict):
+        dimension.status = NOT_ASSESSED
+        dimension.notes.append(
+            "route exclusions are recorded in the private output draft, which is "
+            "not available here"
+        )
+        return
+    coverage = output_layer.route_coverage(root, patterns=patterns)
+    if coverage.status == output_layer.COMPLETE:
+        dimension.notes.append(coverage.summary())
+        return
+    if coverage.status == output_layer.INCOMPLETE:
+        dimension.block(
+            coverage.summary().removeprefix("output coverage ")
+            + "; add outputs for them or exclude them with a reason "
+            "(nf-splice draft routes lists them)"
+        )
+        return
+    dimension.status = NOT_ASSESSED
+    dimension.notes.append(coverage.summary().removeprefix("output coverage "))
 
 
 # ------------------------------------------------------------- lifecycle

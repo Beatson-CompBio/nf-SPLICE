@@ -39,7 +39,6 @@ from nf_splice.layers.bundle import add_assay_capability
 from nf_splice.layers.execution import CONFIGS_DIR
 from nf_splice.layers.inputs import iter_parameters, sync_identity
 from nf_splice.layers.provenance import generate_minimal
-from nf_splice.services.assay_discovery import assess_assays
 from nf_splice.services.lifecycle import promote, validate_layer
 from nf_splice.services.readiness import INGESTION_READY, lifecycle
 from nf_splice.services.workspace import initialise
@@ -61,14 +60,16 @@ SPATIAL_ACCESS = {
     "platform": ["user"],
     "segmentation_model": ["user"],
 }
-#: What each seeded output means: title, description, formats, scope and,
-#: where the seed guessed wrong, the corrected pattern.
-SPATIAL_OUTPUTS: dict[str, tuple[str, str, list[str], str, str | None]] = {
+#: The catalogue a person writes for the imaging pipeline (ADR-0068: the
+#: draft starts empty): title, description, formats, scope, category and the
+#: published path, read from the routes.
+SPATIAL_OUTPUTS: dict[str, tuple[str, str, list[str], str, str, str]] = {
     "matrix": (
         "Cell-by-gene matrix",
         "Transcript counts per segmented cell for one slide region.",
         ["csv"],
         "sample",
+        "quantification",
         r"^quantification/{sample}\.cell_by_gene\.csv$",
     ),
     "report": (
@@ -76,28 +77,32 @@ SPATIAL_OUTPUTS: dict[str, tuple[str, str, list[str], str, str | None]] = {
         "Segmentation and quantification summary for the whole job.",
         ["html"],
         "job",
-        None,
+        "report",
+        r"^report/spatial_report\.html$",
     ),
     "xenium_preprocess_morphology": (
         "Xenium morphology image",
         "Morphology image of one Xenium region.",
         ["ome-tiff"],
         "sample",
-        None,
+        "preprocess",
+        r"^preprocess/xenium/{sample}\.morphology\.ome\.tif$",
     ),
     "cosmx_preprocess_morphology": (
         "CosMx morphology image",
         "Morphology image of one CosMx region.",
         ["ome-tiff"],
         "sample",
-        None,
+        "preprocess",
+        r"^preprocess/cosmx/{sample}\.morphology\.ome\.tif$",
     ),
     "masks": (
         "Cell masks",
         "Cellpose segmentation masks of one region.",
         ["ome-tiff"],
         "sample",
-        None,
+        "segmentation",
+        r"^segmentation/{sample}_masks\.ome\.tif$",
     ),
 }
 K8S_PROFILE = {
@@ -139,13 +144,27 @@ def _draft(root: Path, layer: str) -> dict[str, Any]:
 
 
 def _author_outputs(data: dict[str, Any]) -> None:
-    for item in data["outputs"]:
-        title, description, formats, scope, pattern = SPATIAL_OUTPUTS[item["key"]]
-        item.update(
-            title=title, description=description, formats=formats, scopes=[scope]
-        )
-        if pattern is not None:
-            item["path_patterns"] = [pattern]
+    data["outputs"] = [
+        {
+            "key": key,
+            "title": title,
+            "description": description,
+            "category": category,
+            "formats": formats,
+            "scopes": [scope],
+            "entity_types": ["file"],
+            "path_patterns": [pattern],
+        }
+        for key, (
+            title,
+            description,
+            formats,
+            scope,
+            category,
+            pattern,
+        ) in SPATIAL_OUTPUTS.items()
+    ]
+    data["contract"] = {"schema_version": "1.0.0"}
 
 
 def author_spatial(root: Path) -> None:
@@ -209,24 +228,14 @@ def test_spatial_imaging_seeds_honestly_with_no_borrowed_defaults(
         "execution-profiles",
         "provenance",
     }
-    # Assays come from the documentation, not from tool names, and both
-    # platforms of the alternative routes are found.
-    assessment = assess_assays(root)
-    found = {
-        item.registered_code
-        for item in assessment.candidates
-        if item.registered_code and item.status == "documented"
-    }
-    assert {"xenium_rna", "cosmx_rna"} <= found
+    # Nothing scientific is inferred (ADR-0069): no assay is declared and no
+    # output is guessed; both platform routes are evidence to browse.
     assert not _draft(root, "bundle")["pipeline"]["assay_capabilities"]
-    # Categories are the pipeline's own directories; formats are open.
-    outputs = {item["key"]: item for item in _draft(root, "outputs")["outputs"]}
-    assert outputs["masks"]["category"] == "segmentation"
-    assert outputs["matrix"]["category"] == "quantification"
-    # Both platform routes are seeded: the catalogue is their union.
-    assert {"xenium_preprocess_morphology", "cosmx_preprocess_morphology"} <= set(
-        outputs
-    )
+    assert _draft(root, "outputs")["outputs"] == []
+    from nf_splice.layers.outputs import route_coverage
+
+    uncovered = {item.instance for item in route_coverage(root).uncovered}
+    assert {"XENIUM_PREPROCESS", "COSMX_PREPROCESS"} <= uncovered or len(uncovered) >= 2
     components = {
         item["name"]: item for item in _draft(root, "components")["components"]
     }
@@ -277,23 +286,15 @@ def test_spatial_imaging_publishes_all_six_layers_ready_for_ingestion(
 
 
 def test_assays_are_never_inferred_from_familiar_tools(tmp_path: Path) -> None:
+    """Manual mode runs no scientific inference at all (ADR-0069)."""
     root = _copy(SPATIAL, tmp_path, "undocumented")
-    (root / "README.md").unlink()
-    shutil.rmtree(root / "docs")
-    config = root / "nextflow.config"
-    config.write_text(
-        config.read_text(encoding="utf-8").replace(
-            "Cell segmentation and cell-by-gene matrices for imaging-based spatial "
-            "transcriptomics.",
-            "Cell segmentation and quantification.",
-        ),
-        encoding="utf-8",
-    )
     initialise(root, ADA)
-    assessment = assess_assays(root)
-    documented = [item for item in assessment.candidates if item.status == "documented"]
-    assert not documented
     assert not _draft(root, "bundle")["pipeline"]["assay_capabilities"]
+    issues = {item.code for item in validate_layer(root, "bundle").issues}
+    assert "missing_assay_classification" in issues
+    import nf_splice.services as services
+
+    assert not hasattr(services, "assay_discovery")
 
 
 def test_a_minimal_custom_pipeline_is_handled_honestly(tmp_path: Path) -> None:
@@ -375,15 +376,21 @@ def test_a_minimal_custom_pipeline_is_handled_honestly(tmp_path: Path) -> None:
     edit_draft_file(root, "inputs", contract)
 
     def catalogue(data: dict[str, Any]) -> None:
+        # The catalogue starts empty (ADR-0068): describe the one output.
+        assert data["outputs"] == []
         data["contract"]["schema_version"] = "1.0.0"
-        data["outputs"][0].update(
-            title="Slide tiles",
-            description="Tiles of one whole-slide image as a Zarr store.",
-            formats=["zarr"],
-            entity_types=["directory"],
-            scopes=["sample"],
-            path_patterns=[r"^tiles/{sample}\.tiles\.zarr$"],
-        )
+        data["outputs"] = [
+            {
+                "key": "tiles",
+                "title": "Slide tiles",
+                "description": "Tiles of one whole-slide image as a Zarr store.",
+                "category": "tiles",
+                "formats": ["zarr"],
+                "entity_types": ["directory"],
+                "scopes": ["sample"],
+                "path_patterns": [r"^tiles/{sample}\.tiles\.zarr$"],
+            }
+        ]
 
     edit_draft_file(root, "outputs", catalogue)
     edit_draft_file(
@@ -456,6 +463,7 @@ def spatial_agent(request: TurnRequest, tools: ToolInvoker) -> list[str]:
                 "data": catalogue["outputs"],
             },
         )
+        tools.call("set_output_contract_version", {"version": "1.0.0"})
     elif stage == "components":
         tools.call("set_image_policy", {"require_downloadable": False})
     elif stage == "profiles":
@@ -554,14 +562,17 @@ def test_an_autonomous_run_never_guesses_an_undocumented_assay(
 
     def cautious(request: TurnRequest, tools: ToolInvoker) -> list[str]:
         if request.stage == "identity":
-            assessment = tools.call("assess_assays", {})
-            assert assessment["success"]
+            mentions = tools.call("list_assay_candidates", {})
+            assert mentions["success"]
             tools.call(
                 "record_blocker",
                 {
                     "decision": "Which assays the pipeline processes",
                     "artefact": ".splice-local/drafts/bundle.draft.yaml",
-                    "attempted_checks": ["assess_assays", "read_source main.nf"],
+                    "attempted_checks": [
+                        "list_assay_candidates",
+                        "read_source main.nf",
+                    ],
                     "suggested_resolution": "the developer names the slide stain "
                     "and imaging method",
                 },

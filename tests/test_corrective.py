@@ -478,18 +478,44 @@ def _codes(root: Path) -> dict[str, list[Any]]:
     return found
 
 
-def test_an_established_uncovered_route_blocks_until_resolved(tmp_path: Path) -> None:
+def _coverage(root: Path) -> Any:
+    from nf_splice.layers.outputs import route_coverage
+
+    return route_coverage(root)
+
+
+def _coverage_dimension(root: Path) -> dict[str, Any]:
+    from nf_splice.services.readiness import lifecycle
+
+    state = lifecycle(root)
+    dimension: dict[str, Any] = state.readiness.to_json()["dimensions"][
+        "output_coverage"
+    ]
+    return dimension
+
+
+def test_an_established_uncovered_route_is_readiness_not_a_publication_error(
+    tmp_path: Path,
+) -> None:
+    """ADR-0068: a limited, valid catalogue publishes; coverage stays honest."""
     root = copy_fixture(tmp_path)
     author_all(root)
     _drop_output(
         root,
         lambda item: any("multiqc" in pattern for pattern in item["path_patterns"]),
     )
+    # The declared entries validate: no route finding is a draft error.
     found = _codes(root)
-    established = found["route_not_covered"]
-    assert established[0].severity.value == "error"
-    assert "MULTIQC always publishes" in established[0].message
-    assert "false_positive" in established[0].message
+    assert not any("route" in code for code in found), found
+    coverage = _coverage(root)
+    assert coverage.status == "incomplete"
+    established = [item for item in coverage.uncovered if item.kind == "established"]
+    assert established and established[0].instance == "MULTIQC"
+    assert "always publishes" in established[0].message()
+    build(root)
+    dimension = _coverage_dimension(root)
+    assert dimension["status"] == "blocked"
+    assert "established" in dimension["blockers"][0]
 
     def exclude(kind: str | None) -> None:
         def mutate(data: dict[str, Any]) -> None:
@@ -503,27 +529,36 @@ def test_an_established_uncovered_route_blocks_until_resolved(tmp_path: Path) ->
     exclude("not_a_kind")
     assert "invalid_value" in _codes(root)
     exclude("false_positive")
-    assert "route_not_covered" not in _codes(root)
+    assert "invalid_value" not in _codes(root)
+    coverage = _coverage(root)
+    assert coverage.status == "complete" and coverage.excluded >= 1
+    assert _coverage_dimension(root)["status"] == "ready"
 
 
-def test_alternative_routes_stay_in_the_catalogue_as_classified_warnings(
+def test_alternative_routes_are_incomplete_coverage_and_still_publish(
     tmp_path: Path,
 ) -> None:
     root = copy_fixture(tmp_path)
     author_all(root)
     _drop_output(root, lambda item: item["key"] == "hisat2_alignment")
-    found = _codes(root)
-    assert "route_not_covered" not in found
-    conditional = found["conditional_route_not_covered"]
-    assert conditional[0].severity.value == "warning"
-    assert "HISAT2_ALIGN" in conditional[0].message
-    assert "union of every route" in conditional[0].message
-    # No approval queue: the draft still builds with the warning.
+    assert not any("route" in code for code in _codes(root))
+    coverage = _coverage(root)
+    conditional = [item for item in coverage.uncovered if item.kind == "conditional"]
+    assert conditional and conditional[0].instance == "HISAT2_ALIGN"
+    assert coverage.status == "incomplete"
+    # No approval queue and no publication blocker: the draft builds.
     build(root)
     assert (root / "splice" / "outputs.schema.json").is_file()
+    dimension = _coverage_dimension(root)
+    assert dimension["status"] == "blocked"
+    from nf_splice.services.readiness import lifecycle
+
+    state = lifecycle(root)
+    assert state.published and not state.ingestion_ready
+    assert any("output coverage" in item for item in state.reasons())
 
 
-def test_unresolvable_routes_are_unverified_warnings_never_blockers(
+def test_unresolvable_routes_leave_coverage_unverified_never_blocking(
     tmp_path: Path,
 ) -> None:
     root = copy_fixture(tmp_path)
@@ -547,10 +582,11 @@ def test_unresolvable_routes_are_unverified_warnings_never_blockers(
         + text.replace("workflow {", "workflow {\n    DYNAMIC()", 1),
         encoding="utf-8",
     )
-    found = _codes(root)
-    unverified = found.get("route_unverified", [])
-    assert all(item.severity.value == "warning" for item in unverified)
-    assert "route_not_covered" not in found
+    assert not any("route" in code for code in _codes(root))
+    coverage = _coverage(root)
+    assert all(item.kind != "established" for item in coverage.uncovered)
+    if coverage.uncovered:
+        assert coverage.status in {"unverified", "incomplete"}
 
 
 def test_an_outputs_review_must_address_uncovered_alternative_routes(
@@ -719,9 +755,9 @@ def test_conda_only_components_block_deployment_under_a_container_engine(
 
 
 @pytest.mark.asyncio
-async def test_the_wizard_states_the_same_lifecycle_as_the_cli(tmp_path: Path) -> None:
-    from textual.widgets import Static
-
+async def test_the_workspace_states_the_same_lifecycle_as_the_cli(
+    tmp_path: Path,
+) -> None:
     from nf_splice.interfaces.tui import NfSpliceApp
     from tui_helpers import settle
 
@@ -731,13 +767,15 @@ async def test_the_wizard_states_the_same_lifecycle_as_the_cli(tmp_path: Path) -
     build(root)
     status = runner.invoke(app, ["status", "--repository", str(root)])
     assert "Published, but not ready for SPLICE ingestion." in status.output
-    wizard = NfSpliceApp(root)
-    async with wizard.run_test(size=(160, 60)) as pilot:
-        await settle(wizard, pilot)
-        wizard.show_step("done")
-        await settle(wizard, pilot)
-        report = str(wizard.query_one("#done-report", Static).render())
-    assert "Published, but not ready for SPLICE ingestion." in report
+    workspace = NfSpliceApp(root, start="review")
+    async with workspace.run_test(size=(160, 60)) as pilot:
+        await settle(workspace, pilot)
+        workspace.request_readiness()
+        await settle(workspace, pilot)
+        view = workspace.current_page()
+        assert view is not None
+        report = view.readiness_text()  # type: ignore[attr-defined]
+    assert "Published, but not ready for SPLICE ingestion" in report
     assert "runtime parameters: input" in report
 
 
