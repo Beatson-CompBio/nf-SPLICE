@@ -33,7 +33,7 @@ def test_a_contract_version_needs_its_basis_and_a_proposal_is_flagged(
     operation = OPERATIONS["set_output_contract_version"]
     assert set(operation.input_schema["required"]) == {"version", "basis", "rationale"}
     # Claiming a published version that does not exist is refused.
-    with pytest.raises(ValueError, match="splice/outputs.yaml"):
+    with pytest.raises(ValueError, match=r"splice/outputs\.yaml"):
         operation.handler(
             _context(root),
             {"version": "1.0.0", "basis": "published_catalogue", "rationale": "x"},
