@@ -634,7 +634,7 @@ async def test_a_narrow_takeover_edits_the_field_and_resumes_the_same_session(
         await pilot.pause()
         assert not dock.display
         assert app.screen.query_one("#identity-version", Input).value == "9.9.9"
-        app.current_page().discard_unsaved()  # type: ignore[union-attr]
+        app.current_page().discard_unsaved()
         app.action_reload()
         await settle(app, pilot)
         # The person decides; the agent continues the same session.
