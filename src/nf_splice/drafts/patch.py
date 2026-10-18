@@ -234,7 +234,9 @@ def _is_insertion(operation: PatchOp) -> bool:
 
 
 def merge(
-    document: JsonValue, operations: Sequence[PatchOp]
+    document: JsonValue,
+    operations: Sequence[PatchOp],
+    replayed: list[PatchConflict] | None = None,
 ) -> tuple[JsonValue, list[PatchConflict]]:
     """Apply operations to a copy and report every overlapping change.
 
@@ -244,6 +246,11 @@ def merge(
     treated as applied. ``replace`` and ``remove`` without a base apply to
     whatever is there now, while ``add`` without a base still requires a free
     location. List insertions are positional and need only an existing parent.
+
+    ``replayed``, when given, collects the operations the document already
+    reflects whose supplied base does not match what is there. The patch
+    still applies — a replay changes nothing — but a caller who named a base
+    learns it was wrong instead of being silently confirmed.
     """
     working = copy.deepcopy(document)
     found: list[PatchConflict] = []
@@ -261,6 +268,14 @@ def merge(
         actual = resolve(working, operation.path)
         target = ABSENT if operation.op == "remove" else operation.value
         if actual == target and type(actual) is type(target):
+            if (
+                replayed is not None
+                and operation.expected is not ABSENT
+                and not _expected_matches(operation.expected, actual)
+            ):
+                replayed.append(
+                    PatchConflict(operation.path, operation.expected, actual)
+                )
             continue
         if operation.expected is ABSENT:
             if operation.op == "add" and actual is not ABSENT:
@@ -281,6 +296,32 @@ def conflicts(
 ) -> list[PatchConflict]:
     """Return the conflicts ``operations`` would meet on ``document``."""
     return merge(document, operations)[1]
+
+
+def replay_note(document: JsonValue, operations: Sequence[PatchOp]) -> str | None:
+    """Explain a patch that changed nothing because a base was stale.
+
+    Replays stay tolerated (the draft already holds the planned value, so
+    rewriting it would be noise), but a caller who named a base that does
+    not match what is there has a wrong model of the file and must hear
+    so. ``None`` means every replayed operation matched its base or
+    named none.
+    """
+    replayed: list[PatchConflict] = []
+    merge(document, operations, replayed=replayed)
+    if not replayed:
+        return None
+    details = "; ".join(
+        redact(
+            f"{item.path or '/'} is already as planned, but not from your "
+            f"base (expected {_short(item.expected)}, found {_short(item.actual)})"
+        )
+        for item in replayed
+    )
+    return (
+        f"no text change: {details}; the draft already holds what you asked "
+        "for, so nothing was rewritten"
+    )
 
 
 def apply(document: JsonValue, operations: Sequence[PatchOp]) -> JsonValue:

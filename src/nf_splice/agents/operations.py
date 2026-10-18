@@ -339,14 +339,22 @@ def _read_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     text = "\n".join(
         f"{number}: {line}" for number, line in enumerate(selected, start=start)
     )
-    return _untrusted(
-        {
-            "path": str(a["path"]),
-            "lines": [start, min(end, len(lines))],
-            "total_lines": len(lines),
-            "text": redact(text[:_MAX_READ_BYTES]),
-        }
-    )
+    data: dict[str, Any] = {
+        "path": str(a["path"]),
+        "lines": [start, min(end, len(lines))],
+        "total_lines": len(lines),
+        "text": redact(text[:_MAX_READ_BYTES]),
+    }
+    if end < len(lines):
+        # The toolbox clip (24 000 chars) fires before this byte cap is ever
+        # reached through an agent, and its hint names these same arguments;
+        # within a window that does fit, say plainly that more lines exist.
+        data["next_start_line"] = end + 1
+        data["note"] = (
+            f"lines {start}-{min(end, len(lines))} of {len(lines)}: call again "
+            f"with start_line={end + 1} to continue"
+        )
+    return _untrusted(data)
 
 
 def _glob_matches(name: str, relative: str, glob: str) -> bool:
@@ -785,7 +793,9 @@ def _add_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError(
             "an earlier SPLICE bundle or nf-splice's drafts are not evidence of "
             f"the assays a pipeline supports ({', '.join(circular[:3])}); cite "
-            "the pipeline's code, configuration or documentation"
+            "the pipeline's code, configuration or documentation. "
+            "read_draft(layer=...) shows what the draft claims, which is your "
+            "own output to inspect, never independent evidence"
         )
 
     return _edit(
@@ -1002,14 +1012,25 @@ def _patch(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
                 "assay capabilities change only through add_assay_capability and "
                 "remove_assay_capability, which check them against the vocabulary"
             )
-    return _edit(
-        apply_patch(
-            ctx.root,
-            layer_spec(str(a["layer"])).name,
-            [dict(item) for item in a["operations"]],
-            ctx.change,
-        )
+    operations = [dict(item) for item in a["operations"]]
+    result = apply_patch(
+        ctx.root,
+        layer_spec(str(a["layer"])).name,
+        operations,
+        ctx.change,
     )
+    payload = _edit(result)
+    if not result.wrote and isinstance(result.data, dict):
+        from nf_splice.drafts.patch import PatchOp, replay_note
+
+        # A patch that changed nothing because the draft already held the
+        # values is tolerated; a caller who named wrong bases must hear so.
+        note = replay_note(
+            result.data, [PatchOp.from_json(item) for item in operations]
+        )
+        if note:
+            payload["note"] = note
+    return payload
 
 
 def _build(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:

@@ -124,11 +124,16 @@ def _explain_git_error(arguments: list[str], stderr: str) -> str:
 
 
 def _is_repository(path: Path) -> bool:
+    """Whether ``path`` is itself the root of a Git working tree.
+
+    ``--is-inside-work-tree`` is also true for a folder merely contained by
+    a checkout (a workspace in an evaluation folder, a pipeline in a
+    monorepo); such a folder must not inherit an outer repository's
+    revision, branch or uncommitted list, so only the repository's own root
+    counts.
+    """
     try:
-        return (
-            _git(["-C", str(path), "rev-parse", "--is-inside-work-tree"]).strip()
-            == "true"
-        )
+        return _top_level(path).resolve() == path.resolve()
     except SourceError:
         return False
 

@@ -39,6 +39,10 @@ _IGNORED_DIRECTORIES = {
     ".venv",
     "__pycache__",
     "node_modules",
+    # tests/ holds nf-test assets and fixture pipelines: they configure and
+    # verify runs, they are not the pipeline's routes (the config analyser
+    # excludes them the same way below).
+    "tests",
     "work",
 }
 _MAX_FILE_BYTES = 2_000_000

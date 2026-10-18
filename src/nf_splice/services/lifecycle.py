@@ -184,6 +184,11 @@ def _final_state(
         if classification is PathClassification.RECOGNIZED:
             return FinalState.OUTDATED
         return FinalState.UNKNOWN
+    if desired is None:
+        # Nothing to compare against (the whole-bundle render is blocked or
+        # was not asked for): the file matches the lock, and whether a fresh
+        # compilation would differ is not established here.
+        return FinalState.UNKNOWN
     return FinalState.OUTDATED
 
 
@@ -198,9 +203,25 @@ def _layer_finals(spec_name: str, validation: LayerValidation, root: Path) -> li
     return list(layer_spec(spec_name).finals)
 
 
+def _bundle_payloads(root: Path) -> dict[str, bytes]:
+    """Best-effort whole-bundle compilation for status reporting (read-only).
+
+    The bundle layer renders from every draft at once, which per-layer
+    validation cannot reproduce; status needs the same bytes the build would
+    write to say "current" the way plan does. An interrupted or blocked
+    publication simply yields no comparison, and files fall back to their
+    lock-relative state.
+    """
+    try:
+        return dict(plan_promotion(root).payloads)
+    except (LifecycleError, ValueError, KeyError, OSError):
+        return {}
+
+
 def list_artifacts(repository_root: str | Path) -> tuple[ArtifactStatus, ...]:
     """Return every layer's derived status (read-only)."""
     root = Path(repository_root).resolve()
+    compiled = _bundle_payloads(root)
     statuses = []
     for spec in LAYERS:
         state = read_layer(root, spec.name)
@@ -220,7 +241,9 @@ def list_artifacts(repository_root: str | Path) -> tuple[ArtifactStatus, ...]:
                     root,
                     spec.name,
                     relative,
-                    validation.files.get(relative) if spec.name != "bundle" else None,
+                    compiled.get(relative)
+                    if spec.name == "bundle"
+                    else validation.files.get(relative),
                 ),
             )
             for relative in _layer_finals(spec.name, validation, root)
@@ -341,7 +364,27 @@ def _sources(root: Path) -> dict[str, dict[str, str]]:
 
 
 def _revision(root: Path) -> str | None:
+    """The commit of this repository, never of one that merely contains it.
+
+    ``git rev-parse`` walks upwards: a workspace nested inside an unrelated
+    checkout (an evaluation folder, a monorepo) would otherwise record the
+    outer repository's HEAD as the pipeline's revision. The revision is only
+    reported when the discovered repository is the workspace itself.
+    """
     try:
+        toplevel = subprocess.run(
+            ("git", "-C", str(root), "rev-parse", "--show-toplevel"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if (
+            toplevel.returncode != 0
+            or not toplevel.stdout.strip()
+            or Path(toplevel.stdout.strip()).resolve() != root.resolve()
+        ):
+            return None
         result = subprocess.run(
             ("git", "-C", str(root), "rev-parse", "HEAD"),
             check=False,

@@ -40,7 +40,7 @@ from nf_splice.agents import (
     ask_for_help,
     validate_grants,
 )
-from nf_splice.agents.permissions import PolicyViolation
+from nf_splice.agents.permissions import Budgets, PolicyViolation
 from nf_splice.agents.protocol import (
     AgentEvent,
     EventKind,
@@ -155,7 +155,9 @@ class _BridgeSession:
         return None
 
 
-def policy_for(grant_names: list[str]) -> ExecutionPolicy:
+def policy_for(
+    grant_names: list[str], turn_timeout_seconds: float = 1800.0
+) -> ExecutionPolicy:
     """The bridge's permission set: a narrow baseline plus explicit grants.
 
     The evaluation bridge deliberately starts below the product's defaults
@@ -164,7 +166,9 @@ def policy_for(grant_names: list[str]) -> ExecutionPolicy:
     are checked first so a mistyped or never-grantable permission fails at
     launch. ``validate_grants`` is used for the checks only: its *result*
     would also carry the product's default grants, which the bridge does not
-    want.
+    want. An offline evaluator deliberates far longer per turn than any real
+    provider, so ``--turn-timeout`` raises the wall limit for the session;
+    the engine still bounds it (see ``Budgets``).
     """
     validate_grants(list(grant_names))
     return ExecutionPolicy(
@@ -175,7 +179,8 @@ def policy_for(grant_names: list[str]) -> ExecutionPolicy:
                 *(Permission(item) for item in grant_names),
             },
             key=lambda item: item.value,
-        )
+        ),
+        budgets=Budgets(turn_timeout_seconds=turn_timeout_seconds),
     )
 
 
@@ -199,7 +204,7 @@ def serve(arguments: argparse.Namespace) -> int:
         asyncio.run(ask())
         return 0
     try:
-        policy = policy_for(arguments.grant)
+        policy = policy_for(arguments.grant, arguments.turn_timeout)
     except PolicyViolation as error:
         print(f"--grant: {error}", file=sys.stderr)
         return 2
@@ -239,7 +244,7 @@ def _active(folder: Path, wait: float = 120.0) -> Path:
         path = folder / "active.json"
         if path.is_file():
             name = json.loads(path.read_text("utf-8")).get("turn")
-            if name:
+            if isinstance(name, str) and name:
                 return folder / name
         if (folder / "outcome.json").is_file() or (folder / "answer.json").is_file():
             raise SystemExit("the session has finished: see outcome.json")
@@ -273,6 +278,13 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--grant", action="append", default=[])
     run.add_argument("--example", action="append", default=[])
     run.add_argument("--user", default="Context Evaluator")
+    run.add_argument(
+        "--turn-timeout",
+        type=float,
+        default=1800.0,
+        help="provider-turn wall limit in seconds (offline evaluators "
+        "deliberate long; the engine clamps this to its own maximum)",
+    )
     run.add_argument("--ask")
     run.add_argument("--page")
     status = commands.add_parser("status")
