@@ -388,6 +388,25 @@ def _bind(rule: PublishRule, instance: str) -> PublishRule:
     return replace(rule, directory=directory, dynamic=dynamic)
 
 
+_BRANCHING = re.compile(r"\bif\b|\belse\b|\?|==|!=|\bswitch\b")
+
+
+def _closure(expression: str) -> str | None:
+    """The body of a ``{ ... }`` closure the expression starts with."""
+    stripped = expression.lstrip()
+    if not stripped.startswith("{"):
+        return None
+    depth = 0
+    for index, char in enumerate(stripped):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return stripped[1:index]
+    return stripped[1:]
+
+
 def _rule(
     text: str,
     *,
@@ -398,7 +417,14 @@ def _rule(
 ) -> PublishRule:
     path_match = re.search(r"\bpath\s*:\s*", text)
     expression = text[path_match.end() :] if path_match else text
-    raw = _first_string(expression)
+    closure = _closure(expression)
+    # A path computed by branching code has no single directory: the first
+    # string literal could be a comparison operand. Report it unresolved.
+    raw = (
+        None
+        if closure is not None and _BRANCHING.search(closure)
+        else _first_string(expression)
+    )
     directory, dynamic = _resolve_literal(raw, process)
     save_as: str | None = None
     if _VERSIONS_SAVE_AS.search(text):

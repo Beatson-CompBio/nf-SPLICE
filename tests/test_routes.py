@@ -226,3 +226,25 @@ def test_glob_helpers_round_trip() -> None:
     pattern = glob_to_regex("star/{meta.id}.Aligned.*.{bam,cram}")
     assert pattern == r"^star/[^/]+\.Aligned\.[^/]+\.(?:bam|cram)$"
     assert re.match(pattern, example_path("star/{meta.id}.Aligned.*.{bam,cram}"))
+
+
+def test_a_branching_publish_path_is_unresolved_not_a_comparison_operand(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "main.nf").write_text(
+        "process REPORT {\n    output:\n    path '*.html', emit: html\n"
+        "    script:\n    'touch r.html'\n}\nworkflow { REPORT() }\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "nextflow.config").write_text(
+        "process {\n  withName: 'REPORT' {\n    publishDir = [\n"
+        "      path: { if (meta.id == 'summary') { \"${params.outdir}/a\" } "
+        'else { "${params.outdir}/${meta.id}/b" } },\n'
+        "      mode: 'copy'\n    ]\n  }\n}\n",
+        encoding="utf-8",
+    )
+    [route] = analyse_routes(tmp_path).published
+    # Never the first literal of the condition ("summary").
+    assert "summary" not in (route.published_glob or "")
+    assert route.publication is not None
+    assert route.publication.directory is None
