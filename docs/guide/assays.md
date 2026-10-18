@@ -52,15 +52,10 @@ entity's type.
 
 nf-splice does not guess which assays a pipeline processes: tools, file
 types and prose do not establish a library preparation, and a guess shown
-with a confidence still reads as a finding (ADR-0069). You declare them.
-To see where the repository names an assay, with locations:
-
-```bash
-nf-splice catalogue candidates
-```
-
-A mention is a pointer to read, not a capability. Declare each assay the
-pipeline supports, with a reason. With no evidence option it is your
+with a confidence still reads as a finding (ADR-0069). You declare them,
+from what you know of the pipeline and its code and documentation. A
+SPLICE bundle published earlier is not evidence either. Declare each assay
+the pipeline supports, with a reason. With no evidence option it is your
 statement as a person (`asserted`):
 
 ```bash

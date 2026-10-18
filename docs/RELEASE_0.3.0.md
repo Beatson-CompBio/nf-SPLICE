@@ -75,7 +75,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | Reserved-word vocabulary audit and glossary | ADR-0025 | `src/nf_splice/vocabulary.py`, `src/nf_splice/inspectors/identity.py`, `docs/GLOSSARY.md` | `tests/test_vocabulary.py` | Current |
 | Restricted YAML 1.2 drafts with comment-preserving three-way patches | ADR-0026 | `src/nf_splice/drafts/` | `tests/test_drafts_infra.py` | Current |
 | Job/sample/run output scopes | ADR-0027 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/runtime/analysis_output.py` | `tests/test_output_scopes.py` | Current |
-| Free-text output categories and stages | ADR-0027 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/renderers/outputs.py` | `tests/test_output_discovery.py`, `tests/test_output_scopes.py` | Current |
+| Free-text output categories and stages | ADR-0027 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/renderers/outputs.py` | `tests/test_output_scopes.py` | Current |
 | Job metadata (`--job-metadata`) | ADR-0027 | `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py` | `tests/test_output_scopes.py`, `tests/test_runtime.py` | Current |
 | outputs.schema.json x-output-catalog as sole runtime catalogue | ADR-0028 | `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py` | `tests/test_output_scopes.py`, `tests/test_output_contracts.py` | Current |
 | Actor attribution and private audit store | ADR-0029 | `src/nf_splice/domain/audit.py`, `src/nf_splice/services/audit.py` | `tests/test_audit.py` | Current |
@@ -96,7 +96,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | One persistent workspace: AI dock, contextual Ask and Assist, proposals, interventions, safe pause, takeover and same-session resume | ADR-0067, ADR-0063 | `src/nf_splice/interfaces/tui/app.py`, `src/nf_splice/interfaces/tui/coordinator.py`, `src/nf_splice/interfaces/tui/dock.py`, `src/nf_splice/agents/engine.py` | `tests/test_tui_agents.py`, `tests/test_tui.py` | Current |
 | Provider-neutral protocol with Claude Agent SDK and scripted providers | ADR-0063 | `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/` | `tests/test_agent_interfaces.py` | Current |
 | Operation-level permissions, bound approvals and agent attribution | ADR-0045 | `src/nf_splice/agents/permissions.py`, `src/nf_splice/domain/audit.py`, `src/nf_splice/layers/base.py` | `tests/test_agents.py`, `tests/test_audit.py` | Current |
-| Publication-route analysis and published-only output discovery | ADR-0042 | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `tests/fixtures/multi-route-0.3.0/` | `tests/test_routes.py`, `tests/test_output_discovery.py` | Current |
+| Publication-route analysis; routes as evidence, never as output entries | ADR-0042, ADR-0068 | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `tests/fixtures/multi-route-0.3.0/` | `tests/test_routes.py` | Current |
 | Separate contract, observed-output and coverage assessments (`nf-splice assess`) | ADR-0042 | `src/nf_splice/services/coverage.py`, `src/nf_splice/cli.py` | `tests/test_coverage.py` | Current |
 | Optional nf-core checks behind explicit permissions | ADR-0043 | `src/nf_splice/services/checks.py` | `tests/test_coverage.py` | Current |
 | Canonical skills, root AGENTS.md and runtime skill loading | ADR-0046 | `AGENTS.md`, `skills/`, `src/nf_splice/agents/skills.py`, `docs/AGENTS.md` | `tests/test_skills.py`, `tests/test_packaging.py` | Current |
@@ -333,7 +333,7 @@ dependency named. "Not applicable" items were withdrawn by ADR-0041.
 | Contract | Rich `bundle.json` identity | Done | `test_layer_bundle.py` |
 | Contract | Consistent pipeline/generator/version provenance in every contract | Done | `test_lifecycle.py`, `test_scenarios.py::test_s10_*` |
 | Contract | No `outputs.json`; `x-output-catalog` drives the runtime | Done | `test_output_contracts.py`, `test_s10_*` |
-| Contract | Free-text output categories and stages | Done | `test_output_discovery.py` |
+| Contract | Free-text output categories and stages | Done | `test_output_scopes.py` |
 | Contract | Engine-neutral 2020-12 input contract, lossless nf-schema import, no duplicated parameters | Done | `test_layer_inputs.py` |
 | Contract | Service-level input permissions, presentation and engine mapping | Done | `test_layer_inputs.py` |
 | Components | OCI source, Apptainer/Singularity source and downloadable image kept distinct | Done | `test_containers.py` |

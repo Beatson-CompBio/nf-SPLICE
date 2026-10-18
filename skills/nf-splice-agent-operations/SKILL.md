@@ -37,7 +37,7 @@ again rather than trusting what you remember.
 Investigation (read-only): `read_draft`, `contract_reference`,
 `inspect_draft`, `read_source`, `search_source`, `analyse_routes`,
 `parameter_usage`, `component_inventory`, `analyse_execution`,
-`read_config`, `analyse_ro_crate`, `list_assay_candidates`,
+`read_config`, `analyse_ro_crate`,
 `search_assay_catalogue`, `show_assay`, `route_coverage`,
 `list_example_outputs`, `reconcile_example_outputs`,
 `validate_layer`, `preview_build`, `validate_bundle`, `assess`,

@@ -1046,12 +1046,15 @@ draft from a model would discard developer edits and comments.
 | Superseded by | — |
 | Related | ADR-0024, ADR-0025, ADR-0028, ADR-0041 |
 | Implementation | `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/` |
-| Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py`, `tests/test_output_discovery.py` |
+| Tests | `tests/test_output_scopes.py`, `tests/test_output_contracts.py`, `tests/test_runtime.py` |
 
 Correction 2026-10-15: the Implementation row now names the `interfaces/tui/`
 wizard package that replaced `interfaces/tui.py` (ADR-0038), and the Tests row
 names `tests/test_output_discovery.py`, which replaced the removed
 monolithic-state `tests/test_authoring.py`; the decision is unchanged.
+Correction 2026-10-18: output-candidate discovery was removed (ADR-0068), so
+the Tests row no longer names `tests/test_output_discovery.py`; the decision
+is unchanged.
 
 
 Amended by ADR-0041 (2026-10-15): the version-gated reading of 0.1.0 scopes and the deprecated `--run-metadata` alias described below were removed; only 0.3.0 catalogues and `--job-metadata` are supported.
@@ -2037,7 +2040,7 @@ that new users and integrators had to read past.
 | Superseded by | — |
 | Related | ADR-0027, ADR-0028, ADR-0044 |
 | Implementation | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/services/coverage.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/cli.py`, `tests/fixtures/multi-route-0.3.0/` |
-| Tests | `tests/test_routes.py`, `tests/test_coverage.py`, `tests/test_output_discovery.py` |
+| Tests | `tests/test_routes.py`, `tests/test_coverage.py`, `tests/test_layer_outputs.py` |
 
 ### Context
 

@@ -252,11 +252,12 @@ endpoints, so they cost nothing.
 ### Assay capabilities
 
 Assay operations (`search_assay_catalogue`, `show_assay`,
-`list_assay_candidates`, `add_assay_capability`, `remove_assay_capability`)
-use the one resolver in `src/nf_splice/catalogue/` and the identity layer
-service, exactly as the CLI and the workspace do. Nothing scores or infers
-an assay (ADR-0069): `list_assay_candidates` returns only the assays the
-repository names, with locations, and the agent reads the pipeline itself. `patch_draft` and `set_identity` refuse to write
+`add_assay_capability`, `remove_assay_capability`) use the one resolver in
+`src/nf_splice/catalogue/` and the identity layer service, exactly as the
+CLI and the workspace do. Nothing scores, matches or infers an assay
+(ADR-0069): the agent reads the pipeline itself with the source tools.
+nf-splice's own earlier output (`splice/`, `.splice-local/`) is never
+accepted as evidence. `patch_draft` and `set_identity` refuse to write
 capabilities. Only a person may assert a capability without evidence; an
 agent cites documented or detected evidence. An autonomous stage with a
 recorded blocker stays open even when validation passes.
