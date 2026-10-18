@@ -68,8 +68,9 @@ class EvidenceClass:
     targets: tuple[str, ...] = ()
     #: Whether every target must be inspected (else any one).
     every: bool = False
-    #: Files that exist beyond the listed targets (not required).
-    more: int = 0
+    #: Files that exist beyond the listed targets (not required to cover the
+    #: class, but named rather than counted away: an agent cannot read a N).
+    more: tuple[str, ...] = ()
 
     def suggestions(self, missing: Sequence[str]) -> list[dict[str, Any]]:
         """Calls that would cover what is missing."""
@@ -109,8 +110,11 @@ class ClassCoverage:
             "required": self.evidence.required,
             "status": self.status,
             "inspected": list(self.inspected),
-            "missing": list(self.missing[:_TARGET_LIMIT]),
-            "more_files": self.evidence.more,
+            # A covered class must not still read like a to-do list.
+            "missing": (
+                [] if self.status == COVERED else list(self.missing[:_TARGET_LIMIT])
+            ),
+            "more_files": list(self.evidence.more),
             "suggested_calls": self.evidence.suggestions(self.missing)
             if self.status != COVERED
             else [],
@@ -198,9 +202,9 @@ def _text(root: Path, relative: str) -> str:
         return ""
 
 
-def _limited(items: Sequence[str]) -> tuple[tuple[str, ...], int]:
+def _limited(items: Sequence[str]) -> tuple[tuple[str, ...], tuple[str, ...]]:
     unique = sorted(dict.fromkeys(items))
-    return tuple(unique[:_TARGET_LIMIT]), max(0, len(unique) - _TARGET_LIMIT)
+    return tuple(unique[:_TARGET_LIMIT]), tuple(unique[_TARGET_LIMIT:])
 
 
 def _files(
@@ -274,7 +278,8 @@ def _identity_scope(root: Path) -> list[EvidenceClass | None]:
         ),
         _files(
             "documentation",
-            "the pipeline's documentation (README, usage, CITATION.cff)",
+            "whichever documentation this pipeline has (of README, usage, "
+            "CITATION.cff, ...)",
             True,
             _existing(root, _DOCUMENTATION),
         ),

@@ -77,25 +77,32 @@ def _matching_brace(text: str, opening: int) -> int:
     raise ProfileDiscoveryError("nextflow.config contains an unclosed profiles block")
 
 
+_PROFILE_NAME = re.compile(r"(?:[\"']([^\"'\n]+)[\"']|([A-Za-z_][A-Za-z0-9_-]*))\s*\{")
+
+
 def _profile_bodies(text: str) -> tuple[tuple[str, str], ...]:
+    """Names and bodies of every profile a configuration text defines.
+
+    A Nextflow configuration may open ``profiles { }`` blocks in more than
+    one place, and a profile name may be quoted (``"test_azure" {``); both
+    forms define profiles just the same.
+    """
     cleaned = strip_comments(text)
-    match = _PROFILE_BLOCK.search(cleaned)
-    if match is None:
-        return ()
-    opening = cleaned.find("{", match.start())
-    closing = _matching_brace(cleaned, opening)
-    body = cleaned[opening + 1 : closing]
     profiles: list[tuple[str, str]] = []
-    index = 0
-    while index < len(body):
-        candidate = re.search(r"\b([A-Za-z_][A-Za-z0-9_-]*)\s*\{", body[index:])
-        if candidate is None:
-            break
-        name = candidate.group(1)
-        profile_opening = index + candidate.end() - 1
-        profile_closing = _matching_brace(body, profile_opening)
-        profiles.append((name, body[profile_opening + 1 : profile_closing]))
-        index = profile_closing + 1
+    for block in _PROFILE_BLOCK.finditer(cleaned):
+        opening = cleaned.find("{", block.start())
+        closing = _matching_brace(cleaned, opening)
+        body = cleaned[opening + 1 : closing]
+        index = 0
+        while index < len(body):
+            candidate = _PROFILE_NAME.search(body[index:])
+            if candidate is None:
+                break
+            name = candidate.group(1) or candidate.group(2)
+            profile_opening = index + candidate.end() - 1
+            profile_closing = _matching_brace(body, profile_opening)
+            profiles.append((name, body[profile_opening + 1 : profile_closing]))
+            index = profile_closing + 1
     return tuple(profiles)
 
 

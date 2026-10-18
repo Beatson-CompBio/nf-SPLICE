@@ -262,7 +262,10 @@ def _discover(root: Path) -> list[dict[str, Any]]:
                 "conda_packages": list(conda_packages(module)),
                 "sources": [source.model_dump(mode="json") for source in sources],
                 "evidence": sorted(
-                    {"modules.json", *(source.location for source in sources)}
+                    # Seed evidence may only cite files that exist: an
+                    # on-disk scan has no modules.json to point at.
+                    {*(source.location for source in sources)}
+                    | ({"modules.json"} if (root / "modules.json").is_file() else set())
                     | (
                         {f"{relative}/meta.yml"}
                         if (module / "meta.yml").is_file()

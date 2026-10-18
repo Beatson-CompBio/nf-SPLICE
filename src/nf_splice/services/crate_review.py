@@ -75,10 +75,11 @@ def _generator(root: Path, executable: str) -> dict[str, Any]:
     reason = (
         why
         if nf_core
-        else "an nf-core-style pipeline (nextflow.config and nextflow_schema.json)"
+        else "the layout nf-core's generator accepts (nextflow.config and "
+        "nextflow_schema.json)"
         if applicable
-        else "not an nf-core-style pipeline: nf-core's generator expects "
-        "nextflow.config and nextflow_schema.json"
+        else "nf-core's generator is inapplicable: it expects nextflow.config "
+        "and nextflow_schema.json; author the crate in the draft instead"
     )
     return {
         "tool": "nf-core pipelines rocrate",

@@ -41,6 +41,12 @@ _TASK_MEMORY = re.compile(r"\btask\.memory\b")
 _GUARD_INLINE = re.compile(
     r"task\.memory\s*\?(?!\.)|task\.memory\?\.|task\.memory\s*&&"
 )
+#: Null tests guard a use just as a bare ternary does: nf-core modules size
+#: ``task.memory == null ? fallback : task.memory * n`` on one line, or split
+#: the test, the ``?`` and the multiply across the lines of a check_max call.
+_GUARD_NULLTEST = re.compile(
+    r"task\.memory\s*(?:==|!=)\s*null\b|null\s*(?:==|!=)\s*task\.memory\b"
+)
 _GUARD_BLOCK = re.compile(r"if\s*\(\s*!?\s*task\.memory\s*\)")
 _DEFINED = re.compile(r"\bdef\s+([A-Za-z_]\w*)\s*=.*task\.memory")
 
@@ -220,7 +226,12 @@ def memory_uses(root: Path) -> list[MemoryUse]:
             if _GUARD_BLOCK.search(code) and not re.search(r"task\.memory\.", code):
                 continue
             window = "\n".join(lines[max(0, number - 9) : number])
-            guarded = bool(_GUARD_INLINE.search(code) or _GUARD_BLOCK.search(window))
+            guarded = bool(
+                _GUARD_INLINE.search(code)
+                or _GUARD_NULLTEST.search(code)
+                or _GUARD_BLOCK.search(window)
+                or _GUARD_NULLTEST.search(window)
+            )
             derived = []
             defined = _DEFINED.search(code)
             if defined:

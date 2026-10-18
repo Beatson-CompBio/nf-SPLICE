@@ -471,6 +471,7 @@ def _route_row(route: Mapping[str, Any]) -> dict[str, Any]:
         "process": route.get("process"),
         "instance": route.get("instance"),
         "emit": route.get("emit"),
+        "declared_path": route.get("declared_path"),
         "published_glob": route.get("published_glob"),
         "status": route.get("status"),
         "conditions": route.get("conditions"),
@@ -497,6 +498,12 @@ def _analyse_routes(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, An
         "data": {
             "entry_workflow": data["entry_workflow"],
             "files_scanned": data["files_scanned"],
+            "basis": (
+                "one row per declared output nf-splice identified statically; "
+                "status_counts counts these. route_coverage counts published "
+                "(process instance, published glob) pairs, so its totals "
+                "differ from rows and counts here"
+            ),
             "status_counts": data["status_counts"],
             "notes": data["notes"],
             "published": _page(published, a),

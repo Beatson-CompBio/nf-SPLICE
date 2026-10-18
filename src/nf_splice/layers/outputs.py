@@ -524,6 +524,11 @@ class RouteCoverage:
         return {
             "status": self.status,
             "summary": self.summary(),
+            "basis": (
+                "counts are (process instance, published glob) route rows "
+                "from the code; analyse_routes counts declared outputs "
+                "instead, so its totals differ from routes here"
+            ),
             "routes": self.routes,
             "covered": self.covered,
             "excluded": self.excluded,
