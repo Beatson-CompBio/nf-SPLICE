@@ -63,11 +63,12 @@ Assay classification is required: a pipeline without a declared assay is not
 ready for SPLICE ingestion. Investigate it in every session, even when the
 repository never names an assay.
 
-1. nf-splice infers no assay: there is no scoring and no default. Start
-   from `list_assay_candidates` (assays the repository names, with
-   locations) and the declared capabilities, then read the pipeline: its
-   tools and routes, parameters and allowed values, sample sheet columns,
-   outputs and documentation (`read_source`, `search_source`). Use
+1. nf-splice infers no assay: there is no scoring, no mention matching and
+   no default. Start from the declared capabilities, then read the
+   pipeline itself: its tools and routes, parameters and allowed values,
+   sample sheet columns, outputs and documentation (`read_source`,
+   `search_source`). Files under `splice/` and `.splice-local/` are
+   nf-splice's own earlier output and are never evidence. Use
    `search_assay_catalogue` and `show_assay` for exact classifications.
 2. Look for what distinguishes the alternatives (for example a
    library-type parameter, rRNA-depletion steps, a protocol section).

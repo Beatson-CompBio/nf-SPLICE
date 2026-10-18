@@ -96,6 +96,9 @@ def _review(state: SessionState, stage: Stage) -> dict[str, Any] | None:
     return review.model_dump(mode="json") if review is not None else None
 
 
+PROPOSED_DECISION = "Proposed decision: "
+
+
 def build_report(
     root: Path,
     store: SessionStore,
@@ -196,6 +199,12 @@ def build_report(
         "verified_artefacts": _published(root) if built.passed else [],
         "results": assessment or {},
         "blockers": blockers,
+        # Values an agent chose without a source: a person must confirm them.
+        "proposed_decisions": [
+            item.claim
+            for item in state.evidence
+            if item.claim.startswith(PROPOSED_DECISION)
+        ],
         "archive": state.export,
         "readiness": readiness,
         "git": _git_state(root, state),

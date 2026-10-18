@@ -463,12 +463,16 @@ class SessionEngine:
                         artefact=str(item.get("artefact") or artefact),
                         attempted_checks=[
                             str(value) for value in item.get("attempted_checks") or []
-                        ]
-                        + attempted,
+                        ],
                         suggested_resolution=str(
                             item.get("suggested_resolution") or ""
                         ),
                         issues=list(issues),
+                        reason=str(item.get("reason") or ""),
+                        uncertainties=[
+                            str(value) for value in item.get("uncertainties") or []
+                        ],
+                        diagnostics=list(attempted),
                         pointer=str(item.get("pointer") or ""),
                         checkpoint=checkpoint,
                         at=now(),
@@ -480,7 +484,7 @@ class SessionEngine:
                     stage=stage,
                     decision=f"{spec(stage).title} still fails its validation",
                     artefact=artefact,
-                    attempted_checks=attempted,
+                    diagnostics=list(attempted),
                     suggested_resolution="Resume this session in assisted mode to "
                     "discuss it, or fix the listed issues and continue.",
                     issues=list(issues),

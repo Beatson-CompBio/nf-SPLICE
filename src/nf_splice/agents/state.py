@@ -221,8 +221,11 @@ class EvidenceItem(_Model):
 class Blocker(_Model):
     """A decision the agent could not make: a structured intervention.
 
-    ``decision`` is what a person must decide, ``issues`` why, and
-    ``attempted_checks`` the evidence the agent gathered. ``pointer`` names
+    ``decision`` is what a person must decide, ``reason`` why the agent
+    cannot (``issues`` are the validation findings), ``attempted_checks``
+    the evidence the agent says it examined and ``uncertainties`` what
+    remains unknown. ``diagnostics`` keeps the session's own record of the
+    operations it ran, for technical inspection only. ``pointer`` names
     the field or entry in the stage's draft (a JSON pointer) when the agent
     could name one, so an interface can open that field; ``checkpoint`` is
     the last checkpoint taken before it.
@@ -234,6 +237,9 @@ class Blocker(_Model):
     attempted_checks: list[str] = Field(default_factory=list)
     suggested_resolution: str = ""
     issues: list[str] = Field(default_factory=list)
+    reason: str = ""
+    uncertainties: list[str] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
     pointer: str = ""
     checkpoint: str = ""
     at: str

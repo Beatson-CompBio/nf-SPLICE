@@ -39,7 +39,7 @@ def identity(tools: ToolInvoker) -> None:
     """Declare the assays the documentation states, citing where it says so."""
     _call(tools, "read_source", path="nextflow.config")
     _call(tools, "set_identity", changes=dict(IDENTITY))
-    _call(tools, "list_assay_candidates")
+    _call(tools, "search_assay_catalogue", text="RNA-seq")
     for code, phrase in ASSAYS.items():
         found = _call(tools, "search_source", pattern=re.escape(phrase))
         sources = sorted(
@@ -110,7 +110,13 @@ def outputs(
             ],
         )
         assert result["success"], result
-    _call(tools, "set_output_contract_version", version="1.0.0")
+    _call(
+        tools,
+        "set_output_contract_version",
+        version="1.0.0",
+        basis="proposed_initial",
+        rationale="No catalogue was published before; this is the first shape.",
+    )
 
 
 def components(tools: ToolInvoker) -> None:

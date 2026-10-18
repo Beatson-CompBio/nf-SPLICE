@@ -3447,29 +3447,6 @@ def catalogue_search_command(
         )
 
 
-@catalogue_app.command("candidates")
-def catalogue_candidates_command(
-    repository: RepositoryOption = Path("."), json_output: JsonOption = False
-) -> None:
-    """Assays the repository names explicitly, with locations (read-only)."""
-    from nf_splice.inspectors.assays import detect_assay_candidates
-
-    found = detect_assay_candidates(repository)
-    if json_output:
-        typer.echo(dumps({"candidates": [item.to_json() for item in found]}))
-        return
-    if not found:
-        typer.echo(
-            "No assay is named in the repository. Declare supported assays with "
-            "`nf-splice configure bundle --add-assay CODE`."
-        )
-    for item in found:
-        typer.echo(
-            f"{item.key}: {item.label} [{item.entity_type}] named as "
-            f"{item.term!r} at {', '.join(item.locations[:5])}"
-        )
-
-
 @catalogue_app.command("compare")
 def catalogue_compare_command(
     api: str = typer.Option(..., help="Base URL of a SPLICE platform API."),

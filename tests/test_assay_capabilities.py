@@ -42,7 +42,6 @@ from nf_splice.catalogue.model import content_document
 from nf_splice.cli import app
 from nf_splice.domain import Actor
 from nf_splice.domain.audit import ActorKind, ChangeOrigin
-from nf_splice.inspectors.assays import detect_assay_candidates
 from nf_splice.layers import ChangeContext, LayerError
 from nf_splice.layers.bundle import (
     add_assay_capability,
@@ -415,15 +414,16 @@ def _declare(request: TurnRequest, tools: ToolInvoker) -> list[str]:
     from multi_route import IDENTITY
 
     _call(tools, "set_identity", changes=dict(IDENTITY))
-    candidates = _call(tools, "list_assay_candidates")["data"]["candidates"]
-    for item in candidates:
+    _call(tools, "read_source", path="README.md")
+    _call(tools, "search_assay_catalogue", text="RNA-seq")
+    for code in ("polya_rnaseq", "total_rnaseq"):
         _call(
             tools,
             "add_assay_capability",
-            reference=item["reference"],
+            reference=code,
             evidence="documented",
             rationale="The README documents this library type.",
-            sources=item["locations"],
+            sources=["README.md:3"],
         )
     if request.purpose == "plan":
         follow_scope(tools)
@@ -532,7 +532,7 @@ def _assert_without_evidence(request: TurnRequest, tools: ToolInvoker) -> list[s
         "record_blocker",
         decision="Which assays does the pipeline support?",
         artefact=".splice-local/drafts/bundle.draft.yaml",
-        attempted_checks=["list_assay_candidates: no assay is named"],
+        attempted_checks=["search_source: no assay is named"],
         suggested_resolution="Ask the developer to declare the library types.",
     )
     return ["Recorded a blocker."]
@@ -615,9 +615,8 @@ def test_only_a_person_may_assert_an_assay(tmp_path: Path) -> None:
 # ------------------------------------------------- 10. generic FASTQ pipeline
 
 
-def test_a_generic_fastq_pipeline_gets_no_assay_candidates(tmp_path: Path) -> None:
+def test_a_generic_fastq_pipeline_gets_no_assay_inferred(tmp_path: Path) -> None:
     write_pipeline(tmp_path)
-    assert detect_assay_candidates(tmp_path) == ()
     result = runner.invoke(
         app,
         ["--user", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],

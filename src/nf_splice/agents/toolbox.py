@@ -31,6 +31,7 @@ from nf_splice.agents.permissions import ExecutionPolicy, PolicyViolation
 from nf_splice.agents.review_scope import (
     Coverage,
     coverage,
+    own_output_citations,
     suggested_calls,
     unsupported_citations,
 )
@@ -264,11 +265,22 @@ class SessionToolbox:
                 f"{name} changes files; this turn is read-only (answer, do not edit)"
             )
         if self.mode is ToolMode.STAGE:
-            return self._stage(operation, arguments)
+            result = self._stage(operation, arguments)
+            self._proposed(result.get("result") or {})
+            return result
         result = self._run(operation, arguments)
         if result.get("success"):
             self.outcome.executed.append(describe(name, arguments))
+            self._proposed(result)
         return result
+
+    def _proposed(self, result: Mapping[str, Any]) -> None:
+        """A value no source states is kept as a decision a person confirms."""
+        claim = result.get("proposed_decision")
+        if result.get("success") and claim:
+            self.outcome.evidence.append(
+                {"claim": str(claim), "status": "unresolved", "sources": []}
+            )
 
     @staticmethod
     def _validate(schema: dict[str, Any], arguments: Mapping[str, Any]) -> None:
@@ -361,6 +373,13 @@ class SessionToolbox:
                 "blocker if it cannot be inspected."
             )
         evidence = [str(item) for item in arguments.get("evidence") or []]
+        circular = own_output_citations(evidence)
+        if circular:
+            raise PolicyViolation(
+                "nf-splice's own earlier output is not evidence of what the "
+                "pipeline does: " + ", ".join(circular[:5]) + ". Cite the "
+                "pipeline's code, configuration or documentation instead."
+            )
         supported, unsupported = unsupported_citations(evidence, trace)
         if unsupported:
             raise PolicyViolation(

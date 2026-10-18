@@ -463,7 +463,14 @@ def spatial_agent(request: TurnRequest, tools: ToolInvoker) -> list[str]:
                 "data": catalogue["outputs"],
             },
         )
-        tools.call("set_output_contract_version", {"version": "1.0.0"})
+        tools.call(
+            "set_output_contract_version",
+            {
+                "version": "1.0.0",
+                "basis": "proposed_initial",
+                "rationale": "The first analysis_output.json shape.",
+            },
+        )
     elif stage == "components":
         tools.call("set_image_policy", {"require_downloadable": False})
     elif stage == "profiles":
@@ -562,7 +569,7 @@ def test_an_autonomous_run_never_guesses_an_undocumented_assay(
 
     def cautious(request: TurnRequest, tools: ToolInvoker) -> list[str]:
         if request.stage == "identity":
-            mentions = tools.call("list_assay_candidates", {})
+            mentions = tools.call("search_source", {"pattern": "stain|assay"})
             assert mentions["success"]
             tools.call(
                 "record_blocker",
@@ -570,7 +577,7 @@ def test_an_autonomous_run_never_guesses_an_undocumented_assay(
                     "decision": "Which assays the pipeline processes",
                     "artefact": ".splice-local/drafts/bundle.draft.yaml",
                     "attempted_checks": [
-                        "list_assay_candidates",
+                        "search_source stain|assay",
                         "read_source main.nf",
                     ],
                     "suggested_resolution": "the developer names the slide stain "

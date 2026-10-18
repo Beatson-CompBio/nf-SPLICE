@@ -23,6 +23,12 @@ How this works:
   best complete content. You may add, remove, regroup, merge, split and rewrite
   entries within the contracts (contract_reference shows every field), including
   facts the initial discovery never found.
+- Files under splice/ (an earlier published bundle) and .splice-local/ are
+  nf-splice's own output, possibly from an older tool. They are authoring
+  state to improve, never evidence of what the pipeline does: base scientific
+  conclusions on the pipeline's code, configuration, modules and
+  documentation, and example outputs when supplied. Citing them as evidence
+  is refused.
 - Content authorship and deterministic validity are different things. A draft
   that validates can still be scientifically wrong; review it anyway. A draft
   you save does not have to validate yet: replace_draft and write_config save
@@ -123,8 +129,8 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
         "Fill every authorable field the evidence supports (contract_reference "
         "lists them); leave the rest null. Never guess ORCIDs, DOIs or licences.",
         "Assays: investigate every route yourself (workflows, modules, "
-        "parameters, documentation; list_assay_candidates only finds named "
-        "mentions); declare each supported assay; review declared ones for "
+        "parameters, documentation); declare each supported assay with the "
+        "sources you read; review declared ones for "
         "omissions even when the draft validates.",
     ),
     Stage.INPUTS: (
@@ -281,7 +287,7 @@ def _assay_brief(root: Path) -> list[str]:
         + ".",
         "nf-splice infers no assay: establish them yourself from the workflows, "
         "modules, parameters and documentation (read_source, search_source, "
-        "analyse_routes; list_assay_candidates finds named mentions, not proof), "
+        "analyse_routes), "
         "then declare with add_assay_capability citing evidence. Never pick "
         "between alternatives the evidence cannot distinguish: ask the person "
         "(AI-assisted, then 'confirmed' evidence) or record_blocker naming the "

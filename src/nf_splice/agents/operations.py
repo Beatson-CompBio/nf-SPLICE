@@ -570,6 +570,34 @@ def _search_assays(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, An
     }
 
 
+def _vocabulary_assays(_ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.catalogue import default_catalogue
+
+    catalogue = default_catalogue()
+    return {
+        "success": True,
+        "vocabulary": catalogue.provenance.reference(),
+        "assays": [
+            {
+                "reference": item.registration.code
+                if item.registration
+                else f"entity:{item.assay.entity_id}",
+                "label": item.assay.label,
+                "entity_type": item.assay.entity_type.value,
+                "modalities": [
+                    entry["label"] for entry in item.to_json()["modalities"]
+                ],
+                "subtypes": [
+                    entry["label"] for entry in item.to_json()["modality_subtypes"]
+                ],
+            }
+            for item in catalogue.assays(None, registered_only=False)
+        ],
+        "note": "the assays a pipeline may declare; which apply is decided from "
+        "the pipeline's own code and documentation, never from this list",
+    }
+
+
 def _show_assay(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     from nf_splice.catalogue import CatalogueError, default_catalogue
 
@@ -589,24 +617,17 @@ def _show_assay(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _assay_candidates(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
-    from nf_splice.inspectors.assays import detect_assay_candidates
-    from nf_splice.layers.bundle import declared_capabilities
-
-    return _untrusted(
-        {
-            "declared": declared_capabilities(ctx.root),
-            "candidates": [
-                item.to_json() for item in detect_assay_candidates(ctx.root)
-            ],
-            "rule": "a candidate is a mention, not proof; FASTQ input alone never "
-            "establishes a library preparation",
-        }
-    )
-
-
 def _add_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    from nf_splice.agents.review_scope import own_output_citations
     from nf_splice.layers.bundle import add_assay_capability
+
+    circular = own_output_citations([str(item) for item in a.get("sources") or ()])
+    if circular:
+        raise ValueError(
+            "an earlier SPLICE bundle or nf-splice's drafts are not evidence of "
+            f"the assays a pipeline supports ({', '.join(circular[:3])}); cite "
+            "the pipeline's code, configuration or documentation"
+        )
 
     return _edit(
         add_assay_capability(
@@ -668,9 +689,29 @@ def _set_access(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _contract_version(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    return _edit(
-        output_layer.set_contract_version(ctx.root, str(a["version"]), ctx.change)
-    )
+    """Set the version only with its basis; a chosen value is a proposal."""
+    from nf_splice.inspectors.outputs import published_catalogue
+
+    version, basis = str(a["version"]), str(a["basis"])
+    rationale = str(a.get("rationale") or "").strip()
+    if not rationale:
+        raise ValueError("say why this version: rationale is required")
+    if basis == "published_catalogue":
+        published = published_catalogue(ctx.root)
+        declared = published.schema_version if published is not None else None
+        if declared != version:
+            raise ValueError(
+                "basis published_catalogue needs splice/outputs.yaml to declare "
+                f"{version}; it declares {declared or 'no version'}"
+            )
+    result = _edit(output_layer.set_contract_version(ctx.root, version, ctx.change))
+    result["basis"] = basis
+    if basis == "proposed_initial":
+        result["proposed_decision"] = (
+            f"Proposed decision: analysis-output schema version {version} (no "
+            f"source states one): {rationale}"
+        )
+    return result
 
 
 def _add_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -1233,6 +1274,15 @@ OPERATIONS: dict[str, Operation] = {
             _initialise,
         ),
         Operation(
+            "list_vocabulary_assays",
+            "Every assay in the pinned SPLICE vocabulary, with its reference, "
+            "type, modality subtypes and modalities: what may be declared.",
+            _obj(),
+            _R,
+            "read",
+            _vocabulary_assays,
+        ),
+        Operation(
             "search_assay_catalogue",
             "Search the SPLICE assay and modality vocabulary by label, alias, "
             "registered code or entity id. Shows exact entity types and every path.",
@@ -1250,15 +1300,6 @@ OPERATIONS: dict[str, Operation] = {
             _R,
             "read",
             _show_assay,
-        ),
-        Operation(
-            "list_assay_candidates",
-            "Assays the repository names explicitly, with locations, and the "
-            "capabilities already declared. Mentions are candidates, not proof.",
-            _obj(),
-            _R,
-            "read",
-            _assay_candidates,
         ),
         Operation(
             "add_assay_capability",
@@ -1349,8 +1390,28 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "set_output_contract_version",
-            "Set the analysis-output schema version (X.Y.Z).",
-            _obj({"version": {"type": "string"}}, ["version"]),
+            "Set the analysis-output schema version (X.Y.Z). It versions the "
+            "shape of this workflow's analysis_output.json, never the pipeline "
+            "release. basis: published_catalogue (the version an existing "
+            "splice/outputs.yaml declares; it must match), stated_by_person (a "
+            "person gave it; cite where in rationale) or proposed_initial (no "
+            "source states one: you propose a first version, recorded as a "
+            "decision for a person to confirm).",
+            _obj(
+                {
+                    "version": {"type": "string"},
+                    "basis": {
+                        "type": "string",
+                        "enum": [
+                            "published_catalogue",
+                            "stated_by_person",
+                            "proposed_initial",
+                        ],
+                    },
+                    "rationale": {"type": "string"},
+                },
+                ["version", "basis", "rationale"],
+            ),
             _D,
             "draft",
             _contract_version,
@@ -1651,10 +1712,17 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
     },
     "record_blocker": {
         "name": "record_blocker",
-        "description": "Record a decision you cannot make with sufficient evidence.",
+        "description": "Record a decision you cannot make with sufficient "
+        "evidence. A person reads it: write plain sentences, not tool payloads. "
+        "decision: what the person must decide or supply; reason: why you "
+        "cannot decide it; attempted_checks: the sources you read and analyses "
+        "you ran (file:line or tool name); uncertainties: what remains "
+        "unknown; suggested_resolution: what the person should do next.",
         "input_schema": _obj(
             {
                 "decision": {"type": "string"},
+                "reason": {"type": "string"},
+                "uncertainties": _STRINGS,
                 "artefact": {"type": "string"},
                 "pointer": {
                     "type": "string",

@@ -261,7 +261,7 @@ def _identity_scope(root: Path) -> list[EvidenceClass | None]:
             "assay evidence and the SPLICE vocabulary",
             True,
             tools=(
-                "list_assay_candidates",
+                "list_vocabulary_assays",
                 "search_assay_catalogue",
                 "show_assay",
             ),
@@ -593,6 +593,22 @@ def coverage(
 
 
 _PATHLIKE = re.compile(r"^[\w./@+-]+\.[A-Za-z0-9]+(?::\d+(?:-\d+)?)?$")
+
+
+#: nf-splice's own output: earlier bundles, drafts, reviews and sessions.
+#: Never independent evidence of what a pipeline does.
+OWN_OUTPUT = ("splice/", ".splice-local/")
+
+
+def own_output_citations(evidence: Sequence[str]) -> list[str]:
+    """Citations of nf-splice's own earlier output, which prove nothing."""
+    found = []
+    for item in evidence:
+        text = str(item).strip()
+        head = text.split()[0].removeprefix("./") if text else ""
+        if head.startswith(OWN_OUTPUT) or head in {"splice", ".splice-local"}:
+            found.append(text)
+    return found
 
 
 def unsupported_citations(

@@ -92,7 +92,6 @@ Global options go before the command name, for example
 | [`nf-splice catalogue assays`](#nf-splice-catalogue-assays) | List assays a pipeline can declare, with type, modalities and paths. |
 | [`nf-splice catalogue show`](#nf-splice-catalogue-show) | Show one entity: type, description, registrations and every path. |
 | [`nf-splice catalogue search`](#nf-splice-catalogue-search) | Search labels, aliases, registered codes and ids. |
-| [`nf-splice catalogue candidates`](#nf-splice-catalogue-candidates) | Assays the repository names explicitly, with locations (read-only). |
 | [`nf-splice catalogue compare`](#nf-splice-catalogue-compare) | Compare a live platform vocabulary with this nf-splice's pinned snapshot. |
 | [`nf-splice provider list`](#nf-splice-provider-list) | List the providers, how each signs in, where it runs and who pays. |
 | [`nf-splice provider doctor`](#nf-splice-provider-doctor) | Diagnose providers: installed parts, sign-in, routing and billing. |
@@ -1250,19 +1249,6 @@ nf-splice catalogue search [OPTIONS] TEXT
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
-| `--json` |  |  | Emit stable JSON. |
-
-### nf-splice catalogue candidates
-
-Assays the repository names explicitly, with locations (read-only).
-
-```text
-nf-splice catalogue candidates [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-| --- | --- | --- | --- |
-| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice catalogue compare
