@@ -9,13 +9,20 @@ Selection and navigation are measured as the process CPU time a keypress
 costs: the headless pilot adds fixed waits for an idle screen (about 85 ms
 per key even for a bare DataTable) that a person at a terminal never sees,
 so wall-clock times under the pilot overstate latency. Wall-clock times are
-recorded alongside. Set ``NF_SPLICE_LATENCY_REPORT`` to a file to keep the
-measured values.
+recorded alongside. Process CPU time still counts a garbage collection that
+the render itself triggers, so the window is measured with collections
+frozen, as timeit measures: on the full-suite CI process a generation-2
+pause runs to hundreds of milliseconds on Python 3.10 and 3.11 (the
+versions whose jobs tripped the target), where collection at that heap
+size is far more disruptive than on newer ones - a heap artefact, not the
+cost of the cached swap. Set
+``NF_SPLICE_LATENCY_REPORT`` to a file to keep the measured values.
 """
 
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import os
 import platform
@@ -96,6 +103,29 @@ def p95(values: list[float]) -> float:
     return sorted(values)[max(0, round(len(values) * 0.95) - 1)]
 
 
+@contextmanager
+def measuring() -> Iterator[None]:
+    """Hold garbage collections outside the measured samples.
+
+    ``time.process_time()`` counts the whole process, so a generation-2
+    collection triggered by the render itself lands inside a sample and
+    can cost more than the cached swap it is measuring. Freeze the
+    existing objects and pause collections for the window (what timeit
+    itself does); the structural assertions of these tests - zero
+    scans, zero parses - hold with collections on or off.
+    """
+    gc.collect()
+    gc.freeze()
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        gc.freeze()  # keep what the window allocated out of later sweeps
+        if was_enabled:
+            gc.enable()
+
+
 def _record(name: str, values: list[float]) -> None:
     target = os.environ.get("NF_SPLICE_LATENCY_REPORT")
     if not target:
@@ -158,7 +188,7 @@ async def test_selecting_rows_never_scans_and_stays_fast(
         await settle(app, pilot)
         widget = app.screen.query_one(selector)
         assert isinstance(widget, DataTable | Tree)
-        with counting() as counter:
+        with counting() as counter, measuring():
             times, wall = await _select_rows(app, pilot, widget, 100)
         _record(f"row_selection_cpu_{page}", times)
         _record(f"row_selection_wall_under_pilot_{page}", wall)
@@ -176,7 +206,7 @@ async def test_moving_between_visited_pages_never_parses_and_stays_fast(
             app.show_page(page)
             await settle(app, pilot)
         times, wall = [], []
-        with counting() as counter:
+        with counting() as counter, measuring():
             for _ in range(5):
                 for page in VISITED:
                     started, clock = time.process_time(), time.perf_counter()
