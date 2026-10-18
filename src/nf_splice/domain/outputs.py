@@ -47,9 +47,27 @@ _PATH_PLACEHOLDERS = {
     "{anypath}": r".+",
 }
 
+#: A placeholder written with regex-escaped braces (``\\{sample\\}`` or
+#: ``\\{sample}``). The substitution matches the plain spelling only, so an
+#: escaped placeholder either matches literal text without capturing, or
+#: demands a stray literal backslash before the value — both silent.
+_ESCAPED_PLACEHOLDER = re.compile(r"\\+\{([A-Za-z_][A-Za-z0-9_]*)(?:\\}|})")
+
 
 def expand_output_path_pattern(pattern: str) -> str:
     """Expand controlled catalogue placeholders into named Python regex groups."""
+    for match in _ESCAPED_PLACEHOLDER.finditer(pattern):
+        name = match.group(1)
+        if "{" + name + "}" in _PATH_PLACEHOLDERS:
+            raise ValueError(
+                "escaped placeholder \\{" + name + "\\} is not substituted and "
+                "captures nothing; placeholders need no escaping: write {"
+                + name
+                + "} to capture it, or [{]"
+                + name
+                + "[}] to match the literal "
+                "text on purpose"
+            )
     expanded = pattern
     for placeholder, replacement in _PATH_PLACEHOLDERS.items():
         expanded = expanded.replace(placeholder, replacement)

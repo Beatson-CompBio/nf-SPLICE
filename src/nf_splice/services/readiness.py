@@ -211,8 +211,12 @@ def _deployment(splice: Path, dimension: Dimension) -> None:
         )
         if missing:
             dimension.block(
-                f"{len(missing)} container(s) need a verified downloadable image: "
+                f"{len(missing)} container(s) need a verified downloadable "
+                "image: "
                 + ", ".join(missing[:10])
+                + "; a person delivers and verifies them with "
+                "`nf-splice containers deliver` (downloads are outside what "
+                "an agent may do)"
             )
     lock = _load(splice / "nf-splice.lock.json")
     records = (lock or {}).get("distributions") if isinstance(lock, dict) else None

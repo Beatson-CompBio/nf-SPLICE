@@ -159,15 +159,40 @@ def sources_in_text(
             if not any(character.isspace() for character in item.strip())
         ]
         if "?" in expression or ("${" in expression and not quoted_values):
+            # The expression as a whole stays one record (whole, never
+            # truncated: a cut-off statement is evidence nobody can act on).
+            # The concrete quoted references inside it are recorded as well,
+            # so a reviewer can select one of them: acceptance matches
+            # against detected references, and the expression alone would
+            # leave nothing selectable for a multi-line ternary.
             found.append(
                 ContainerSource(
-                    raw=" ".join(expression.split())[:300] or "container",
+                    raw=" ".join(expression.split()) or "container",
                     runtime=ContainerRuntime.ANY,
                     kind=ReferenceKind.UNRESOLVED_EXPRESSION,
                     location=location,
                     confidence=0.3,
                 )
             )
+            for raw in quoted_values:
+                if raw in _IMAGE_ENGINES:
+                    continue
+                kind = classify_reference(raw)
+                if (
+                    kind is ReferenceKind.UNSUPPORTED
+                    and "/" not in raw
+                    and ":" not in raw
+                ):
+                    continue
+                found.append(
+                    ContainerSource(
+                        raw=raw,
+                        runtime=ContainerRuntime.ANY,
+                        kind=kind,
+                        location=location,
+                        confidence=0.6,
+                    )
+                )
             continue
         for raw in quoted_values:
             kind = classify_reference(raw)

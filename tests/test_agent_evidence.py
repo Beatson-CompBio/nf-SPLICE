@@ -118,8 +118,13 @@ def test_an_assay_question_does_not_stop_the_independent_stages(
     assert stages[Stage.IDENTITY].status.value == "blocked"
     for stage in (Stage.INPUTS, Stage.OUTPUTS, Stage.COMPONENTS, Stage.PROVENANCE):
         assert stages[stage].attempts >= 1, stage
-        assert "depends on identity" not in stages[stage].notes, stage
-    assert any("depends on" in note for note in stages[Stage.VALIDATE].notes)
+        assert "waiting on identity" not in stages[stage].notes, stage
+    # A cascaded block names the stage it waits for and the decision there,
+    # so the cascade is never a mystery (round-5 histology finding).
+    assert any(
+        "waiting on identity" in note and "Which assay" in note
+        for note in stages[Stage.VALIDATE].notes
+    )
 
 
 def test_files_can_be_listed_and_searched_by_path_glob(tmp_path: Path) -> None:

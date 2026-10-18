@@ -188,6 +188,8 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
         "null for every relevant process, size CPUs from the intended memory "
         "and the site's memory per CPU, and check every module that uses "
         "task.memory; never invent accounts, queues or paths.",
+        "Complete the seeded default's metadata with update_profile; "
+        "review_profile only adds a profile detected in nextflow.config.",
     ),
     Stage.PROVENANCE: (
         "analyse_ro_crate and read_draft: does the graph describe this pipeline "

@@ -253,6 +253,8 @@ def test_components_layer_distinguishes_sources_and_verified_distributions(
     set_image_policy(tmp_path, True, ADA)
     blocked = validate_components_draft(tmp_path)
     assert {item.code for item in blocked.errors} == {"needs_materialisation"}
+    # The blocker names the person-only hand-off, not just the gap (round 5).
+    assert all("containers deliver" in item.message for item in blocked.errors)
 
     bedtools = container_id(
         "quay.io/splice/bedtools_coreutils:2.31.1_9.5--cfg-8492f6e28a12"

@@ -599,6 +599,14 @@ def review_profile(
     state = load_review_state(root, LAYER)
     entry = state.candidates.get(candidate_id)
     if not isinstance(entry, dict):
+        if candidate_id in profile_ids(root):
+            # A profile already in the draft (a seeded scaffold or a carried
+            # publication) is completed in place, not re-added.
+            raise LayerError(
+                f"execution profile {candidate_id!r} is already in the draft: "
+                "complete its metadata with update_profile; review_profile "
+                "only adds a detected profile candidate"
+            )
         raise LayerError(f"unknown execution profile candidate {candidate_id!r}")
     candidate = ExecutionProfileCandidate.model_validate(entry["candidate"])
     requested_engine = (container_engine or "").strip() or None

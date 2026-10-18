@@ -81,12 +81,18 @@ file into `analysis_output.json` that the run did not produce.
 6. `validate_layer` checks the entries themselves; read the issues, revise
    and repeat. Then `route_coverage`: uncovered routes are *established*
    (the code always publishes them), *conditional* (named condition) or
-   *unverified* (static analysis could not resolve them). Coverage is not a
-   validation error: it is the `output_coverage` readiness dimension, so a
-   deliberately limited catalogue still publishes but is not ingestion
-   ready while an established or conditional route is neither described nor
-   excluded with a reason. Resolve each; never drop an alternative route
-   because an example run took another branch.
+   *unverified* (static analysis could not resolve them). Coverage matches
+   each pattern against the route path as static analysis assembles it,
+   with the literal names the source shows; a route whose published path
+   depends on values only known at a run stays *unverified* however well
+   the catalogue describes it. Record such routes in findings or
+   uncertainties; they remain open facts of the `output_coverage`
+   dimension, and the patterns are never twisted to force a match. Coverage
+   is not a validation error: it is the `output_coverage` readiness
+   dimension, so a deliberately limited catalogue still publishes but is
+   not ingestion ready while an established or conditional route is neither
+   described nor excluded with a reason. Resolve each; never drop an
+   alternative route because an example run took another branch.
 7. `review_scope`, then `complete_review`: the outputs review needs the
    entry workflow and every workflow file, every config that declares
    `publishDir` and the examples supplied, and must name each uncovered

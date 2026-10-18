@@ -276,6 +276,7 @@ SPECS: tuple[StageSpec, ...] = (
             "set_default_profile",
             "discover_profiles",
             "review_profile",
+            "update_profile",
             "reject_profile",
             "add_slurm_default_profile",
             "patch_draft",

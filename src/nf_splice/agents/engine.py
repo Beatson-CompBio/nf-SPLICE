@@ -427,9 +427,33 @@ class SessionEngine:
             if blocked:
                 if not assisted:
                     record.status = StageStatus.BLOCKED
-                    note = "depends on " + ", ".join(item.value for item in blocked)
-                    if note not in record.notes:
-                        record.notes.append(note)
+                    # Name the inherited reason, not just the stage: a stage
+                    # blocked before it ran once should say what it waits for
+                    # and why, so a cascade never looks unexplained.
+                    for upstream in blocked:
+                        decisions = "; ".join(
+                            sorted(
+                                {
+                                    str(blocker.decision)
+                                    for blocker in self.state.blockers
+                                    if blocker.stage is upstream
+                                    and not blocker.resolved
+                                    and blocker.decision
+                                }
+                            )
+                        )
+                        note = f"waiting on {upstream.value}: " + (
+                            decisions or "that stage is blocked"
+                        )
+                        if note not in record.notes:
+                            record.notes.append(note)
+                            self.state.say(
+                                "system",
+                                "blocked_by_dependency",
+                                f"{spec(stage).title} is blocked before it "
+                                f"starts: {note}.",
+                                stage=stage,
+                            )
                 continue
             if any(
                 self.state.stages[item].status
@@ -1751,6 +1775,17 @@ class SessionEngine:
                 self._complete(stage, result)
                 self.store.save(self.state)
                 return
+            if (
+                result.passed
+                and not outcome.blockers
+                and reviewed is None
+                and any(item.startswith("complete_review:") for item in outcome.denied)
+            ):
+                # A refused review is a procedural nudge, not a failed
+                # authoring attempt: like a provider interruption (see
+                # _pause_for_provider) it refunds the attempt. The
+                # no-progress check below stays the runaway guard.
+                record.attempts = max(record.attempts - 1, 0)
             record.issues = list(result.issues)
             signature = (
                 drafts_fingerprint(self.root, include_reviews=False),

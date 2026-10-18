@@ -972,6 +972,14 @@ def _reject_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, An
     return {"success": True, "rejected": a["candidate_id"]}
 
 
+def _update_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(
+        execution_layer.update_profile(
+            ctx.root, str(a["identifier"]), dict(a["changes"]), ctx.change
+        )
+    )
+
+
 def _default_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     return _edit(
         execution_layer.set_default_profile(ctx.root, str(a["profile_id"]), ctx.change)
@@ -1774,7 +1782,8 @@ OPERATIONS: dict[str, Operation] = {
             "Review one profile candidate: type, description, executor and an "
             "adopted config source or a generated config. container_engine is "
             "optional execution metadata: omit it when the profile declares no "
-            "runtime; never invent one.",
+            "runtime; never invent one. To complete a profile already in the "
+            "draft (the seeded default), use update_profile instead.",
             _obj(
                 {
                     "candidate_id": {"type": "string"},
@@ -1794,6 +1803,21 @@ OPERATIONS: dict[str, Operation] = {
             _D,
             "draft",
             _review_profile,
+        ),
+        Operation(
+            "update_profile",
+            "Complete or correct a profile already in the draft (including "
+            "the seeded default): name, description, type, executor, "
+            "container_engine or the config pointer. container_engine is "
+            "optional metadata: leave it unchanged when nothing declares "
+            "one; never invent one.",
+            _obj(
+                {"identifier": {"type": "string"}, "changes": {"type": "object"}},
+                ["identifier", "changes"],
+            ),
+            _D,
+            "draft",
+            _update_profile,
         ),
         Operation(
             "reject_profile",

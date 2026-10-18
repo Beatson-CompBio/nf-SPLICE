@@ -1248,7 +1248,11 @@ def validate_components_draft(repository_root: str | Path) -> LayerValidation:
                     LAYER,
                     f"/containers/{index}/distribution",
                     "needs_materialisation",
-                    f"{container.id} has no verified downloadable image",
+                    f"{container.id} has no verified downloadable image: a "
+                    "person delivers and verifies one with "
+                    "`nf-splice containers deliver` (fetching images is "
+                    "outside what an agent may do); leave this open until "
+                    "then",
                 )
             )
     identifiers = [item.id for item in containers]
