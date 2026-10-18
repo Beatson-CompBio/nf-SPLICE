@@ -64,6 +64,7 @@ from nf_splice.interfaces.tui.widgets import (
     RailItem,
     StatusStrip,
     StepRail,
+    TakeoverBar,
     TopBar,
 )
 from nf_splice.layers import ChangeContext
@@ -71,6 +72,8 @@ from nf_splice.services.audit import resolve_actor
 
 #: Terminal sizes (columns) for the responsive layout.
 WIDE = 120
+#: From this width the AI dock sits beside the page; below it they alternate.
+SPLIT = 140
 MEDIUM = 80
 NARROW = 60
 MIN_HEIGHT = 20
@@ -86,6 +89,7 @@ class NfSpliceApp(App[None]):
         Binding("f1", "help", "Help"),
         Binding("ctrl+r", "reload", "Reload files"),
         Binding("ctrl+a", "assistant", "Ask AI / dock"),
+        Binding("f6", "switch_pane", "Page ⇄ AI"),
         Binding("ctrl+q", "quit_safely", "Quit", priority=True),
         Binding("escape", "close_dock", "Close dock", show=False),
         Binding("ctrl+right", "step_continue", "Continue", show=False),
@@ -142,6 +146,7 @@ class NfSpliceApp(App[None]):
         with Horizontal(id="main"):
             yield StepRail(id="rail")
             with Vertical(id="workspace"):
+                yield TakeoverBar(id="takeover-bar")
                 yield ContentSwitcher(id="pages")
                 yield ActionBar(id="actionbar")
             yield AgentDock(id="dock")
@@ -154,6 +159,7 @@ class NfSpliceApp(App[None]):
 
     def on_mount(self) -> None:
         self.query_one("#dock").display = False
+        self.query_one("#takeover-bar").display = False
         self.query_one("#too-small").display = False
         self._layout(self.size.width, self.size.height)
         self.coordinator.attach_latest()
@@ -176,6 +182,14 @@ class NfSpliceApp(App[None]):
         screen.add_class(
             "wide" if width >= WIDE else "medium" if width >= MEDIUM else "narrow"
         )
+        screen.set_class(width < SPLIT, "stacked")
+        try:
+            self.query_one("#rail", StepRail).set_compact(width < WIDE)
+            self.query_one("#rail", StepRail).show(
+                self.model.step_states(), self.current
+            )
+        except NoMatches:
+            pass
         try:
             self.query_one("#too-small").display = tiny
             self.query_one("#main").display = not tiny
@@ -542,11 +556,60 @@ class NfSpliceApp(App[None]):
         elif target is not None:
             self.call_after_refresh(view.focus_target, target)
 
+    @property
+    def stacked(self) -> bool:
+        """Whether the page and the AI dock alternate (narrower terminals)."""
+        return self.screen.has_class("stacked")
+
     def jump(self, target: Target) -> None:
         """Open the page and field a Fix button or an intervention names."""
         self.show_page(target.page, target)
-        if self._dock_open and self.screen.has_class("narrow", "medium"):
+        if self._dock_open and self.stacked:
             self.action_close_dock()
+
+    def action_switch_pane(self) -> None:
+        """F6: alternate between the page and the AI panel; nothing is lost.
+
+        Below the split width the two take turns at full width; on wide
+        terminals F6 moves focus between them. The page keeps its unsaved
+        values and the session keeps running either way.
+        """
+        if not self._dock_open:
+            self.open_dock()
+            return
+        if self.stacked:
+            self.action_close_dock()
+            return
+        dock = self.query_one("#dock", AgentDock)
+        if dock.has_focus_within:
+            view = self.current_page()
+            if view is not None:
+                view.focus()
+        else:
+            dock.focus_first()
+
+    def resume_session(self, note: str = "") -> None:
+        """Resume the same session, never over unsaved form values."""
+        view = self.current_page()
+        if view is not None and view.has_unsaved():
+            self.set_status(
+                "Save or discard your changes on this page before resuming: the "
+                "agent continues from the files on disk.",
+                "warn",
+            )
+            return
+        self._guard(lambda: self.coordinator.resume(note))
+
+    def _update_takeover(self, snapshot: AgentSnapshot) -> None:
+        try:
+            bar = self.query_one("#takeover-bar", TakeoverBar)
+        except NoMatches:
+            return
+        waiting = bool(snapshot.interventions) and not snapshot.busy
+        bar.display = waiting and not self._dock_open
+        if waiting:
+            item = snapshot.interventions[0]
+            bar.show(f"! The agent needs you: {item.decision}")
 
     def _update_actionbar(self) -> None:
         index = PAGE_IDS.index(self.current)
@@ -633,6 +696,7 @@ class NfSpliceApp(App[None]):
             self.query_one("#dock", AgentDock).render_snapshot(snapshot)
         except NoMatches:
             return
+        self._update_takeover(snapshot)
 
     def _update_dock_context(self) -> None:
         view = self.current_page()
@@ -651,8 +715,12 @@ class NfSpliceApp(App[None]):
         self._dock_open = True
         self._update_dock_context()
         dock.show_tab(tab or dock.tab)
-        dock.render_snapshot(self.coordinator.snapshot())
+        snapshot = self.coordinator.snapshot()
+        dock.render_snapshot(snapshot)
         self.screen.add_class("dock-open")
+        self._update_takeover(snapshot)
+        if self.stacked:
+            dock.focus_first()
 
     def action_close_dock(self) -> None:
         """Presentation only: a running session keeps running."""
@@ -661,6 +729,7 @@ class NfSpliceApp(App[None]):
         self.query_one("#dock").display = False
         self._dock_open = False
         self.screen.remove_class("dock-open")
+        self._update_takeover(self.coordinator.snapshot())
         view = self.current_page()
         if view is not None:
             view.focus()
@@ -726,8 +795,16 @@ class NfSpliceApp(App[None]):
     def _dock_button(self, identifier: str) -> bool:
         coordinator = self.coordinator
         dock = self.query_one("#dock", AgentDock)
-        if identifier == "dock-close":
+        if identifier in {"dock-close", "dock-back"}:
             self.action_close_dock()
+        elif identifier == "takeover-return":
+            self.open_dock(
+                "autonomous"
+                if coordinator.snapshot().mode == "autonomous"
+                else "assist"
+            )
+        elif identifier == "takeover-resume":
+            self.resume_session()
         elif identifier.startswith("dock-tab-"):
             dock.show_tab(identifier.removeprefix("dock-tab-"))
         elif identifier == "ask-send":
@@ -786,9 +863,7 @@ class NfSpliceApp(App[None]):
             text = dock.text("#question-reply", clear=True)
             self._guard(lambda: coordinator.reply(text))
         elif identifier in {"question-resume", "paused-resume", "intervention-resume"}:
-            self._guard(
-                lambda: coordinator.resume(dock.text("#intervention-note", clear=True))
-            )
+            self.resume_session(dock.text("#intervention-note", clear=True))
         elif identifier == "intervention-answer":
             text = dock.text("#intervention-note", clear=True)
             if not text:
@@ -815,10 +890,15 @@ class NfSpliceApp(App[None]):
                 lines += [
                     f"## {item.stage_title}: {item.decision}",
                     f"Why: {item.reason}",
+                    "Examined:",
                     *(f"- {value}" for value in item.evidence),
+                    "Uncertain:",
+                    *(f"- {value}" for value in item.uncertainties),
                     f"Suggestion: {item.suggestion}",
                     f"Field: {item.pointer or item.artefact}",
                     f"Checkpoint: {item.checkpoint or 'none'}",
+                    "Technical details:",
+                    *(f"  {value}" for value in item.diagnostics),
                     "",
                 ]
             lines += ["## Recent activity", *snapshot.activity]

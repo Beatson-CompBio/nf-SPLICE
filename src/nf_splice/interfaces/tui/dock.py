@@ -16,6 +16,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
     Checkbox,
+    Collapsible,
     ContentSwitcher,
     Input,
     Label,
@@ -31,6 +32,7 @@ from nf_splice.interfaces.tui.coordinator import (
     AgentState,
     stage_status_glyph,
 )
+from nf_splice.interfaces.tui.navigation import field_label
 from nf_splice.interfaces.tui.navigation import page as page_spec
 from nf_splice.interfaces.tui.widgets import Card, plain
 
@@ -59,6 +61,7 @@ class AgentDock(Vertical):
         with Vertical(id="dock-header"):
             with Horizontal(classes="row"):
                 yield Static("AI integration assistant", id="dock-title")
+                yield Button("← Page (F6)", id="dock-back", classes="compact")
                 yield Button("Close x", id="dock-close", classes="compact")
             yield Static("", id="dock-context", classes="muted")
             yield Static("", id="dock-provider", classes="muted")
@@ -177,6 +180,14 @@ class AgentDock(Vertical):
                         title="Human intervention requested", id="auto-intervention"
                     ):
                         yield Static("", id="intervention-text")
+                        with Collapsible(
+                            title="Technical details (operations and findings)",
+                            collapsed=True,
+                            id="intervention-diagnostics",
+                        ):
+                            yield Static(
+                                "", id="intervention-diagnostics-text", classes="code"
+                            )
                         with Horizontal(classes="row"):
                             yield Button(
                                 "Open the affected field",
@@ -221,6 +232,18 @@ class AgentDock(Vertical):
         yield Static("", id="dock-footer", classes="muted")
 
     # ------------------------------------------------------------ state
+
+    def focus_first(self) -> None:
+        """Focus the first usable control of the visible card."""
+        for widget in self.query("#dock-panels Button, #dock-panels TextArea"):
+            if (
+                widget.focusable
+                and widget.display
+                and all(ancestor.display for ancestor in widget.ancestors_with_self)
+            ):
+                widget.focus()
+                return
+        self.query_one("#dock-back", Button).focus()
 
     def set_context(self, page_id: str, selection: str = "") -> None:
         self.page_id = page_id
@@ -457,20 +480,40 @@ class AgentDock(Vertical):
             if snapshot.interventions:
                 item = snapshot.interventions[0]
                 more = len(snapshot.interventions) - 1
-                text = (
-                    f"Section: {page_spec(item.target.page).title}\n"
-                    f"Entry: {item.pointer or item.artefact or item.stage_title}\n"
-                    f"Decision: {item.decision}\n"
-                    + (f"Why: {item.reason}\n" if item.reason else "")
-                    + (
-                        f"Evidence: {'; '.join(item.evidence[:3])}\n"
-                        if item.evidence
-                        else ""
+                where = page_spec(item.target.page).title + (
+                    f" · {field_label(item.pointer)}" if item.pointer else ""
+                )
+                lines = [f"What I need from you ({where}):", f"  {item.decision}"]
+                if item.reason:
+                    lines += ["Why I cannot decide:", f"  {item.reason}"]
+                if item.evidence:
+                    lines.append("What I examined:")
+                    lines += [f"  · {value}" for value in item.evidence]
+                if item.uncertainties:
+                    lines.append("Still uncertain:")
+                    lines += [f"  · {value}" for value in item.uncertainties]
+                lines += [
+                    "What to do next:",
+                    "  "
+                    + (item.suggestion or "Decide it in the field below.")
+                    + " Open the field, edit it, then resume this same session. "
+                    "Nothing was guessed or written for this decision.",
+                ]
+                if more:
+                    lines.append(f"({more} more decision(s) after this one.)")
+                text = "\n".join(lines)
+                self.query_one("#intervention-diagnostics-text", Static).update(
+                    plain(
+                        "\n".join(
+                            [
+                                f"stage: {item.stage}",
+                                f"pointer: {item.pointer or '(none)'}",
+                                f"artefact: {item.artefact or '(none)'}",
+                                f"checkpoint: {item.checkpoint or '(none)'}",
+                                *item.diagnostics,
+                            ]
+                        )
                     )
-                    + (f"Suggestion: {item.suggestion}\n" if item.suggestion else "")
-                    + "No guess has been written. Use the normal editor to resolve "
-                    "it, then resume the same session."
-                    + (f"\n({more} more decision(s) after this one.)" if more else "")
                 )
             else:
                 text = snapshot.error or (

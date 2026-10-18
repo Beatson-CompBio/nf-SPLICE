@@ -320,6 +320,145 @@ SOURCES = (
 )
 
 
+#: Issues that only repeat that another layer is not ready yet, and the layer
+#: whose own errors are the root cause.
+DEPENDENCIES = {"identity_not_ready": "bundle", "inputs_not_ready": "inputs"}
+#: Errors that mean "not written yet" rather than "written wrongly".
+INCOMPLETE_CODES = frozenset(
+    {"missing_required", "unresolved", "placeholder", "missing_assay_classification"}
+)
+#: Pages in authoring order, for grouping.
+GROUP_ORDER = (
+    "identity",
+    "assays",
+    "parameters",
+    "outputs",
+    "software",
+    "execution",
+    "provenance",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class BlockerGroup:
+    """What blocks publication in one authoring section, by root cause."""
+
+    page: str
+    incomplete: tuple[Issue, ...]
+    errors: tuple[Issue, ...]
+    warnings: tuple[Issue, ...]
+    #: Dependency errors in this section explained by another section.
+    cascaded: tuple[Issue, ...]
+
+    @property
+    def blocking(self) -> tuple[Issue, ...]:
+        return self.incomplete + self.errors
+
+    @property
+    def target(self) -> Target:
+        first = self.blocking or self.warnings or self.cascaded
+        return first[0].target if first else Target(self.page)
+
+
+@dataclass(frozen=True, slots=True)
+class BlockerReport:
+    """The one account of what blocks publication, used by Review and Publish.
+
+    Every draft error is counted once (by layer, pointer and code). An error
+    that only says another layer is not ready is not a root cause while that
+    layer has errors of its own: it is shown as a consequence, not counted.
+    """
+
+    groups: tuple[BlockerGroup, ...]
+
+    @property
+    def count(self) -> int:
+        return sum(len(group.blocking) for group in self.groups)
+
+    @property
+    def cascaded(self) -> int:
+        return sum(len(group.cascaded) for group in self.groups)
+
+    @property
+    def warnings(self) -> int:
+        return sum(len(group.warnings) for group in self.groups)
+
+    @property
+    def blocking_groups(self) -> tuple[BlockerGroup, ...]:
+        return tuple(group for group in self.groups if group.blocking)
+
+    def summary(self) -> str:
+        if not self.count:
+            return "Nothing blocks publication."
+        text = (
+            f"{self.count} issue(s) in {len(self.blocking_groups)} section(s) block "
+            "publication"
+        )
+        if self.cascaded:
+            text += f" ({self.cascaded} dependent error(s) resolve with them)"
+        return text + "."
+
+
+def blocker_report(model: WorkspaceModel) -> BlockerReport:
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[Issue] = []
+    for layer in model.layers.values():
+        issues = layer.issues
+        if layer.malformed:
+            issues = (
+                Issue(
+                    layer.name,
+                    "",
+                    "syntax",
+                    f"{layer.path} cannot be read: {layer.malformed}",
+                    "error",
+                    layer.name,
+                    "",
+                    target_for(layer.name, ""),
+                ),
+                *issues,
+            )
+        for item in issues:
+            key = (item.layer, item.pointer, item.code)
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+    broken = {
+        name
+        for name, layer in model.layers.items()
+        if layer.malformed
+        or any(item.error and item.code not in DEPENDENCIES for item in layer.issues)
+    }
+    pages: dict[str, dict[str, list[Issue]]] = {}
+    for item in unique:
+        bucket = pages.setdefault(
+            item.target.page,
+            {"incomplete": [], "errors": [], "warnings": [], "cascaded": []},
+        )
+        if not item.error:
+            bucket["warnings"].append(item)
+        elif DEPENDENCIES.get(item.code) in broken:
+            bucket["cascaded"].append(item)
+        elif item.code in INCOMPLETE_CODES:
+            bucket["incomplete"].append(item)
+        else:
+            bucket["errors"].append(item)
+    order = [name for name in GROUP_ORDER if name in pages]
+    order += [name for name in pages if name not in order]
+    return BlockerReport(
+        tuple(
+            BlockerGroup(
+                name,
+                tuple(pages[name]["incomplete"]),
+                tuple(pages[name]["errors"]),
+                tuple(pages[name]["warnings"]),
+                tuple(pages[name]["cascaded"]),
+            )
+            for name in order
+        )
+    )
+
+
 def _issues(layer: str, validation: Any) -> tuple[Issue, ...]:
     found = []
     data = None

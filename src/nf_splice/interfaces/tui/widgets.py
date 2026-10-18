@@ -49,8 +49,27 @@ HINTS = (
     ("F1", "Help"),
     ("Ctrl+P", "Commands & theme"),
     ("Ctrl+R", "Reload"),
-    ("Ctrl+A", "Ask AI"),
+    ("Ctrl+A", "AI dock"),
+    ("F6", "Page ⇄ AI"),
     ("Ctrl+Q", "Quit"),
+)
+
+#: Rail labels for compact layouts, where the full titles would be clipped.
+SHORT_TITLES = {
+    "overview": "Overview",
+    "assays": "Assays",
+    "software": "Software",
+}
+SHORT_GROUPS = {
+    "GET STARTED": "START",
+    "CREATE YOUR INTEGRATION": "AUTHOR",
+    "FINISH": "FINISH",
+}
+TOOLS = (
+    ("tool-drafts", "▤ View drafts", "▤ Drafts"),
+    ("tool-sources", "⌕ Browse sources", "⌕ Sources"),
+    ("tool-theme", "◑ Theme", "◑ Theme"),
+    ("tool-help", "? Help / shortcuts", "? Help"),
 )
 
 
@@ -115,9 +134,13 @@ class RailItem(Button):
         super().__init__(title, id=f"rail-{page_id}", classes="rail-item")
         self.page_id = page_id
         self.title = title
+        self.compact = False
 
     def show(self, state: StepState, current: bool) -> None:
-        self.label = f"{GLYPHS[state]} {self.title}"
+        title = (
+            SHORT_TITLES.get(self.page_id, self.title) if self.compact else self.title
+        )
+        self.label = f"{GLYPHS[state]} {title}"
         self.tooltip = f"{self.title}: {LABELS[state]}"
         self.set_class(current, "current")
         for item in StepState:
@@ -129,15 +152,23 @@ class StepRail(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         for group in GROUPS:
-            yield Static(group, classes="rail-heading")
+            yield Static(group, classes="rail-heading", name=group)
             for item in PAGES:
                 if item.group == group:
                     yield RailItem(item.id, item.title)
-        yield Static("TOOLS", classes="rail-heading")
-        yield Button("▤ View drafts", id="tool-drafts", classes="rail-item tool")
-        yield Button("⌕ Browse sources", id="tool-sources", classes="rail-item tool")
-        yield Button("◑ Theme", id="tool-theme", classes="rail-item tool")
-        yield Button("? Help / shortcuts", id="tool-help", classes="rail-item tool")
+        yield Static("TOOLS", classes="rail-heading", name="TOOLS")
+        for identifier, label, _short in TOOLS:
+            yield Button(label, id=identifier, classes="rail-item tool")
+
+    def set_compact(self, compact: bool) -> None:
+        """Short labels where the rail is narrow, so nothing is clipped."""
+        for heading in self.query(".rail-heading").results(Static):
+            name = heading.name or ""
+            heading.update(SHORT_GROUPS.get(name, name) if compact else name)
+        for identifier, label, short in TOOLS:
+            self.query_one(f"#{identifier}", Button).label = short if compact else label
+        for item in self.query(RailItem):
+            item.compact = compact
 
     def show(self, states: dict[str, StepState], current: str) -> None:
         for item in self.query(RailItem):
@@ -240,3 +271,20 @@ def app_of(widget: Widget) -> NfSpliceApp:
     app = widget.app
     assert isinstance(app, NfSpliceApp)
     return app
+
+
+class TakeoverBar(Horizontal):
+    """Shown over the page while an agent waits for a person's decision."""
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="takeover-text")
+        yield Button("Return to AI panel (F6)", id="takeover-return", classes="compact")
+        yield Button(
+            "Resume same session",
+            id="takeover-resume",
+            classes="compact",
+            variant="primary",
+        )
+
+    def show(self, text: str) -> None:
+        self.query_one("#takeover-text", Static).update(plain(text))

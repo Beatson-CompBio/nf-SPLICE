@@ -16,55 +16,65 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Static
 
 from nf_splice.interfaces.tui.model import (
+    DEPENDENCIES,
+    BlockerGroup,
+    BlockerReport,
     Issue,
     PlanView,
     ReadinessView,
     WorkspaceModel,
+    blocker_report,
     bounded,
 )
-from nf_splice.interfaces.tui.navigation import PAGES, StepState
+from nf_splice.interfaces.tui.navigation import PAGES, StepState, target_for
 from nf_splice.interfaces.tui.navigation import page as page_spec
 from nf_splice.interfaces.tui.pages.base import PageView
 from nf_splice.interfaces.tui.widgets import Card, plain
 
-_ORDER = (
-    "identity",
-    "assays",
-    "parameters",
-    "outputs",
-    "software",
-    "execution",
-    "provenance",
-)
 
-
-def group_blockers(model: WorkspaceModel) -> dict[str, list[Issue]]:
-    """Publication blockers by page; a dependency on Identity counts once."""
-    groups: dict[str, list[Issue]] = {}
-    identity_broken = not model.layer("bundle").ready
-    for item in model.publication_blockers():
-        if item.code == "identity_not_ready" and identity_broken:
-            continue
-        groups.setdefault(item.target.page, []).append(item)
-    return {name: groups[name] for name in _ORDER if name in groups}
-
-
-def _labels(items: list[Issue]) -> str:
+def _labels(items: tuple[Issue, ...]) -> str:
     seen: list[str] = []
     for item in items:
         label = f"{item.entity} {item.label}".strip() if item.entity else item.label
         if label not in seen:
             seen.append(label)
     text = ", ".join(seen[:3]) + (f" and {len(seen) - 3} more" if len(seen) > 3 else "")
-    return f"{len(items)} to fix: {text}"
+    return text
+
+
+def group_text(group: BlockerGroup) -> str:
+    """What a section needs, root causes first, consequences last."""
+    parts = []
+    if group.incomplete:
+        parts.append(
+            f"{len(group.incomplete)} to complete: {_labels(group.incomplete)}"
+        )
+    if group.errors:
+        parts.append(f"{len(group.errors)} to correct: {_labels(group.errors)}")
+    if group.cascaded:
+        roots = sorted(
+            {
+                page_spec(target_for(DEPENDENCIES[item.code], "").page).title
+                for item in group.cascaded
+            }
+        )
+        parts.append(
+            f"{len(group.cascaded)} waiting on {' and '.join(roots)} (resolves with it)"
+        )
+    if group.warnings and not group.blocking:
+        parts.append(f"{len(group.warnings)} warning(s): {_labels(group.warnings)}")
+    return "; ".join(parts)
 
 
 class ReviewPage(PageView):
     page_id = "review"
     help_text = (
-        "**Review** lists what still blocks publication, grouped by step. Each "
-        "Fix opens the exact field. **Further review** lists what SPLICE "
-        "ingestion still needs; those items do not block publication.\n\n"
+        "**Review** lists what still blocks publication, grouped by section: "
+        "values still *to complete*, values *to correct*, and errors that only "
+        "wait on another section (they resolve with it and are not counted). "
+        "Each Fix opens the exact field. Warnings and **ingestion readiness** "
+        "never block publication; a bundle is ready for SPLICE ingestion only "
+        "when every readiness dimension is.\n\n"
         "Readiness is derived only from the current drafts, never from which "
         "screens you visited."
     )
@@ -72,14 +82,18 @@ class ReviewPage(PageView):
     def __init__(self) -> None:
         super().__init__()
         self.readiness: ReadinessView | None = None
-        self.groups: dict[str, list[Issue]] = {}
+        self.report: BlockerReport | None = None
+        self.groups: dict[str, BlockerGroup] = {}
 
     def body(self) -> ComposeResult:
         yield Static("", id="review-summary", classes="lead")
         with Card(title="Required before publication", id="review-required"):
             yield Vertical(id="review-groups")
+        with Card(title="Warnings · do not block publication", id="review-warnings"):
+            yield Static("", id="review-warning-list", classes="muted")
         with Card(
-            title="Further review · not publication blockers", id="review-further"
+            title="Ingestion readiness · not publication blockers",
+            id="review-further",
         ):
             yield Vertical(id="review-readiness")
             yield Button(
@@ -93,40 +107,55 @@ class ReviewPage(PageView):
             yield Button("Review publication →", id="review-publish", variant="primary")
 
     def refresh_page(self, model: WorkspaceModel) -> None:
-        self.groups = group_blockers(model)
-        count = sum(len(items) for items in self.groups.values())
+        report = blocker_report(model)
+        self.report = report
+        self.groups = {group.page: group for group in report.groups}
         self.query_one("#review-summary", Static).update(
             plain(
                 "All drafts validate: review the publication plan next."
-                if not self.groups
-                else f"{count} item(s) in {len(self.groups)} step(s) block publication."
+                if not report.count
+                else report.summary()
             )
         )
         holder = self.query_one("#review-groups", Vertical)
         holder.remove_children()
-        if not self.groups:
+        if not report.count:
             holder.mount(Static("✓ Nothing blocks publication.", classes="good-text"))
-        for name, items in self.groups.items():
-            title = page_spec(name).title
+        for group in report.groups:
+            if not group.blocking and not group.cascaded:
+                continue
+            title = page_spec(group.page).title
+            glyph = "!" if group.blocking else "…"
             row = Horizontal(classes="review-row")
             actions = Horizontal(classes="review-actions")
             holder.mount(row, actions)
-            row.mount(Static(plain(f"! {title}"), classes="review-group"))
+            row.mount(Static(plain(f"{glyph} {title}"), classes="review-group"))
             row.mount(
-                Static(plain(bounded(_labels(items), 90)), classes="review-detail")
+                Static(plain(bounded(group_text(group), 200)), classes="review-detail")
             )
-            actions.mount(
-                Button(
-                    f"Fix {title.lower()} →",
-                    name=f"review-fix-{name}",
-                    classes="compact",
-                ),
-                Button(
-                    "✧ Propose a fix",
-                    name=f"review-ai-{name}",
-                    classes="compact ai-context",
-                ),
+            if group.blocking:
+                actions.mount(
+                    Button(
+                        f"Fix {title.lower()} →",
+                        name=f"review-fix-{group.page}",
+                        classes="compact",
+                    ),
+                    Button(
+                        "✧ Propose a fix",
+                        name=f"review-ai-{group.page}",
+                        classes="compact ai-context",
+                    ),
+                )
+        warnings = [group for group in report.groups if group.warnings]
+        self.query_one("#review-warnings").display = bool(warnings)
+        self.query_one("#review-warning-list", Static).update(
+            plain(
+                "\n".join(
+                    f"{page_spec(group.page).title}: {_labels(group.warnings)}"
+                    for group in warnings
+                )
             )
+        )
         self.query_one("#review-publish", Button).disabled = not model.drafts_valid
         self._further()
         self.workspace.request_readiness()
@@ -252,13 +281,14 @@ class ReviewPage(PageView):
         workspace = self.workspace
         if button.startswith("review-fix-"):
             event.stop()
-            items = self.groups.get(button.removeprefix("review-fix-")) or []
-            if items:
-                workspace.jump(items[0].target)
+            group = self.groups.get(button.removeprefix("review-fix-"))
+            if group is not None:
+                workspace.jump(group.target)
         elif button.startswith("review-ai-"):
             event.stop()
             name = button.removeprefix("review-ai-")
-            items = self.groups.get(name) or []
+            group = self.groups.get(name)
+            items = group.blocking if group is not None else ()
             stage = page_spec(name).stage
             guidance = "Fix these validation issues: " + "; ".join(
                 f"{item.pointer or '/'} {item.message}" for item in items[:8]
@@ -335,20 +365,29 @@ class PublishPage(PageView):
 
     def show_plan(self, plan: PlanView) -> None:
         self.plan = plan
+        report = blocker_report(self.model) if self.model is not None else None
         if plan.ready:
             summary = (
                 "✓ All required contract checks passed. Review the files, then publish."
             )
+        elif report is not None and report.count:
+            # The same account as Review, so the counts always agree.
+            summary = f"{report.summary()} Fix them in Review first."
         else:
             summary = (
-                f"Publishing is blocked by {len(plan.blockers)} issue(s); fix them in "
-                "Review first."
+                f"Publishing is blocked by {len(plan.blockers)} cross-layer "
+                "check(s) the drafts pass individually."
             )
         self.query_one("#publish-summary", Static).update(plain(summary))
         if plan.ready:
             files = "\n".join(
                 f"{kind:<10} splice/{path}" for kind, path in plan.changes
             ) or ("No file changes: the published bundle already matches the drafts.")
+        elif report is not None and report.count:
+            files = "\n".join(
+                f"✕ {page_spec(group.page).title}: {group_text(group)}"
+                for group in report.blocking_groups
+            )
         else:
             files = "\n".join(f"✕ {item}" for item in plan.blockers[:10])
         self.query_one("#publish-files", Static).update(plain(files))

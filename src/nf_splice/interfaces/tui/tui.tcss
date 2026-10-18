@@ -164,6 +164,13 @@ RadioSet { height: auto; background: $surface; border: tall $splice-control; }
 #status-message.tone-warn { color: $warning; }
 #status-message.tone-bad { color: $error; }
 #too-small { padding: 2; color: $warning; }
+#takeover-bar {
+    height: auto;
+    background: $surface;
+    border: round $warning;
+    padding: 0 1;
+}
+#takeover-text { width: 1fr; color: $warning; padding-top: 1; }
 
 /* ---------------------------------------------------------- AI dock */
 
@@ -196,13 +203,18 @@ Screen.narrow #rail { width: 16; }
 Screen.narrow #subtitle, Screen.narrow #pipeline-name, Screen.narrow #mode-chip { display: none; }
 Screen.narrow #top-ask, Screen.narrow #top-assist, Screen.narrow #top-autonomous { display: none; }
 Screen.narrow #hints { display: none; }
-Screen.medium #dock, Screen.narrow #dock {
+/* Below the split width the page and the AI panel alternate at full width
+   (F6 or the visible buttons switch); the page keeps its state. */
+Screen.stacked #dock {
     layer: overlay;
     dock: right;
     width: 100%;
     height: 100%;
+    border-left: none;
 }
-Screen.medium #dock { width: 80%; }
+#dock-back { display: none; }
+Screen.stacked #dock-back { display: block; }
+Screen.stacked #dock-close { display: none; }
 
 /* ---------------------------------------------------------- dialogs */
 

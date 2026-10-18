@@ -161,13 +161,19 @@ class Intervention:
     stage: str
     stage_title: str
     decision: str
+    #: Why the agent could not decide (its own words, else the findings).
     reason: str
+    #: What it examined, in plain words (no tool payloads).
     evidence: tuple[str, ...]
     suggestion: str
     pointer: str
     checkpoint: str
     artefact: str
     target: Target
+    uncertainties: tuple[str, ...] = ()
+    #: Validation findings and the operations the session ran, verbatim,
+    #: for the expandable technical details only.
+    diagnostics: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,12 +222,43 @@ class AgentSnapshot:
 _FINISHED = {SessionStatus.COMPLETED, SessionStatus.CANCELLED}
 
 
-def _check_label(value: str) -> str:
-    """A check the agent made, without the JSON arguments of a tool call."""
-    for marker in (" {", " ["):
-        if marker in value:
-            value = value.split(marker, 1)[0]
-    return bounded(value, 160)
+#: Plain words for the analyses an agent may cite as evidence.
+CHECK_PHRASES = {
+    "analyse_routes": "the pipeline's publication routes",
+    "route_coverage": "which published routes the catalogue covers",
+    "parameter_usage": "where each parameter is used",
+    "component_inventory": "the module and container inventory",
+    "analyse_execution": "the execution profiles and configs",
+    "analyse_ro_crate": "the RO-Crate",
+    "search_assay_catalogue": "the SPLICE assay vocabulary",
+    "show_assay": "an assay's vocabulary entry",
+    "list_example_outputs": "the example outputs",
+    "reconcile_example_outputs": "the example outputs against the catalogue",
+    "validate_layer": "the draft's validation",
+    "contract_reference": "the field contract",
+    "read_draft": "the current draft",
+}
+#: Operations that change drafts: never shown as evidence.
+_WRITES = ("replace_draft", "write_config", "patch_draft", "set_", "add_", "remove_")
+
+
+def _evidence(checks: list[str]) -> tuple[str, ...]:
+    """What the agent examined, readable: no payloads, no write operations."""
+    found: list[str] = []
+    for value in checks:
+        text = value.strip()
+        for marker in (" {", " [", "("):
+            if marker in text and text.split(marker, 1)[0].isidentifier():
+                text = text.split(marker, 1)[0]
+        if text.startswith(_WRITES):
+            continue
+        label = CHECK_PHRASES.get(text, text if not text.isidentifier() else "")
+        if not label:
+            label = text.replace("_", " ")
+        label = bounded(label, 160)
+        if label not in found:
+            found.append(label)
+    return tuple(found[:6])
 
 
 def _changed_files(diff: str) -> tuple[str, ...]:
@@ -765,13 +802,19 @@ class AgentCoordinator:
                     item.stage.value,
                     spec(item.stage).title,
                     bounded(item.decision, 300),
-                    bounded("; ".join(item.issues[:3]), 300),
-                    tuple(_check_label(value) for value in item.attempted_checks[:6]),
+                    bounded(item.reason or "; ".join(item.issues[:3]), 300),
+                    _evidence(item.attempted_checks),
                     bounded(item.suggested_resolution, 300),
                     item.pointer,
                     item.checkpoint,
                     item.artefact,
                     target_for(stage=item.stage.value, pointer=item.pointer or None),
+                    tuple(bounded(value, 200) for value in item.uncertainties[:6]),
+                    tuple(
+                        [f"finding: {value}" for value in item.issues]
+                        + [f"agent check: {value}" for value in item.attempted_checks]
+                        + [f"operation: {value}" for value in item.diagnostics]
+                    ),
                 )
                 for item in engine.open_interventions()
             )

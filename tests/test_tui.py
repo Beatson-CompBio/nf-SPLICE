@@ -462,18 +462,36 @@ async def test_review_groups_blockers_and_fix_opens_the_field(tmp_path: Path) ->
         app.show_page("review")
         await settle(app, pilot)
         page = app.current_page()
-        groups = page.groups  # type: ignore[union-attr]
+        report = page.report  # type: ignore[union-attr]
+        groups = {group.page: group for group in report.blocking_groups}
         assert "assays" in groups and "outputs" in groups
-        # One root cause (no assay) is not repeated in every layer.
+        # The missing assay is one root cause, counted once: the layers that
+        # wait on the identity are shown as consequences, never as blockers.
+        assert [item.code for item in groups["assays"].incomplete] == [
+            "missing_assay_classification"
+        ]
         assert not any(
             item.code == "identity_not_ready"
-            for items in groups.values()
-            for item in items
+            for group in report.groups
+            for item in group.blocking
         )
+        assert report.cascaded >= 1
+        # The empty catalogue is incomplete authoring, not a wrong value.
+        assert {item.code for item in groups["outputs"].incomplete} >= {
+            "missing_required"
+        }
         text = page_text(app)
         assert "NOT READY TO PUBLISH" in text
+        assert report.summary() in text
+        assert "waiting on" in text and "resolves with it" in text
         assert app.screen.query_one("#review-publish", Button).disabled
         screenshot(app, "review")
+        # Publish states the same count from the same account.
+        app.show_page("publish")
+        await settle(app, pilot)
+        assert report.summary() in page_text(app)
+        app.show_page("review")
+        await settle(app, pilot)
         await press_named(app, pilot, "review-fix-outputs")
         assert app.current == "outputs"
 
