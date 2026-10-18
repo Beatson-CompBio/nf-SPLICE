@@ -22,11 +22,12 @@ from nf_splice.agents.protocol import (
     require_consent,
     require_tool_calling,
 )
-from nf_splice.agents.stages import Stage
+from nf_splice.agents.stages import Stage, spec
 from nf_splice.agents.state import Usage
 from nf_splice.agents.toolbox import SessionToolbox, ToolMode
 from nf_splice.domain.audit import Actor, ActorKind, ChangeOrigin
 from nf_splice.layers import ChangeContext
+from nf_splice.services.workspace import inspect_layer
 
 #: Read operations offered to contextual help (no checks that run tools).
 HELP_OPERATIONS = set(READ_OPERATIONS) - {"run_optional_checks"}
@@ -66,6 +67,37 @@ def _stage(context: Mapping[str, Any]) -> Stage | None:
     return None
 
 
+def page_context(root: Path, context: Mapping[str, Any]) -> dict[str, Any]:
+    """The page's own facts, so the answer can address what is on screen.
+
+    A page is built from one layer draft: its validation state is what the
+    person is looking at. Read-only and bounded: at most six issues, each on
+    one line, because the question - not the snapshot - is the point.
+    """
+    enriched: dict[str, Any] = dict(context)
+    stage = _stage(context)
+    layer = spec(stage).layer if stage is not None else None
+    if not layer or "draft" in enriched:
+        return enriched
+    try:
+        found = inspect_layer(root, layer)
+    except (OSError, ValueError):
+        return enriched
+    issues = [
+        f"{item.get('severity', 'issue')} {item.get('pointer') or '/'}: "
+        f"{item.get('message')}"
+        for item in found["issues"][:6]
+    ]
+    enriched["draft"] = {
+        "layer": layer,
+        "exists": found["exists"],
+        "ready": found["ready"],
+        "issues": issues,
+        "more_issues": max(0, len(found["issues"]) - len(issues)),
+    }
+    return enriched
+
+
 async def ask_for_help(
     repository: str | Path,
     provider: AgentProvider,
@@ -101,10 +133,11 @@ async def ask_for_help(
         examples=list(examples or []),
         log=calls.append,
     )
+    context = page_context(root, context or {})
     request = TurnRequest(
         purpose="help",
-        instruction=help_instruction(question, context or {}),
-        system_prompt=system_prompt("help", _stage(context or {})),
+        instruction=help_instruction(question, context),
+        system_prompt=system_prompt("help", _stage(context)),
         tools=toolbox,
         max_turns=12,
         timeout_seconds=timeout_seconds,

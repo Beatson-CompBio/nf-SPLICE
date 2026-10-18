@@ -139,6 +139,26 @@ def _digest(operations: list[PlannedOperation]) -> str:
     ).hexdigest()
 
 
+def _ellipsise(text: str, limit: int = 400) -> str:
+    """One line, at most limit characters, never cut mid-word.
+
+    Session-history summaries are the only record a provider without
+    continuation sees; an explicit ellipsis says a longer record exists,
+    where a mid-word cut reads as a transcription error.
+    """
+    flat = " ".join(text.split())
+    if len(flat) <= limit:
+        return flat
+    head = flat[:limit]
+    stop = max(head.rfind(". "), head.rfind("! "), head.rfind("? "))
+    if stop >= limit // 2:
+        return head[: stop + 1]
+    word = head.rfind(" ")
+    if word > 0:
+        head = head[:word]
+    return head.rstrip(",;:") + "…"
+
+
 class SessionEngine:
     """Drive one session; every public method saves state before returning."""
 
@@ -679,8 +699,7 @@ class SessionEngine:
         if not entries:
             return ""
         lines = [
-            f"- [{item.role}/{item.kind}] {' '.join(item.text.split())[:400]}"
-            for item in entries
+            f"- [{item.role}/{item.kind}] {_ellipsise(item.text)}" for item in entries
         ]
         return (
             "\n\nEarlier in this session (nf-splice's record; the drafts and "

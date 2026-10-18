@@ -130,9 +130,11 @@ the file to edit or the nf-splice command the person could run.""",
 #: What a thorough review of each stage covers (provider-neutral checklists).
 CHECKLISTS: dict[Stage, tuple[str, ...]] = {
     Stage.IDENTITY: (
-        "Read nextflow.config's pipeline metadata, CITATION.cff, README, LICENSE "
-        "and the root RO-Crate; compare versions, names, URLs and authors, and resolve "
-        "contradictions with evidence or one question.",
+        "Read whichever identity sources this pipeline has - its nextflow.config "
+        "metadata, README, CITATION.cff, LICENSE, root RO-Crate; small pipelines "
+        "have few of them, and their absence is a finding, not a file to hunt. "
+        "Compare versions, names, URLs and authors across what exists, and "
+        "resolve contradictions with evidence or one question.",
         "Fill every authorable field the evidence supports (contract_reference "
         "lists them); leave the rest null. Never guess ORCIDs, DOIs or licences.",
         "Assays: investigate every route yourself (workflows, modules, "
@@ -200,7 +202,8 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
 
 HELP_RULES = """You are nf-splice's read-only assistant. A developer integrating a
 Nextflow pipeline with the SPLICE platform asked a question about the page they
-are on (the context names it and what is selected).
+are on (the context names it, what is selected, and the page's draft - its
+readiness and current issues, which are what the person can see).
 
 - Answer from evidence: inspect the pipeline with the read-only tools
   (list_files, read_source, search_source, read_draft, analyse_routes,
