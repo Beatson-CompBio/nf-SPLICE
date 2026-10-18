@@ -38,6 +38,12 @@ profiles:
       adopt: conf/cluster.config      # a repository config, published unchanged
 ```
 
+`container_engine` is optional execution metadata: it records the runtime
+the profile was written for, extracted from a configuration that declares
+one. Omit it (`null`) when the pipeline declares no runtime — the deployment
+site decides which of the declared images its engine consumes — and never
+invent a value to satisfy a check (ADR-0070).
+
 `init` creates a `default` profile and its config scaffold (or carries over
 the profiles and configs of an earlier `splice/` bundle). The scaffold is an
 ordinary Nextflow config with two conventional sections:
@@ -90,7 +96,9 @@ nf-splice draft validate execution-profiles
 
 checks one default and unique IDs, that every config exists, that no config
 contains a secret, a personal path, a literal account or a test setting in a
-production profile, and that the parameter sections agree with the
+production profile, that a named container engine is a runtime nf-splice
+knows and is not contradicted by the profile's own config (which engine it
+enables), and that the parameter sections agree with the
 [input access policy](inputs.md): a value in the user section must be one
 users may change, and a value users may change must not be fixed in the
 SPLICE section. Configs no profile uses are reported.

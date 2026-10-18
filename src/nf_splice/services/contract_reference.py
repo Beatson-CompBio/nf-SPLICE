@@ -169,7 +169,11 @@ def _profiles() -> dict[str, Any]:
             "type": [item.value for item in ExecutionProfileType],
             "engine": "nextflow",
             "executor": [item.value for item in ExecutionExecutor],
-            "container_engine": [item.value for item in ContainerEngine],
+            "container_engine": "optional runtime this profile names, one of "
+            + ", ".join(item.value for item in ContainerEngine)
+            + "; null when the profile declares none (the site decides). "
+            "Distinct from a component's image sources, which list images "
+            "per runtime.",
             "config": "{draft: <name>.draft.config} (a native file in "
             ".splice-local/drafts/configs/, edited with write_config) or "
             "{adopt: <repository .config>} (published unchanged)",

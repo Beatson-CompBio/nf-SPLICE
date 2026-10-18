@@ -153,6 +153,66 @@ def test_manually_authored_profiles_and_configs_publish_without_reviews(
     assert b"cpus = 32" in final
 
 
+def test_a_profile_may_declare_no_container_engine(tmp_path: Path) -> None:
+    # ADR-0070: nf-splice authors bundles; the runtime is the site's decision.
+    _repository(tmp_path)
+    discover_execution(tmp_path)
+    configs = tmp_path / ".splice-local/drafts/configs"
+    (configs / "default.draft.config").write_text(
+        "process {\n    executor = 'local'\n}\n"
+        f"{USER_SECTION}\nparams {{\n    genome = 'GRCm39'\n}}\n"
+        f"{PLATFORM_SECTION}\nparams {{\n}}\n",
+        encoding="utf-8",
+    )
+    _profiles(tmp_path, [_profile("default", container_engine=None)], "default")
+    validation = validate_execution_draft(tmp_path)
+    assert validation.ready, validation.issues
+    catalogue = json.loads(validation.files["execution-profiles.json"])
+    assert catalogue["profiles"][0]["container_engine"] is None
+
+
+def test_a_supplied_engine_is_still_checked(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    discover_execution(tmp_path)
+    _profiles(tmp_path, [_profile("default", container_engine="kubernetes")], "default")
+    assert "vocabulary" in _codes(tmp_path)
+
+
+def test_an_engine_the_profile_config_does_not_enable_warns(tmp_path: Path) -> None:
+    # conf/local.config enables singularity; naming docker is a real conflict.
+    _repository(tmp_path)
+    discover_execution(tmp_path)
+    _profiles(
+        tmp_path,
+        [_profile("repository", config={"adopt": "conf/local.config"},
+                  container_engine="docker")],
+        "repository",
+    )
+    issues = validate_execution_draft(tmp_path).issues
+    conflict = [item for item in issues if item.code == "engine_conflict"]
+    assert conflict and conflict[0].severity.value == "warning"
+    assert "singularity" in conflict[0].message
+
+
+def test_review_profile_can_leave_the_engine_unset(tmp_path: Path) -> None:
+    import yaml
+
+    _repository(tmp_path)
+    discover_execution(tmp_path)
+    review_profile(
+        tmp_path,
+        "profile:local",
+        ADA,
+        profile_type="development",
+        description="Local work.",
+        executor="local",
+    )
+    draft = tmp_path / ".splice-local/drafts/execution-profiles.draft.yaml"
+    data = yaml.safe_load(draft.read_text(encoding="utf-8"))
+    added = [item for item in data["profiles"] if item["id"] == "local"]
+    assert added and added[0]["container_engine"] is None
+
+
 def test_parameter_sections_are_checked_against_input_policies(
     tmp_path: Path,
 ) -> None:

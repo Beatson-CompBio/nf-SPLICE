@@ -241,7 +241,16 @@ def _deployment(splice: Path, dimension: Dimension) -> None:
     if default is None:
         dimension.block("no default execution profile is published")
         return
-    engine = str(default.get("container_engine"))
+    engine = default.get("container_engine")
+    if not isinstance(engine, str) or not engine:
+        # The profile declares no runtime: a site decision, not a defect
+        # (ADR-0070). Component images are still declared; which source the
+        # site consumes is the deployment's choice.
+        dimension.notes.append(
+            "the default profile declares no container engine; container "
+            "sources were not checked against a specific runtime"
+        )
+        return
     runtime = "docker" if engine in {"docker", "podman"} else engine
     _software(components, engine, dimension)
     if engine in CONTAINER_ENGINES:

@@ -97,7 +97,6 @@
         "type",
         "engine",
         "executor",
-        "container_engine",
         "config",
         "default",
         "config_strategy"
@@ -132,7 +131,7 @@
           "minLength": 1
         },
         "container_engine": {
-          "type": "string",
+          "type": ["string", "null"],
           "minLength": 1
         },
         "config": {

@@ -57,6 +57,7 @@ from nf_splice.inspectors.profiles import (
     _SECRET_ASSIGNMENT,
     ProfileDiscoveryError,
     discover_profiles,
+    enabled_engines,
     safe_relative,
     strip_comments,
 )
@@ -237,7 +238,7 @@ def render_generated_config(profile: Mapping[str, Any]) -> str:
     return config_scaffold(
         str(profile["id"]),
         executor=str(profile["executor"]),
-        container_engine=str(profile["container_engine"]),
+        container_engine=profile.get("container_engine"),
         process=generated.get("process"),
         user_params=generated.get("user_params"),
         platform_params=generated.get("platform_params"),
@@ -434,13 +435,16 @@ def _draft(root: Path) -> dict[str, Any]:
 
 
 def _vocabulary(
-    profile_type: str, executor: str, container_engine: str
-) -> tuple[str, str, str]:
+    profile_type: str, executor: str, container_engine: str | None
+) -> tuple[str, str, str | None]:
+    """Normalise the vocabulary fields; a null engine means none declared."""
     try:
         return (
             ExecutionProfileType(profile_type).value,
             ExecutionExecutor(executor).value,
-            ContainerEngine(container_engine).value,
+            None
+            if not container_engine
+            else ContainerEngine(container_engine).value,
         )
     except ValueError as error:
         raise LayerError(str(error)) from error
@@ -581,7 +585,7 @@ def review_profile(
     profile_type: str,
     description: str,
     executor: str,
-    container_engine: str,
+    container_engine: str | None = None,
     config_source: str | None = None,
     generate: Mapping[str, Any] | None = None,
     site_parameters: Sequence[Mapping[str, str]] = (),
@@ -599,13 +603,15 @@ def review_profile(
     if not isinstance(entry, dict):
         raise LayerError(f"unknown execution profile candidate {candidate_id!r}")
     candidate = ExecutionProfileCandidate.model_validate(entry["candidate"])
+    requested_engine = (container_engine or "").strip() or None
     selected_type, selected_executor, selected_engine = _vocabulary(
-        profile_type, executor, container_engine
+        profile_type, executor, requested_engine
     )
     if candidate.executors and selected_executor not in candidate.executors:
         raise LayerError(f"executor {selected_executor!r} is not in detected evidence")
     if (
-        candidate.container_engines
+        requested_engine is not None
+        and candidate.container_engines
         and selected_engine not in candidate.container_engines
     ):
         raise LayerError(
@@ -664,14 +670,15 @@ def add_generated_profile(
     description: str,
     profile_type: str,
     executor: str,
-    container_engine: str,
+    container_engine: str | None = None,
     generate: Mapping[str, Any] | None = None,
     site_parameters: Sequence[Mapping[str, str]] = (),
 ) -> EditResult:
     """Optional convenience: add a profile with a new native config scaffold."""
     root = Path(repository_root).resolve()
+    requested_engine = (container_engine or "").strip() or None
     selected_type, selected_executor, selected_engine = _vocabulary(
-        profile_type, executor, container_engine
+        profile_type, executor, requested_engine
     )
     identifier = profile_id(name)
     text = config_scaffold(
@@ -1131,9 +1138,11 @@ def validate_execution_draft(repository_root: str | Path) -> LayerValidation:
         strategy, path, problem = profile_config(root, profile)
         if path is not None:
             referenced.add(path)
+        # container_engine is optional execution metadata: a repository
+        # that declares no runtime must not be forced to guess one (ADR-0070).
         missing = [
             key
-            for key in ("name", "description", "type", "executor", "container_engine")
+            for key in ("name", "description", "type", "executor")
             if not profile.get(key)
         ]
         for key in missing:
@@ -1151,7 +1160,7 @@ def validate_execution_draft(repository_root: str | Path) -> LayerValidation:
             _vocabulary(
                 str(profile.get("type")),
                 str(profile.get("executor")),
-                str(profile.get("container_engine")),
+                profile.get("container_engine"),
             )
         except LayerError as error:
             issues.append(issue(LAYER, pointer, "vocabulary", str(error)))
@@ -1208,6 +1217,22 @@ def validate_execution_draft(repository_root: str | Path) -> LayerValidation:
                 authored=strategy == AUTHORED,
             )
         )
+        declared_engine = profile.get("container_engine")
+        if isinstance(declared_engine, str) and declared_engine:
+            enabled = enabled_engines(payload.decode("utf-8", errors="replace"))
+            if enabled and declared_engine not in enabled:
+                issues.append(
+                    issue(
+                        LAYER,
+                        f"{pointer}/container_engine",
+                        "engine_conflict",
+                        f"profile {identifier!r} names "
+                        f"{declared_engine!r} but {path} enables "
+                        + ", ".join(sorted(enabled)),
+                        Severity.WARNING,
+                        path=path,
+                    )
+                )
         relative = f"configs/{identifier}.config"
         configs[relative] = payload
         rendered.append(
@@ -1218,7 +1243,7 @@ def validate_execution_draft(repository_root: str | Path) -> LayerValidation:
                 "type": profile["type"],
                 "engine": profile.get("engine", "nextflow"),
                 "executor": profile["executor"],
-                "container_engine": profile["container_engine"],
+                "container_engine": profile.get("container_engine"),
                 "config": relative,
                 "default": identifier == default,
                 "config_strategy": strategy,

@@ -73,7 +73,7 @@ Execution profiles. No other keys are allowed.
 | `type` | one of `test`, `development`, `production` | yes | Intended use: `test`, `development` or `production`. |
 | `engine` | one of `nextflow` | yes | Workflow engine. |
 | `executor` | non-empty string | yes | Nextflow executor, for example `local` or `slurm`. |
-| `container_engine` | non-empty string | yes | Container runtime, for example `singularity` or `docker`. |
+| `container_engine` | any JSON value | no | Container runtime this profile declares, for example `singularity` or `docker`. Optional: `null` when the profile declares none — the deployment site decides which runtime consumes the declared images. |
 | `config` | `configs/<profile id>.config` | yes | Configuration file of the profile, relative to the bundle directory. Pass it to the engine, for example with `nextflow run -c`. |
 | `default` | boolean | yes | Whether this is the default profile. |
 | `config_strategy` | one of `adopted`, `authored` | yes | `adopted`: a byte-identical copy of a configuration owned by the workflow repository. `authored`: the native Nextflow configuration written for this bundle (by a person or an agent) in nf-splice's editable drafts. |

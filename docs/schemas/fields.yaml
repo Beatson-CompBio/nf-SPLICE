@@ -313,7 +313,7 @@ execution-profiles:
   profiles[].type: "Intended use: `test`, `development` or `production`."
   profiles[].engine: "Workflow engine."
   profiles[].executor: "Nextflow executor, for example `local` or `slurm`."
-  profiles[].container_engine: "Container runtime, for example `singularity` or `docker`."
+  profiles[].container_engine: "Container runtime this profile declares, for example `singularity` or `docker`. Optional: `null` when the profile declares none — the deployment site decides which runtime consumes the declared images."
   profiles[].config: "Configuration file of the profile, relative to the bundle directory. Pass it to the engine, for example with `nextflow run -c`."
   profiles[].default: "Whether this is the default profile."
   profiles[].config_strategy: "`adopted`: a byte-identical copy of a configuration owned by the workflow repository. `authored`: the native Nextflow configuration written for this bundle (by a person or an agent) in nf-splice's editable drafts."

@@ -751,6 +751,23 @@ def test_conda_only_components_block_deployment_under_a_container_engine(
     assert any("execution host's software" in item for item in deployment.notes)
 
 
+def test_a_null_engine_asks_nothing_of_container_sources(tmp_path: Path) -> None:
+    # ADR-0070: with no runtime declared, no runtime-specific check applies.
+    root = copy_fixture(tmp_path)
+    author_all(root)
+    build(root)
+    path = root / "splice" / "execution-profiles.json"
+    document = json.loads(path.read_text())
+    for item in document["profiles"]:
+        item["container_engine"] = None
+    path.write_text(json.dumps(document))
+    deployment = assess_readiness(root).dimensions["deployment"]
+    assert deployment.status == "ready", deployment.blockers
+    assert any(
+        "declares no container engine" in item for item in deployment.notes
+    )
+
+
 # ------------------------------------------------------------ wizard
 
 

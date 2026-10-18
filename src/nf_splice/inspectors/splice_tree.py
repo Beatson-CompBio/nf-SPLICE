@@ -161,7 +161,6 @@ def _require_execution_profiles(path: Path) -> str | None:
                 "type",
                 "engine",
                 "executor",
-                "container_engine",
                 "config",
             )
             if not isinstance(profile.get(key), str) or not profile[key]
@@ -175,10 +174,13 @@ def _require_execution_profiles(path: Path) -> str | None:
             "container_engine": {item.value for item in ContainerEngine},
         }
         for field, vocabulary in vocabularies.items():
-            if profile[field] not in vocabulary:
+            value = profile.get(field)
+            if field == "container_engine" and value in (None, ""):
+                continue  # optional execution metadata (ADR-0070)
+            if value not in vocabulary:
                 return (
                     f"profiles[{index}].{field} uses unsupported value "
-                    f"{profile[field]!r}"
+                    f"{value!r}"
                 )
         identifiers.append(profile["id"])
         config = profile["config"]

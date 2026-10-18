@@ -28,6 +28,11 @@ cluster.
    container engine, site parameters and the config reference. All
    configuration goes in the native file, written with `write_config` as
    complete Nextflow configuration; never put directives in the YAML.
+   The container engine is optional metadata (ADR-0070): record it only
+   where a configuration or site document declares one, otherwise leave it
+   unset — the site decides which engine consumes the declared images.
+   Never invent an engine to satisfy a check; a profile naming an engine its
+   own config does not enable is reported as a contradiction.
 3. The two conventional sections hold parameter values:
    `// ***** User Pipeline Input Params *****` for values users may change
    and `// ***** SPLICE Pipeline Input Params *****` for values the

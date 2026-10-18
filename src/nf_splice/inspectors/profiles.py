@@ -108,6 +108,17 @@ def _scan_environment(text: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return executors, tuple(sorted(engines))
 
 
+def enabled_engines(text: str) -> frozenset[str]:
+    """Engines the text enables (docker/singularity/conda and friends).
+
+    Public so profile validation can compare a declared ``container_engine``
+    with what the profile's own configuration enables. ``mamba`` normalises
+    to ``conda``, as in :func:`_scan_environment`.
+    """
+    _executors, engines = _scan_environment(strip_comments(text))
+    return frozenset(engines)
+
+
 def safe_relative(root: Path, path: str) -> str | None:
     if "$" in path or "://" in path:
         return None

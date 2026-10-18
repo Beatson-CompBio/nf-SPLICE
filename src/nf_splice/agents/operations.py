@@ -937,7 +937,7 @@ def _review_profile(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, An
             profile_type=str(a["profile_type"]),
             description=str(a["description"]),
             executor=str(a["executor"]),
-            container_engine=str(a["container_engine"]),
+            container_engine=a.get("container_engine"),
             config_source=a.get("config_source"),
             generate=generate,
         )
@@ -1713,25 +1713,25 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "review_profile",
-            "Review one profile candidate: type, description, executor, container "
-            "engine and an adopted config source, or a generated config.",
+            "Review one profile candidate: type, description, executor and an "
+            "adopted config source or a generated config. container_engine is "
+            "optional execution metadata: omit it when the profile declares no "
+            "runtime; never invent one.",
             _obj(
                 {
                     "candidate_id": {"type": "string"},
                     "profile_type": {"type": "string"},
                     "description": {"type": "string"},
                     "executor": {"type": "string"},
-                    "container_engine": {"type": "string"},
+                    "container_engine": {
+                        "type": ["string", "null"],
+                        "description": "optional; omit or null when no runtime "
+                        "is declared",
+                    },
                     "config_source": {"type": "string"},
                     "generate": {"type": "boolean"},
                 },
-                [
-                    "candidate_id",
-                    "profile_type",
-                    "description",
-                    "executor",
-                    "container_engine",
-                ],
+                ["candidate_id", "profile_type", "description", "executor"],
             ),
             _D,
             "draft",

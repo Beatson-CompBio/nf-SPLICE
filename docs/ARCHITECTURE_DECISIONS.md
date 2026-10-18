@@ -100,6 +100,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0067 | Work in one persistent workspace with an AI dock, safe pauses, takeover and same-session resume | Current | — |
 | ADR-0068 | Author the output catalogue; make route coverage an ingestion-readiness dimension and version analysis output independently | Current | — |
 | ADR-0069 | Infer no science deterministically: import identity from exact keys and let people declare assays | Current | — |
+| ADR-0070 | The container engine is optional profile metadata; authoring a bundle never needs a runtime | Current | — |
 
 ---
 
@@ -3231,6 +3232,10 @@ Image publication had an abstract uploader only.
   profiles without nf-splice templates.
 - The real S3 path is exercised only by an opt-in test.
 
+> **Note (2026-10-18).** Amended by ADR-0070: `container_engine` is optional profile metadata. It is extracted only where a configuration declares it; a profile without one is valid, and neither draft validation nor publication requires a runtime.
+
+---
+
 ## ADR-0060: Author one RO-Crate graph, enrich it with the bundle, and make the pipeline archive a Workflow RO-Crate
 
 | Metadata | Value |
@@ -3953,3 +3958,78 @@ that repository's remote as its URL.
 - Manual mode makes no scientific inference; AI help is explicit, cited and
   reviewable.
 - `services/assay_discovery.py` and `assay-evidence-rules.json` are deleted.
+
+---
+
+## ADR-0070: The container engine is optional profile metadata; authoring a bundle never needs a runtime
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-18 |
+| Source | Round-2 offline context-adequacy evaluation (autonomous sessions on an ambiguous align-and-count pipeline and the nf-core/rnaseq checkout) |
+| Scope | Execution-profile contract, draft validation, published bundle, deployment readiness, agent profile operations |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0022, ADR-0059, ADR-0062 (amends the requiredness carried by both) |
+| Implementation | `src/nf_splice/contracts/data/schemas/execution-profiles/0.3.0.schema.json`, `src/nf_splice/layers/execution.py`, `src/nf_splice/inspectors/splice_tree.py`, `src/nf_splice/inspectors/profiles.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/services/contract_reference.py` |
+| Tests | `tests/test_layer_execution.py`, `tests/test_corrective.py` |
+
+### Context
+
+Both the execution-profile contract (ADR-0022, retained by ADR-0059) and the
+draft validator treated `container_engine` as a required field. A repository
+that documents no runtime then forced a choice: fabricate an engine or record
+a blocker that stalls the stage. The round-2 evaluations showed both costs —
+an ambiguous pipeline correctly blocked the whole profiles stage on the field,
+and an engine-neutral `debug` profile was authored as debug-on-Docker to
+avoid a null. The assumption behind the requirement was wrong at its root:
+nf-splice authors SPLICE bundles; it is not a workflow execution engine, and
+nothing in authoring, validating or publishing a bundle needs an installed
+or even named runtime. The site decides which of the declared images its
+engine consumes.
+
+### Decision
+
+- **Optional metadata, extracted never invented.** `container_engine` is
+  optional execution-profile metadata. Seeding extracts it only from an
+  explicitly declared engine in the relevant Nextflow configuration; when
+  nothing is declared the field stays null and the config scaffold carries
+  no engine block. No default is invented for any site.
+- **No gate, no blocker.** A missing engine is neither a draft validation
+  error nor a publication blocker: the 0.3.0 execution-profiles schema (not
+  yet released) drops the field from `required` and admits `null`; the
+  published document records `null`; the published-tree checker accepts
+  absence. Deployment readiness checks sources against a runtime only when
+  the default profile names one, and notes the absence otherwise.
+- **Validate what is supplied.** A supplied value must be one of the
+  `ContainerEngine` vocabulary, must appear in the candidate's detected
+  engines when there are any, and a profile whose native config enables a
+  different engine is reported as a genuine contradiction
+  (`engine_conflict`, a warning). The Slurm site scaffold keeps its explicit
+  `singularity`.
+- **Images are not engines.** Component container images and their
+  engine-specific alternatives are declarations for a profile's runtime
+  choice, not the runtime itself; the component-side rule that source images
+  name a concrete runtime is unchanged. `ContainerRuntime` (image sources)
+  and `ContainerEngine` (profile metadata) stay distinct vocabularies.
+
+### Alternatives rejected
+
+- A neutral `any` member in `ContainerEngine`: hides the absence behind a
+  fake value, and validation against it means nothing.
+- Keeping the hard requirement and accepting the blocker as honest friction:
+  it makes a site decision block the stages downstream of authoring, which
+  the evaluation showed agents resolve by inventing values.
+- Silent acceptance with no contradiction check: a profile that names docker
+  while its config enables only singularity is a real defect worth surfacing.
+
+### Consequences
+
+- The two evaluation blockers shaped by this field become ordinary draft
+  states; the ambiguous pipeline's profiles stage can complete.
+- Deployment readiness of an engine-free default reports a note, not a
+  block; ingestion readiness still demands every other dimension.
+- The unreleased 0.3.0 execution-profiles schema is relaxed in place rather
+  than revised, because no bundle has been published against it; consumers
+  of draft bundles on the wip branch regenerate with `nf-splice build`.
