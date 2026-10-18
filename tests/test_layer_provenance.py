@@ -255,13 +255,14 @@ def test_a_json_ld_array_with_the_reviewed_value_is_not_stale() -> None:
         repository_url=None,
         authors=(),
     )
+    main: dict[str, Any] = {"@id": "main.nf", "version": ["3.27.0"]}
     crate = {
         "@graph": [
             {"@id": "./", "@type": "Dataset", "mainEntity": {"@id": "main.nf"}},
-            {"@id": "main.nf", "version": ["3.27.0"]},
+            main,
         ]
     }
     codes = {item.code for item in identity_findings(crate, metadata)}
     assert "stale_value" not in codes
-    crate["@graph"][1]["version"] = ["3.26.0", "3.27.0"]
+    main["version"] = ["3.26.0", "3.27.0"]
     assert "stale_value" in {item.code for item in identity_findings(crate, metadata)}
