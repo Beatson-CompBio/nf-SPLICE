@@ -262,8 +262,19 @@ def identity_findings(
         if expected is None:
             return
         value = entity.get(key)
-        if isinstance(value, Mapping):
-            value = value.get("@id")
+        # JSON-LD allows any property to be an array: compare its values.
+        values = value if isinstance(value, list) else [value]
+        values = [
+            item.get("@id") if isinstance(item, Mapping) else item for item in values
+        ]
+        values = [item for item in values if item is not None]
+        value = (
+            None
+            if not values
+            else values[0]
+            if len(set(map(str, values))) == 1
+            else values
+        )
         if value is None:
             findings.append(
                 CrateFinding(

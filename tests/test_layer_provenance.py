@@ -239,3 +239,29 @@ def test_structural_problems_are_reported(tmp_path: Path) -> None:
     _write(tmp_path, crate)
     codes = {item.code for item in analyse_ro_crate(tmp_path).blocking}
     assert {"duplicate_id", "structure"} <= codes
+
+
+def test_a_json_ld_array_with_the_reviewed_value_is_not_stale() -> None:
+    """JSON-LD allows any property to be an array: ['3.27.0'] is '3.27.0'."""
+    from nf_splice.domain.identity import PipelineMetadata
+    from nf_splice.layers.provenance import identity_findings
+
+    metadata = PipelineMetadata.model_construct(
+        name="pipe",
+        version="3.27.0",
+        description=None,
+        licence=None,
+        licence_url=None,
+        repository_url=None,
+        authors=(),
+    )
+    crate = {
+        "@graph": [
+            {"@id": "./", "@type": "Dataset", "mainEntity": {"@id": "main.nf"}},
+            {"@id": "main.nf", "version": ["3.27.0"]},
+        ]
+    }
+    codes = {item.code for item in identity_findings(crate, metadata)}
+    assert "stale_value" not in codes
+    crate["@graph"][1]["version"] = ["3.26.0", "3.27.0"]
+    assert "stale_value" in {item.code for item in identity_findings(crate, metadata)}
