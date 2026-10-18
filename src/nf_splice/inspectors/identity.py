@@ -1,4 +1,41 @@
-"""Read-only discovery of pipeline identity values and conflicts."""
+"""Read-only discovery of pipeline identity values, from exact keys only.
+
+Identity is imported from documented structured keys, never inferred from
+prose, file names or flow topology (ADR-0069). The allowlist, source key to
+draft field:
+
+=================================  ===========================================
+Source and key                     Draft field (``/pipeline/...``)
+=================================  ===========================================
+``nextflow.config`` pipeline       ``name``, ``version``, ``homePage`` and
+metadata block                     ``repository_url`` (repository_url),
+                                   ``release_url``, ``description``,
+                                   ``author`` and ``contributors`` (authors),
+                                   ``nextflowVersion`` (engine_version_min),
+                                   ``doi`` (citation), ``license`` (licence),
+                                   ``docsUrl`` (documentation_url)
+``CITATION.cff``                   ``title``, ``abstract`` (description),
+                                   ``version``, ``license`` (licence),
+                                   ``repository-code`` (repository_url),
+                                   ``doi`` (citation), ``authors``
+``ro-crate-metadata.json`` root    ``name``, ``description``, ``version``,
+dataset ``./``                     ``license`` (licence), ``creator`` or
+                                   ``author`` (authors)
+``.splice-local/integration.json`` ``source_remote`` (repository_url)
+Git                                an exact release tag (version); the
+                                   ``origin`` remote (repository_url) only
+                                   when no integration record names the
+                                   upstream
+=================================  ===========================================
+
+Values are bounded: a description longer than :data:`MAX_DESCRIPTION`
+characters (a README-length RO-Crate description, say) is source text to
+browse, not a concise value, and is not imported. ORCID iDs are normalised to
+their canonical URL by :func:`~nf_splice.domain.identity.normalise_orcid`;
+an invalid iD is dropped, never repaired. The working copy's own ``origin``
+is not a competing identity source: an integration copy's ``origin`` is the
+local source checkout.
+"""
 
 from __future__ import annotations
 
@@ -9,11 +46,19 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 import yaml  # type: ignore[import-untyped]
 
 from nf_splice.domain import Evidence, EvidenceProvenance
+from nf_splice.domain.identity import normalise_orcid
+from nf_splice.layout import PRIVATE_DIR
+
+#: Longest description imported as a value; longer text stays in its source.
+MAX_DESCRIPTION = 600
+#: Longest single-line value (names, versions, URLs, licences) imported.
+MAX_VALUE = 300
+_INTEGRATION_RECORD = f"{PRIVATE_DIR}/integration.json"
+_NETWORK_REMOTE = re.compile(r"^(https?://|ssh://|git@)")
 
 # Upstream Nextflow configuration syntax: Nextflow itself names its pipeline
 # metadata scope with the literal token in these patterns. The token is parsed
@@ -75,6 +120,9 @@ class IdentityInspection:
 
 
 def _git_value(root: Path, *arguments: str) -> str | None:
+    """A Git value of ``root``'s own repository, never an enclosing one."""
+    if not (root / ".git").exists():
+        return None
     try:
         result = subprocess.run(
             ("git", "-C", str(root), *arguments),
@@ -94,11 +142,6 @@ def _normalise_remote(remote: str) -> str:
         host_path = remote.removeprefix("git@").replace(":", "/", 1)
         remote = f"https://{host_path}"
     return remote.removesuffix(".git")
-
-
-def _repository_name(remote: str) -> str | None:
-    path = urlparse(_normalise_remote(remote)).path.rstrip("/")
-    return path.rsplit("/", 1)[-1] if path else None
 
 
 def _evidence(
@@ -273,40 +316,55 @@ def _ro_crate_values(root: Path) -> list[IdentityValue]:
     ]
 
 
-def _readme_values(root: Path) -> list[IdentityValue]:
-    text = _read_text(root / "README.md")
-    if text is None:
-        return []
-    # The first top-level heading, in Markdown or in HTML (many READMEs lay
-    # out a banner table with an <h1>).
-    found = [
-        item
-        for item in (
-            re.search(r"(?m)^#\s+(?P<title>[^\n#!\[]+?)\s*$", text),
-            re.search(r"(?is)<h1[^>]*>(?P<title>.*?)</h1>", text),
-        )
-        if item is not None
-    ]
-    if not found:
-        return []
-    heading = min(found, key=lambda item: item.start())
-    title = " ".join(re.sub(r"<[^>]+>", " ", heading.group("title")).split())
-    if not title:
-        return []
-    line = text.count("\n", 0, heading.start()) + 1
-    return [
-        IdentityValue(
-            "title",
-            title,
-            _evidence(
-                root=root,
-                source="README.md",
-                location=f"README.md:{line}",
-                field="title",
-                value=title,
-            ),
-        )
-    ]
+def _bounded(field: str, value: Any) -> Any:
+    """The value if it is concise enough to import, else ``None``."""
+    if isinstance(value, str):
+        limit = MAX_DESCRIPTION if field == "description" else MAX_VALUE
+        return value if 0 < len(value) <= limit else None
+    if field == "authors" and isinstance(value, list):
+        authors = []
+        for item in value:
+            if not isinstance(item, dict) or not item.get("name"):
+                continue
+            author = dict(item)
+            if "orcid" in author:
+                canonical = normalise_orcid(str(author["orcid"]))
+                if canonical is None or author.get("type") == "organization":
+                    author.pop("orcid")
+                else:
+                    author["orcid"] = canonical
+            authors.append(author)
+        return authors or None
+    return value
+
+
+def _upstream(root: Path) -> tuple[str, str, str] | None:
+    """(URL, source, location) of the canonical upstream repository.
+
+    An integration copy records where it came from; that ``source_remote``
+    names the upstream, while the copy's own ``origin`` is only the local
+    source checkout. Without a record (a person's own checkout), a network
+    ``origin`` is used. Local paths and ``file://`` URLs never are.
+    """
+    record_path = root / _INTEGRATION_RECORD
+    if record_path.is_file():
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            record = {}
+        remote = record.get("source_remote") if isinstance(record, dict) else None
+        if isinstance(remote, str) and _NETWORK_REMOTE.match(remote):
+            return (
+                _normalise_remote(remote),
+                "integration_record",
+                f"{_INTEGRATION_RECORD}#source_remote",
+            )
+        if not (isinstance(record, dict) and record.get("in_place")):
+            return None
+    remote = _git_value(root, "remote", "get-url", "origin")
+    if remote and _NETWORK_REMOTE.match(remote):
+        return _normalise_remote(remote), "git_remote", ".git/config#origin"
+    return None
 
 
 def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection:
@@ -373,29 +431,18 @@ def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection
             )
     values.extend(_citation_values(root))
     values.extend(_ro_crate_values(root))
-    values.extend(_readme_values(root))
 
-    remote = _git_value(root, "remote", "get-url", "origin")
-    if remote:
-        repository_url = _normalise_remote(remote)
+    upstream = _upstream(root)
+    if upstream is not None:
+        repository_url, source, location = upstream
         evidence = _evidence(
             root=root,
-            source="git_remote",
-            location=".git/config",
+            source=source,
+            location=location,
             field="repository_url",
             value=repository_url,
         )
         values.append(IdentityValue("repository_url", repository_url, evidence))
-        name = _repository_name(repository_url)
-        if name:
-            evidence = _evidence(
-                root=root,
-                source="git_remote",
-                location=".git/config",
-                field="name",
-                value=name,
-            )
-            values.append(IdentityValue("name", name, evidence))
 
     tag = _git_value(root, "describe", "--tags", "--exact-match")
     if tag:
@@ -408,4 +455,9 @@ def inspect_pipeline_identity(repository_root: str | Path) -> IdentityInspection
             value=version,
         )
         values.append(IdentityValue("version", version, evidence))
-    return IdentityInspection(tuple(values))
+    bounded = []
+    for item in values:
+        value = _bounded(item.field, item.value)
+        if value is not None:
+            bounded.append(IdentityValue(item.field, value, item.evidence))
+    return IdentityInspection(tuple(bounded))

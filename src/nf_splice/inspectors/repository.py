@@ -40,6 +40,9 @@ _CONDA = re.compile(r"\bconda\s*(?:=|\(|['\"])")
 
 
 def _git_value(root: Path, *arguments: str) -> str | None:
+    """A Git value of ``root``'s own repository, never an enclosing one."""
+    if not (root / ".git").exists():
+        return None
     try:
         result = subprocess.run(
             ("git", "-C", str(root), *arguments),

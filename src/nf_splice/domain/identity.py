@@ -27,6 +27,40 @@ def derive_pipeline_id(name: str) -> str:
     return identifier
 
 
+_ORCID_BARE = re.compile(r"^(\d{4})-?(\d{4})-?(\d{4})-?(\d{3}[\dX])$")
+_ORCID_URL = re.compile(r"^(?:https?://)?(?:www\.)?orcid\.org/(.+?)/?$", re.IGNORECASE)
+
+
+def _orcid_checksum(digits: str) -> str:
+    """ISO 7064 MOD 11-2 check character of the first 15 ORCID digits."""
+    total = 0
+    for digit in digits:
+        total = (total + int(digit)) * 2
+    result = (12 - total % 11) % 11
+    return "X" if result == 10 else str(result)
+
+
+def normalise_orcid(value: str) -> str | None:
+    """The canonical ``https://orcid.org/…`` form of an ORCID iD, or ``None``.
+
+    Accepts the bare identifier (``0000-0002-1825-0097``, with or without
+    hyphens) or an ``orcid.org`` URL in any scheme or case, and checks the
+    ISO 7064 check digit. A value that is not a valid ORCID iD is never
+    repaired or guessed: the result is ``None``.
+    """
+    text = value.strip()
+    match = _ORCID_URL.match(text)
+    if match is not None:
+        text = match.group(1)
+    found = _ORCID_BARE.match(text.upper())
+    if found is None:
+        return None
+    digits = "".join(found.groups())
+    if _orcid_checksum(digits[:15]) != digits[15]:
+        return None
+    return "https://orcid.org/" + "-".join(found.groups())
+
+
 # ---------------------------------------------------------------------------
 # Reviewed pipeline metadata (bundle.draft.yaml -> bundle.json "pipeline")
 # ---------------------------------------------------------------------------

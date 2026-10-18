@@ -253,10 +253,10 @@ def test_inspection_never_changes_an_existing_tree(tmp_path: Path) -> None:
     assert _snapshot(tmp_path) == before
 
 
-def test_identity_reads_triple_quoted_manifest_and_html_heading(
+def test_identity_reads_triple_quoted_manifest_and_never_the_readme(
     tmp_path: Path,
 ) -> None:
-    """Found on a real pipeline: a Groovy '''...''' description and an <h1>."""
+    """A Groovy '''...''' description is read; README prose never is (ADR-0069)."""
     from nf_splice.inspectors.identity import inspect_pipeline_identity
 
     (tmp_path / "nextflow.config").write_text(
@@ -280,4 +280,4 @@ def test_identity_reads_triple_quoted_manifest_and_html_heading(
     }
     assert values["description"] == "First line. Second line."
     assert values["version"] == "1.2.3" and values["name"] == "org/pipe"
-    assert values["title"] == "My Pipeline"
+    assert "title" not in values
