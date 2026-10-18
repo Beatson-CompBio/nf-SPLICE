@@ -86,7 +86,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0053 | Run OpenCode as a loopback server with deny-all permissions and a token-protected tool bridge | Current | — |
 | ADR-0054 | Publish a consumer kit of agent and skill files for developers who build on bundles | Current | — |
 | ADR-0055 | Declare typed assay capabilities from a pinned SPLICE modality vocabulary | Current | — |
-| ADR-0056 | Discover assay capabilities from scientific evidence and require classification for ingestion readiness | Current | — |
+| ADR-0056 | Discover assay capabilities from scientific evidence and require classification for ingestion readiness | Superseded | ADR-0069 |
 | ADR-0057 | Make the six YAML drafts and native configs the authors' source of truth, seeded once and never gated on candidates | Current | — |
 | ADR-0058 | Review every layer with deep, high-effort AI investigation, independently of its validation gate | Superseded | ADR-0063 |
 | ADR-0059 | Keep profile metadata in YAML and configuration in native files; deliver images only on explicit approval | Current | — |
@@ -94,9 +94,12 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0061 | State the authoring, access and image-provenance rules once for the file-first model | Current | — |
 | ADR-0062 | State one lifecycle: drafts valid, published, classified and ingestion ready are separate facts | Current | — |
 | ADR-0063 | Complete a layer review only with stage-specific evidence, an assessment of the draft and cited support | Current | — |
-| ADR-0064 | Keep outputs and components pipeline-defined and classify uncovered routes by evidence | Current | — |
+| ADR-0064 | Keep outputs and components pipeline-defined and classify uncovered routes by evidence | Superseded | ADR-0068 |
 | ADR-0065 | Let agents assess, regenerate and check the RO-Crate through permission-controlled operations | Current | — |
-| ADR-0066 | Settle the maintainer's four corrective decisions: route errors, private state, process components and image reuse | Current | — |
+| ADR-0066 | Settle the maintainer's four corrective decisions: route errors, private state, process components and image reuse | Superseded | ADR-0068 |
+| ADR-0067 | Work in one persistent workspace with an AI dock, safe pauses, takeover and same-session resume | Current | — |
+| ADR-0068 | Author the output catalogue; make route coverage an ingestion-readiness dimension and version analysis output independently | Current | — |
+| ADR-0069 | Infer no science deterministically: import identity from exact keys and let people declare assays | Current | — |
 
 ---
 
@@ -1242,6 +1245,8 @@ unset.
 - No secrets or e-mail addresses enter public events; redaction is applied
   to exports.
 
+> **Note (2026-10-18).** ADR-0067 renames the option and variable to `--user` and `NF_SPLICE_USER`; `--actor` and `NF_SPLICE_ACTOR` are removed. The label rules are unchanged.
+
 ---
 
 ## ADR-0030: Make one YAML draft per layer the authoritative, file-first authoring source
@@ -2356,7 +2361,7 @@ runtime loads drifts and misleads.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0026, ADR-0030, ADR-0036, ADR-0038, ADR-0044 |
-| Implementation | `src/nf_splice/layout.py`, `src/nf_splice/drafts/store.py`, `src/nf_splice/layers/base.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/sandbox.py`, `src/nf_splice/services/migration.py`, `src/nf_splice/interfaces/tui/state.py`, `src/nf_splice/cli.py` |
+| Implementation | `src/nf_splice/layout.py`, `src/nf_splice/drafts/store.py`, `src/nf_splice/layers/base.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/sandbox.py`, `src/nf_splice/services/migration.py`, `src/nf_splice/interfaces/tui/store.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_layout.py`, `tests/test_reference_fixtures.py`, `tests/test_lifecycle.py` |
 
 ### Context
@@ -2410,6 +2415,8 @@ restarts.
   decision files and validates the committed `splice/`.
 
 > **Note (2026-10-17).** The staged-path guard also rejects the repository-root `.splice-local/`, including force-added files (ADR-0066).
+
+> **Correction (2026-10-18).** Implementation paths updated for the unified workspace (ADR-0067); the decision is unchanged.
 
 ---
 
@@ -2823,7 +2830,7 @@ which is a different audience.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0024, ADR-0031, ADR-0044, ADR-0045, ADR-0054 |
-| Implementation | `src/nf_splice/catalogue/`, `scripts/build_assay_catalogue.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/interfaces/tui/screens/assays.py`, `src/nf_splice/cli.py` |
+| Implementation | `src/nf_splice/catalogue/`, `scripts/build_assay_catalogue.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/interfaces/tui/pages/assays.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_assay_capabilities.py`, `tests/test_tui.py`, `tests/test_consumer_kit.py` |
 
 ### Context
@@ -2898,16 +2905,19 @@ assay a modality, and could not be checked.
   with another snapshot validate structurally and are reported as
   unverifiable rather than wrong.
 
+> **Correction (2026-10-18).** Implementation paths updated for the unified workspace (ADR-0067); the decision is unchanged.
+
+
 ## ADR-0056: Discover assay capabilities from scientific evidence and require classification for ingestion readiness
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-16 |
 | Source | Maintainer's assay-discovery correction for 0.3.0 (16 October 2026) |
 | Scope | Assay discovery, identity readiness, bundle validation, session reports, all three modes |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0069 |
 | Related | ADR-0042, ADR-0044, ADR-0055 |
 | Implementation | `src/nf_splice/services/assay_discovery.py`, `src/nf_splice/catalogue/data/assay-evidence-rules.json`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/prompts.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/interfaces/tui/screens/assays.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_assay_discovery.py`, `tests/test_assay_capabilities.py`, `tests/test_tui.py` |
@@ -2978,7 +2988,7 @@ complete.
 | Supersedes | ADR-0038 |
 | Superseded by | — |
 | Related | ADR-0005, ADR-0006, ADR-0011, ADR-0026, ADR-0027, ADR-0030, ADR-0032, ADR-0036, ADR-0042, ADR-0047, ADR-0056 |
-| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/inputs.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/inspectors/parameters.py`, `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/services/workspace.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/services/contract_reference.py`, `src/nf_splice/interfaces/tui/widgets.py`, `src/nf_splice/interfaces/tui/screens/outputs.py`, `src/nf_splice/interfaces/tui/screens/profiles.py`, `src/nf_splice/cli.py` |
+| Implementation | `src/nf_splice/layers/base.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/layers/inputs.py`, `src/nf_splice/layers/outputs.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/inspectors/parameters.py`, `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/containers.py`, `src/nf_splice/services/workspace.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/services/contract_reference.py`, `src/nf_splice/interfaces/tui/widgets.py`, `src/nf_splice/interfaces/tui/pages/outputs.py`, `src/nf_splice/interfaces/tui/pages/execution.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_file_first.py`, `tests/test_layer_outputs.py`, `tests/test_layer_inputs.py`, `tests/test_containers.py`, `tests/test_tui.py`, `tests/test_reference_workflow.py` |
 
 ### Context
@@ -3067,6 +3077,9 @@ approvals and 122 parameter decisions on a real pipeline. The wizard
 - Route coverage is static and can over-report; it warns rather than blocks.
 
 > **Note (2026-10-17).** Amended by ADR-0064: an uncovered route the code always publishes is an error, not a warning; conditional and unresolved routes stay warnings. Readiness is stated through one lifecycle (ADR-0062), and review completion follows ADR-0063.
+
+> **Note (2026-10-18).** Amended by ADR-0067, ADR-0068 and ADR-0069: the wizard is replaced by one persistent workspace with an AI dock; the output catalogue starts empty unless a published catalogue exists (no provisional entry per route), and route coverage is the `output_coverage` readiness dimension rather than a draft error; identity is imported from exact structured keys only, never the README. Implementation paths now name the workspace pages.
+
 
 ## ADR-0058: Review every layer with deep, high-effort AI investigation, independently of its validation gate
 
@@ -3385,8 +3398,8 @@ followed. Only one interpretation may be Current.
 | Supersedes | — |
 | Superseded by | — |
 | Related | ADR-0036, ADR-0056, ADR-0057, ADR-0061 |
-| Implementation | `src/nf_splice/services/readiness.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/done.py`, `src/nf_splice/interfaces/tui/screens/build.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/stages.py` |
-| Tests | `tests/test_corrective.py`, `tests/test_assay_discovery.py`, `tests/test_tui.py` |
+| Implementation | `src/nf_splice/services/readiness.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/pages/finish.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/agents/stages.py` |
+| Tests | `tests/test_corrective.py`, `tests/test_tui.py` |
 
 ### Context
 
@@ -3430,6 +3443,8 @@ and look finished, while a required input could not be supplied by anyone.
 
 - `BundleReport.levels()` no longer reports ingestion readiness; consumers
   read `lifecycle` (`--json`).
+
+> **Note (2026-10-18).** Amended by ADR-0068: readiness gains the `output_coverage` dimension, so a valid but deliberately limited catalogue can be published while ingestion readiness reports the uncovered routes. The workspace states the lifecycle the same way as the CLI (ADR-0067); implementation paths now name its pages and the removed assay-discovery tests.
 
 ---
 
@@ -3512,12 +3527,12 @@ without saying what was checked.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-17 |
 | Source | Maintainer's corrective implementation and consistency pass of 0.3.0 (17 October 2026), sections 5, 7 and 8 |
 | Scope | Output catalogue validation, seeding and formats, component inventory, test fixtures |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0068 |
 | Related | ADR-0027, ADR-0042, ADR-0057, ADR-0061, ADR-0063 |
 | Implementation | `src/nf_splice/layers/outputs.py`, `src/nf_splice/domain/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/renderers/outputs.py`, `src/nf_splice/layers/components.py`, `src/nf_splice/interfaces/tui/screens/outputs.py` |
 | Tests | `tests/test_corrective.py`, `tests/test_other_pipelines.py`, `tests/test_layer_outputs.py`, `tests/test_file_first.py` |
@@ -3630,12 +3645,12 @@ read as a standards pass.
 
 | Metadata | Value |
 |---|---|
-| Status | Current |
+| Status | Superseded |
 | Date | 2026-10-17 |
 | Source | Maintainer's decisions on the four questions left by the corrective pass of 0.3.0 (17 October 2026) |
 | Scope | Output coverage, repository hygiene, the components contract, image verification reuse |
 | Supersedes | — |
-| Superseded by | — |
+| Superseded by | ADR-0068 |
 | Related | ADR-0024, ADR-0033, ADR-0040, ADR-0047, ADR-0059, ADR-0061, ADR-0064 |
 | Implementation | `src/nf_splice/layers/outputs.py`, `scripts/check_staged_paths.py`, `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/services/lifecycle.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py` |
 | Tests | `tests/test_corrective.py`, `tests/test_other_pipelines.py`, `tests/test_dev_workspace.py`, `tests/test_contracts.py` |
@@ -3690,3 +3705,248 @@ verified image file.
   key components by `id`.
 - Bundles built before the lock recorded verifications reuse no image file
   until it is verified again.
+
+---
+
+## ADR-0067: Work in one persistent workspace with an AI dock, safe pauses, takeover and same-session resume
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-18 |
+| Source | Unified Manual, Ask AI, Assisted and Autonomous TUI implementation specification for 0.3.0 (18 October 2026) |
+| Scope | The Textual interface, its view model, agent coordination, session resume, themes, responsiveness and the CLI's person option |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0014, ADR-0045, ADR-0057, ADR-0062, ADR-0063 |
+| Implementation | `src/nf_splice/interfaces/tui/app.py`, `src/nf_splice/interfaces/tui/coordinator.py`, `src/nf_splice/interfaces/tui/dock.py`, `src/nf_splice/interfaces/tui/model.py`, `src/nf_splice/interfaces/tui/navigation.py`, `src/nf_splice/interfaces/tui/pages/`, `src/nf_splice/interfaces/tui/editors.py`, `src/nf_splice/interfaces/tui/themes.py`, `src/nf_splice/interfaces/tui/store.py`, `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/drafts/yamlio.py`, `src/nf_splice/cli.py` |
+| Tests | `tests/test_tui.py`, `tests/test_tui_agents.py`, `tests/test_tui_themes.py`, `tests/test_tui_performance.py`, `tests/test_agent_interfaces.py` |
+
+### Context
+
+The wizard of ADR-0038 and ADR-0057 was a sequence of screens. Ask AI, the
+assisted session and the autonomous run each had a screen of their own, so
+a person switching between manual work and AI help lost their place, and
+closing a session view looked like stopping it. Selecting a row could
+re-run a repository-wide scan (a p95 of 375 ms per assay row on a real
+pipeline, with a 10 s blocking start), and validation ran on the
+interface thread.
+
+### Decision
+
+- **One workspace.** A persistent top bar (pipeline, mode, agent state),
+  a step rail with each step's state, the task pages (welcome, overview,
+  identity, assays, parameters, outputs, software, execution, provenance,
+  review, publish), an action bar and a status line. Every page offers
+  *Ask AI about this screen* and a contextual *Assist* action; the AI dock
+  opens beside the page (over it on narrow terminals) with Ask, Assist and
+  Autonomous cards. Closing the dock is presentation only.
+- **One owner of agent work.** An application-owned `AgentCoordinator`
+  runs the shared session engine in a background thread and projects its
+  persisted state as an immutable snapshot with one state for the header:
+  off, ready, thinking, proposal waiting, running, needs your input, pause
+  requested, paused, blocked, completed, failed or stopped. *Pause
+  requested* is shown until the engine has actually stopped at a safe
+  point; *stop* cancels the session for good. Ask uses read-only tools and
+  may run while a session works.
+- **Focused assistance.** `SessionEngine.assist(stage, actor, guidance)`
+  investigates one stage on request and stops at its proposal; nothing is
+  applied until a person approves, and a proposal made before the drafts
+  changed is withdrawn rather than applied. `reject` withdraws a proposal
+  with the person's reason.
+- **Interventions and resume.** A blocker records the JSON pointer of the
+  field it concerns, a checkpoint and, once resolved, its resolution. The
+  dock shows each open intervention with an *Open the field* action that
+  jumps to the exact page and field (`navigation.target_for`). While the
+  agent may write drafts, manual writes are refused with an offer to pause;
+  after the person edits, `SessionEngine.resume(actor, note)` continues the
+  same session from the current drafts, reopening blocked stages and
+  withdrawing stale proposals. Restarting the interface reopens the latest
+  unfinished session as paused; a cancelled or completed one is never
+  reopened. Quitting while the agent works pauses it safely first.
+- **Attribution.** The person is named by `--user` or `NF_SPLICE_USER`
+  (`--actor` and `NF_SPLICE_ACTOR` are removed). Agent work, approvals,
+  pauses and resumes need a named person; the dock asks for one. A remote
+  provider's consent is asked in the dock before any repository context is
+  sent; a provider without structured tool calling is refused.
+- **Responsiveness.** Pages render from an immutable `WorkspaceModel` built
+  in a worker and cached by the bytes of every draft and config; workers
+  carry generation numbers so a stale result is dropped. Row selection,
+  input changes and navigation read only the model: no scan, parse or
+  validation in an event handler. Draft parses are cached by content hash
+  and the round-trip tree is built only for edits. Targets, measured on the
+  synthetic scale fixture: cached row selection p95 below 100 ms and cached
+  navigation p95 below 250 ms; slower work shows progress and never freezes
+  input.
+- **Forms and safety.** A form remembers the draft hash it was filled from;
+  saving after the file changed on disk offers reload, compare or cancel and
+  never overwrites. Inspect-only mode (`nf-splice tui --inspect-only`)
+  writes nothing. *Start fresh* backs every draft up under
+  `.splice-local/backups/` before recreating the drafts from exact metadata.
+- **Themes.** Six themes (SPLICE Night by default, SPLICE Day, Ocean Amber,
+  Violet Gold and two high-contrast themes) defined as tokens; every text
+  pair meets 4.5:1 and every control boundary 3:1, measured in tests, also
+  under simulated colour-vision deficiencies for status text. States carry
+  a glyph and words, never colour alone. The choice is saved in the user's
+  configuration folder.
+
+### Alternatives rejected
+
+- Separate screens per mode: the person loses context and a closed screen
+  looks like a stopped session.
+- Re-validating on every selection: correct but unusable on large
+  pipelines.
+- Letting manual edits and agent writes interleave: either can silently
+  overwrite the other.
+
+### Consequences
+
+- The wizard's screens, `state.py` and `steps.py` are removed with no
+  compatibility layer; `--actor` is gone.
+- Headless tests drive the same widgets a person uses over real services
+  and files; a scripted provider stands in for the model.
+
+---
+
+## ADR-0068: Author the output catalogue; make route coverage an ingestion-readiness dimension and version analysis output independently
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-18 |
+| Source | Unified Manual, Ask AI, Assisted and Autonomous TUI implementation specification for 0.3.0 (18 October 2026), the approved scoped output-coverage policy |
+| Scope | Output seeding and editing, route coverage, readiness, the analysis-output version, and the decisions of ADR-0064 and ADR-0066 it restates |
+| Supersedes | ADR-0064, ADR-0066 |
+| Superseded by | — |
+| Related | ADR-0027, ADR-0028, ADR-0042, ADR-0047, ADR-0057, ADR-0061, ADR-0062 |
+| Implementation | `src/nf_splice/layers/outputs.py`, `src/nf_splice/inspectors/outputs.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/interfaces/tui/editors.py`, `src/nf_splice/interfaces/tui/patterns.py`, `src/nf_splice/cli.py`, `scripts/check_staged_paths.py`, `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py` |
+| Tests | `tests/test_layer_outputs.py`, `tests/test_corrective.py`, `tests/test_tui.py`, `tests/test_other_pipelines.py`, `tests/test_reference_workflow.py`, `tests/test_dev_workspace.py`, `tests/test_contracts.py` |
+
+### Context
+
+`nf-splice init` wrote one provisional output per published route, with
+guessed titles and categories, and kept candidate accept, reject, merge and
+split tools to clean them up. On a real pipeline that produced dozens of
+speculative entries a person had to delete. ADR-0064 and ADR-0066 made an
+established uncovered route a validation error, so a deliberately limited
+catalogue (the outputs a platform actually wants to show) could not be
+published at all. The analysis-output schema version defaulted to the
+pipeline's release, conflating two unrelated versions.
+
+### Decision
+
+- **Authored catalogue.** A new output draft starts with no entries; only a
+  previously published `splice/outputs.yaml` (written by people) seeds it.
+  Published routes are evidence to browse (`nf-splice draft routes`, the
+  workspace's route browser, the agents' `route_coverage`), never entries.
+  Outputs are added, edited and removed by key (`configure outputs
+  --add-output FILE`, `--set`, the two-step editor, `add_output` and
+  `remove_output`); the candidate accept, reject, merge and split
+  operations are removed. A draft without outputs reports "describe at
+  least one output SPLICE should expose".
+- **Coverage is readiness, not validity.** Route coverage no longer appears
+  among draft errors. `route_coverage()` reports *complete*, *incomplete*
+  (an established or conditional route no output covers and no exclusion
+  explains), *unverified* (only routes static analysis cannot resolve) or
+  *not assessed*. Readiness gains the `output_coverage` dimension: it blocks
+  ingestion readiness while coverage is incomplete and is not assessed when
+  it cannot be established. A valid, limited catalogue can be published;
+  the lifecycle then says it is published but not ingestion ready.
+  `excluded_routes` entries (a glob or process, a reason and an optional
+  `kind`: `intermediate`, `false_positive`, `out_of_scope`) explain routes
+  deliberately left out.
+- **Analysis-output version.** `analysis_output_schema_version` versions a
+  workflow's `analysis_output.json` shape. It comes from an explicit value
+  or a previously published catalogue and otherwise stays null for the
+  author to set; it never defaults to the pipeline version.
+- **Restated from ADR-0064.** An output's format is any lower-case
+  identifier (the recognised list only suggests formats from file names);
+  categories are free text and nf-splice prescribes no vocabulary; route
+  classes are established, conditional and unverified as before.
+- **Restated from ADR-0066.** Everything under the repository-root
+  `.splice-local/` is ignored and refused by the staged-path guard, even
+  force-added. Inline processes are `workflow_process` components (`path`
+  the `.nf` file, `process` the name); module directories are
+  `workflow_module`. A verified image file is reused without downloading
+  only on agreeing lock, record, distribution and source evidence, recorded
+  as `historical`; `nf-splice containers reverify --approve-network` is the
+  fresh check.
+
+### Alternatives rejected
+
+- Seeding one entry per route: speculative entries a person must delete,
+  with invented titles.
+- Keeping uncovered established routes as errors: forbids deliberately
+  scoped catalogues and conflates contract validity with completeness.
+- Defaulting the analysis-output version to the pipeline release: the two
+  change for unrelated reasons.
+
+### Consequences
+
+- The AGENTS.md rule against seeding discoverable lists empty does not
+  apply to the output catalogue: outputs are authored, and route coverage
+  reports what is missing.
+- Earlier drafts with provisional route entries can be replaced with *Start
+  fresh from exact metadata*, which keeps a backup.
+
+---
+
+## ADR-0069: Infer no science deterministically: import identity from exact keys and let people declare assays
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-18 |
+| Source | Unified Manual, Ask AI, Assisted and Autonomous TUI implementation specification for 0.3.0 (18 October 2026) |
+| Scope | Identity import, ORCID iDs, assay capabilities, ingestion readiness, agent assay tools |
+| Supersedes | ADR-0056 |
+| Superseded by | — |
+| Related | ADR-0031, ADR-0055, ADR-0057, ADR-0062 |
+| Implementation | `src/nf_splice/inspectors/identity.py`, `src/nf_splice/inspectors/repository.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/prompts.py`, `src/nf_splice/agents/report.py`, `src/nf_splice/interfaces/tui/pages/assays.py`, `src/nf_splice/interfaces/tui/pages/identity.py` |
+| Tests | `tests/test_inspection.py`, `tests/test_assay_capabilities.py`, `tests/test_tui.py`, `tests/test_other_pipelines.py`, `tests/test_layer_bundle.py` |
+
+### Context
+
+ADR-0056 scored assays from tools, parameters and prose with packaged
+evidence rules. The scores were heuristics presented with confidence, they
+re-scanned the repository whenever a row was selected, and a person still
+had to decide. Identity import read the README and copied long prose into
+the description; a pipeline directory inside another Git repository took
+that repository's remote as its URL.
+
+### Decision
+
+- **Exact keys only.** Identity values are imported from a documented
+  allowlist of structured keys: the pipeline metadata block in
+  `nextflow.config`, `CITATION.cff`, the root dataset of
+  `ro-crate-metadata.json`, the integration record's `source_remote`, an
+  exact Git release tag, and the `origin` remote only when no integration
+  record names the upstream and the directory is its own repository. The
+  README and other prose are sources to browse, never values. Values are
+  bounded (600 characters for a description, 300 otherwise); longer text is
+  not imported.
+- **ORCID iDs** are normalised to `https://orcid.org/…` after checking the
+  ISO 7064 check digit; an invalid iD is refused or dropped, never
+  repaired.
+- **People declare assays.** No deterministic service infers a pipeline's
+  assays; the evidence rules and `assess_assays` are removed. A person
+  ticks assays from the pinned vocabulary (ADR-0055); a tick is recorded as
+  `asserted` with a fixed rationale stating who declared it. Agents may
+  declare an assay only with cited sources they read, and record a blocker
+  when the sources cannot decide.
+- **Readiness keeps classification.** A pipeline without a declared assay
+  reports `missing_assay_classification` and is not ingestion ready
+  (ADR-0062).
+
+### Alternatives rejected
+
+- Keeping the evidence rules as hints: they still read as findings and
+  cost a scan per interaction.
+- Importing README prose: long, unstructured and often wrong for the
+  field.
+
+### Consequences
+
+- Manual mode makes no scientific inference; AI help is explicit, cited and
+  reviewable.
+- `services/assay_discovery.py` and `assay-evidence-rules.json` are deleted.

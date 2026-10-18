@@ -88,10 +88,12 @@ checks that every ADR exists, every path exists and every test file exists.
 | Per-layer promotion and recoverable bundle publication | ADR-0036 | `src/nf_splice/services/lifecycle.py`, `src/nf_splice/renderers/bundle_index.py` | `tests/test_lifecycle.py` | Current |
 | Only 0.3.0 contracts supported; pre-release 0.1.0 compatibility removed | ADR-0041 | `src/nf_splice/cli.py`, `src/nf_splice/runtime/analysis_output.py`, `src/nf_splice/inspectors/splice_tree.py`, `src/nf_splice/contracts/data/registry.json` | `tests/test_state.py`, `tests/test_output_scopes.py`, `tests/test_contracts.py` | Current |
 | File-first CLI | ADR-0061, ADR-0036 | `src/nf_splice/cli.py`, `src/nf_splice/services/workspace.py` | `tests/test_cli.py`, `tests/test_reference_workflow.py` | Current |
-| File-first Textual wizard and CLI/TUI equivalence | ADR-0057 | `src/nf_splice/interfaces/tui/` | `tests/test_tui.py` | Current |
+| Task pages over a cached immutable view model, stale-form protection, inspect-only mode and Start fresh | ADR-0067, ADR-0057 | `src/nf_splice/interfaces/tui/model.py`, `src/nf_splice/interfaces/tui/pages/`, `src/nf_splice/services/workspace.py` | `tests/test_tui.py` | Current |
+| Six measured themes, responsive layout and latency targets on a scale fixture | ADR-0067 | `src/nf_splice/interfaces/tui/themes.py`, `src/nf_splice/interfaces/tui/tui.tcss`, `src/nf_splice/drafts/yamlio.py`, `tests/scale_fixture.py` | `tests/test_tui_themes.py`, `tests/test_tui_performance.py` | Current |
+| `--user` and `NF_SPLICE_USER` name the person; remote consent in the dock | ADR-0067, ADR-0045 | `src/nf_splice/cli.py`, `src/nf_splice/services/audit.py`, `src/nf_splice/interfaces/tui/coordinator.py` | `tests/test_cli.py`, `tests/test_tui_agents.py` | Current |
 | Manual Ask AI, AI-assisted sessions and autonomous integration over one engine | ADR-0063 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/stages.py`, `src/nf_splice/agents/state.py`, `src/nf_splice/agents/help.py`, `src/nf_splice/cli.py` | `tests/test_agents.py`, `tests/test_scenarios.py` | Current |
 | Typed agent operations over the deterministic services, with sandboxed previews | ADR-0063 | `src/nf_splice/agents/operations.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/sandbox.py` | `tests/test_agents.py` | Current |
-| Session views in the wizard sharing state with the CLI | ADR-0063, ADR-0057 | `src/nf_splice/interfaces/tui/screens/session.py`, `src/nf_splice/interfaces/tui/screens/ask.py`, `src/nf_splice/interfaces/tui/screens/welcome.py` | `tests/test_agent_interfaces.py`, `tests/test_tui.py` | Current |
+| One persistent workspace: AI dock, contextual Ask and Assist, proposals, interventions, safe pause, takeover and same-session resume | ADR-0067, ADR-0063 | `src/nf_splice/interfaces/tui/app.py`, `src/nf_splice/interfaces/tui/coordinator.py`, `src/nf_splice/interfaces/tui/dock.py`, `src/nf_splice/agents/engine.py` | `tests/test_tui_agents.py`, `tests/test_tui.py` | Current |
 | Provider-neutral protocol with Claude Agent SDK and scripted providers | ADR-0063 | `src/nf_splice/agents/protocol.py`, `src/nf_splice/agents/providers/` | `tests/test_agent_interfaces.py` | Current |
 | Operation-level permissions, bound approvals and agent attribution | ADR-0045 | `src/nf_splice/agents/permissions.py`, `src/nf_splice/domain/audit.py`, `src/nf_splice/layers/base.py` | `tests/test_agents.py`, `tests/test_audit.py` | Current |
 | Publication-route analysis and published-only output discovery | ADR-0042 | `src/nf_splice/inspectors/routes.py`, `src/nf_splice/inspectors/outputs.py`, `tests/fixtures/multi-route-0.3.0/` | `tests/test_routes.py`, `tests/test_output_discovery.py` | Current |
@@ -107,23 +109,25 @@ checks that every ADR exists, every path exists and every test file exists.
 | Codex provider through a locked-down app-server | ADR-0052 | `src/nf_splice/agents/providers/codex.py` | `tests/test_codex_provider.py` | Current |
 | OpenCode provider with deny-all permissions and a loopback tool bridge | ADR-0053 | `src/nf_splice/agents/providers/opencode.py`, `src/nf_splice/agents/providers/mcp_bridge.py` | `tests/test_opencode_provider.py` | Current |
 | Bundle consumer kit: agent and role skill files, offline definitions and real examples for developers building on bundles | ADR-0054 | `bundle-consumer-kit/`, `scripts/build_consumer_kit.py` | `tests/test_consumer_kit.py` | Current |
-| Typed assay capabilities from a pinned SPLICE modality vocabulary, in every mode | ADR-0055 | `src/nf_splice/catalogue/`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/interfaces/tui/screens/assays.py` | `tests/test_assay_capabilities.py`, `tests/test_tui.py` | Current |
-| Scientific assay discovery without AI, and classification-gated ingestion readiness | ADR-0056 | `src/nf_splice/services/assay_discovery.py`, `src/nf_splice/catalogue/data/assay-evidence-rules.json` | `tests/test_assay_discovery.py` | Current |
+| Typed assay capabilities from a pinned SPLICE modality vocabulary, in every mode | ADR-0055 | `src/nf_splice/catalogue/`, `src/nf_splice/layers/bundle.py`, `src/nf_splice/inspectors/assays.py`, `src/nf_splice/interfaces/tui/pages/assays.py` | `tests/test_assay_capabilities.py`, `tests/test_tui.py` | Current |
+| No deterministic scientific inference: exact-key identity, ORCID normalisation, people declare assays, classification-gated readiness | ADR-0069 | `src/nf_splice/inspectors/identity.py`, `src/nf_splice/domain/identity.py`, `src/nf_splice/layers/bundle.py` | `tests/test_inspection.py`, `tests/test_assay_capabilities.py`, `tests/test_tui.py` | Current |
 | File-first drafts seeded once, no candidate gates, safe whole-draft replacement | ADR-0057 | `src/nf_splice/layers/base.py`, `src/nf_splice/services/workspace.py` | `tests/test_file_first.py`, `tests/test_layer_outputs.py` | Current |
 | Least-privilege parameter import and parameter usage index | ADR-0057 | `src/nf_splice/layers/inputs.py`, `src/nf_splice/inspectors/parameters.py` | `tests/test_layer_inputs.py`, `tests/test_file_first.py` | Current |
 | Seeded component inventory and per-runtime nf-core container parsing | ADR-0057 | `src/nf_splice/layers/components.py`, `src/nf_splice/inspectors/containers.py` | `tests/test_containers.py`, `tests/test_file_first.py` | Current |
 | Readiness dimensions in validation and reports | ADR-0057 | `src/nf_splice/services/readiness.py` | `tests/test_file_first.py` | Current |
 | Reviews independent of gates, investigation trace, authoring tools, reasoning effort | ADR-0063 | `src/nf_splice/agents/engine.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/protocol.py` | `tests/test_file_first.py`, `tests/test_agents.py` | Current |
-| One lifecycle statement: drafts valid, published, classified, ingestion ready | ADR-0062 | `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/screens/done.py`, `src/nf_splice/agents/report.py` | `tests/test_corrective.py`, `tests/test_tui.py` | Current |
+| One lifecycle statement: drafts valid, published, classified, ingestion ready | ADR-0062 | `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/pages/finish.py`, `src/nf_splice/agents/report.py` | `tests/test_corrective.py`, `tests/test_tui.py` | Current |
 | Stage-specific review scope, cited evidence and draft assessment | ADR-0063 | `src/nf_splice/agents/review_scope.py`, `src/nf_splice/agents/toolbox.py`, `src/nf_splice/agents/engine.py` | `tests/test_corrective.py`, `tests/test_file_first.py` | Current |
-| Uncovered routes classified as established, conditional or unverified | ADR-0064 | `src/nf_splice/layers/outputs.py` | `tests/test_corrective.py`, `tests/test_file_first.py` | Current |
-| Pipeline-defined formats and categories; inline processes as components | ADR-0064, ADR-0061 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_layer_outputs.py` | Current |
-| Imaging and minimal custom pipelines end to end in all three modes | ADR-0064, ADR-0063 | `tests/fixtures/spatial-imaging-0.3.0/`, `tests/fixtures/minimal-custom-0.3.0/` | `tests/test_other_pipelines.py` | Current |
+| Authored output catalogue (no route-per-entry seeding), route coverage as the `output_coverage` readiness dimension, `draft routes` | ADR-0068 | `src/nf_splice/layers/outputs.py`, `src/nf_splice/services/readiness.py`, `src/nf_splice/cli.py` | `tests/test_layer_outputs.py`, `tests/test_corrective.py`, `tests/test_reference_workflow.py` | Current |
+| Two-step output editor with a path-pattern builder and route browser | ADR-0068, ADR-0067 | `src/nf_splice/interfaces/tui/editors.py`, `src/nf_splice/interfaces/tui/patterns.py`, `src/nf_splice/interfaces/tui/pages/outputs.py` | `tests/test_tui.py` | Current |
+| Analysis-output schema version independent of the pipeline version | ADR-0068 | `src/nf_splice/layers/outputs.py`, `src/nf_splice/inspectors/outputs.py` | `tests/test_layer_outputs.py`, `tests/test_tui.py` | Current |
+| Pipeline-defined formats and categories; inline processes as components | ADR-0068, ADR-0061 | `src/nf_splice/domain/outputs.py`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_layer_outputs.py` | Current |
+| Imaging and minimal custom pipelines end to end in all three modes | ADR-0068, ADR-0063 | `tests/fixtures/spatial-imaging-0.3.0/`, `tests/fixtures/minimal-custom-0.3.0/` | `tests/test_other_pipelines.py` | Current |
 | Verified distributions kept on adoption; container mapping checked | ADR-0061 | `src/nf_splice/layers/components.py` | `tests/test_corrective.py` | Current |
 | Agentic RO-Crate assessment, nf-core generation and standards check | ADR-0065 | `src/nf_splice/services/crate_review.py`, `src/nf_splice/agents/operations.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
-| Root `.splice-local/` never staged, force-added files included | ADR-0066, ADR-0047 | `scripts/check_staged_paths.py` | `tests/test_dev_workspace.py` | Current |
-| Inline processes as `workflow_process` components in the contract | ADR-0066 | `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_contracts.py` | Current |
-| Verification records in the lock, guarded reuse and `containers reverify` | ADR-0066 | `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
+| Root `.splice-local/` never staged, force-added files included | ADR-0068, ADR-0047 | `scripts/check_staged_paths.py` | `tests/test_dev_workspace.py` | Current |
+| Inline processes as `workflow_process` components in the contract | ADR-0068 | `src/nf_splice/contracts/data/schemas/components/0.3.0.schema.json`, `src/nf_splice/layers/components.py` | `tests/test_other_pipelines.py`, `tests/test_contracts.py` | Current |
+| Verification records in the lock, guarded reuse and `containers reverify` | ADR-0068 | `src/nf_splice/layers/components.py`, `src/nf_splice/renderers/bundle_index.py`, `src/nf_splice/cli.py` | `tests/test_corrective.py` | Current |
 | Opt-in image delivery to an S3-compatible store | ADR-0059 | `src/nf_splice/services/images.py` | `tests/test_file_first.py` | Current |
 | Standards validation and archive-root RO-Crate | ADR-0060 | `src/nf_splice/services/checks.py`, `src/nf_splice/services/export.py` | `tests/test_file_first.py`, `tests/test_source_git_export.py` | Current |
 | Per-key contract references generated from packaged definitions | ADR-0024 | `scripts/generate_schema_docs.py`, `docs/schemas/fields.yaml`, `docs/CONTRACTS.md` | `tests/test_docs.py` | Current |
@@ -140,18 +144,18 @@ release and the baseline for schema compatibility (ADR-0041).
 
 - **File-first authoring.** One YAML draft per layer under the private
   `.splice-local/drafts/`, plus a native `.draft.config` per authored
-  profile, is the source of truth. `init` seeds all six layers from
-  repository evidence (or an earlier `splice/` bundle): every parameter with
-  `editable_by: []` and hidden, an output catalogue from the published
-  routes, the full components inventory with nf-core ternaries resolved per
+  profile, is the source of truth. `init` seeds all six layers from exact
+  metadata keys (or an earlier `splice/` bundle): every parameter with
+  `editable_by: []` and hidden, an empty output catalogue unless one was
+  published, the full components inventory with nf-core ternaries resolved per
   runtime, profiles with their configs, and the RO-Crate. A valid draft
   builds without approving any candidate; discovery hints are advisory.
-  Edit drafts with commands, the wizard or any editor; agents replace whole
+  Edit drafts with commands, the workspace or any editor; agents replace whole
   drafts or sections against a hash, and invalid intermediate drafts are
   kept with their issues (ADR-0057, ADR-0026, ADR-0030).
 - **Readiness** reported as separate dimensions by `nf-splice validate`:
-  contracts, scientific classification, runtime parameters, deployment,
-  provenance and publication.
+  contracts, scientific classification, output coverage, runtime
+  parameters, deployment, provenance and publication.
 - **Execution configs** are native Nextflow files with user and SPLICE
   parameter sections checked against input access; `nf-splice draft
   resources` reports memory, CPU sizing and `task.memory` uses for sites
@@ -177,8 +181,9 @@ release and the baseline for schema compatibility (ADR-0041).
   publication with recovery; lock format 2.0 (ADR-0036).
 - **Attribution and privacy:** public actor labels, a private local audit
   store for contact details, opt-in public maintainers (ADR-0029).
-- **Guided wizard** over the same services as the CLI, with file panels to
-  open, reload, validate and preview each draft (ADR-0057).
+- **One workspace** (`nf-splice tui`) over the same services as the CLI:
+  task pages, a step rail and an AI dock with Ask, Assist and Autonomous
+  cards, safe pauses, takeover and same-session resume (ADR-0067).
 - **Agentic AI built in**, in three ways of working over one deterministic
   engine (ADR-0044): manual work with read-only *Ask AI* help; AI-assisted
   sessions where the agent proposes each stage with its diff and validation
@@ -205,12 +210,11 @@ release and the baseline for schema compatibility (ADR-0041).
   classified by a packaged, pinned snapshot of the SPLICE modality
   vocabulary (modality, subtype, assay type, assay method, with every path);
   published as typed `pipeline.assay_capabilities` and re-verified on
-  validation; `nf-splice catalogue` commands, a wizard step and agent tools
-  share one resolver (ADR-0055). nf-splice investigates a pipeline's tools,
-  parameters, outputs and documentation to recommend assays even when none
-  is named, asks or records a blocker where the evidence cannot decide, and
-  a pipeline is ready for ingestion only once its assays are classified
-  (ADR-0056).
+  validation; `nf-splice catalogue` commands, the workspace's assay tree and
+  agent tools share one resolver (ADR-0055). People declare the assays;
+  nothing is inferred deterministically, agents cite the sources they read,
+  and a pipeline is ready for ingestion only once its assays are classified
+  (ADR-0069).
 - **Private workspace and delivery:** private state in `.splice-local/`,
   published files only in `splice/`, with migration (ADR-0047); an isolated
   integration copy of the pipeline, local commits of the validated bundle
@@ -238,7 +242,7 @@ release and the baseline for schema compatibility (ADR-0041).
 - **One lifecycle** (ADR-0062): drafts valid, published, scientifically
   classified and ready for SPLICE ingestion are separate facts, stated the
   same way by `status`, `draft validate`, `build`, `validate`, `export`, the
-  wizard and session reports. A build reports `Published, but not ready for
+  interface and session reports. A build reports `Published, but not ready for
   SPLICE ingestion` with the reasons until every dimension is ready; a
   dimension that was not assessed is not ready; a null default supplies
   nothing; Conda-only components block deployment under a container engine.
@@ -262,6 +266,8 @@ release and the baseline for schema compatibility (ADR-0041).
   errors; the repository-root `.splice-local/` is never staged, even when
   force-added; the components contract gains `workflow_process` and
   `process`; image reuse needs agreeing evidence.
+- These two output decisions are superseded by ADR-0068 (see below), which
+  restates the components, private-state and image decisions unchanged.
 - **RO-Crate for agents** (ADR-0065): assess and recommend, adopt, correct
   or regenerate, nf-core generation under `external_tools` and `network`,
   and a structural check reported apart from the standards check
@@ -269,6 +275,31 @@ release and the baseline for schema compatibility (ADR-0041).
 - **Pipelines beyond bulk RNA-seq**: an imaging-based spatial
   transcriptomics fixture and a minimal custom fixture, both end to end in
   every mode.
+
+### Unified workspace (ADR-0067 to ADR-0069)
+
+- **One workspace** (ADR-0067) replaces the wizard and its session screens:
+  pages render from a cached, immutable view model built in workers, so
+  selecting a row or changing page never scans or parses; a form saved after
+  its draft changed on disk offers reload, compare or cancel; inspect-only
+  mode; *Start fresh from exact metadata* with a private backup. The AI
+  dock's Ask uses read-only tools; Assist proposes one step and applies
+  nothing until approved; Autonomous runs within separately granted
+  permissions, shows *pause requested* until a safe point, hands decisions
+  to a person as interventions that open the exact field, and resumes the
+  same session. `--user` and `NF_SPLICE_USER` replace `--actor` and
+  `NF_SPLICE_ACTOR`. Six themes meet measured contrast ratios.
+- **Authored outputs** (ADR-0068): the catalogue starts empty unless one
+  was published; candidate accept, reject, merge and split are removed;
+  `configure outputs --add-output` and the two-step editor add entries;
+  route coverage is the `output_coverage` readiness dimension
+  (`nf-splice draft routes`), so a valid, deliberately limited catalogue can
+  be published; the analysis-output version never defaults to the pipeline
+  version.
+- **No deterministic scientific inference** (ADR-0069): identity is imported
+  from documented keys only (never the README), ORCID iDs are checked and
+  normalised, the assay evidence rules and `assess_assays` are removed, and
+  people declare assays.
 - **CI** (`0cf4277`): the optional Claude Agent SDK is imported with
   `pytest.importorskip`, so mypy and the suite pass without provider SDKs.
 
