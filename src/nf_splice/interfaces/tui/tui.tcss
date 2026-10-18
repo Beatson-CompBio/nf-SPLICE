@@ -1,29 +1,227 @@
+/* nf-SPLICE workspace. Colours come only from theme tokens (themes.py). */
+
+Screen {
+    background: $background;
+    color: $foreground;
+    layers: base overlay;
+}
+
+/* ---------------------------------------------------------- top bar */
+
+#topbar {
+    height: 3;
+    background: $splice-header;
+    border-bottom: solid $splice-border;
+    padding: 0 1;
+}
+#wordmark { width: auto; text-style: bold; color: $accent; padding: 1 1 0 0; }
+#subtitle { width: auto; color: $splice-muted; padding: 1 2 0 0; }
+#pipeline-name { width: 1fr; text-style: bold; padding: 1 1 0 0; content-align: right middle; }
+.chip {
+    width: auto;
+    height: 3;
+    border: round $splice-border;
+    color: $splice-muted;
+    padding: 0 1;
+    margin-right: 1;
+}
+.chip-good { color: $success; border: round $success; }
+.chip-warn { color: $warning; border: round $warning; }
+.chip-bad { color: $error; border: round $error; }
+.chip-info { color: $accent; border: round $splice-border; }
+TopBar Button { height: 3; min-width: 6; margin-right: 1; }
+.agent-status { color: $accent; border: tall $accent; background: $surface; }
+.agent-status.attention { color: $warning; border: tall $warning; }
+
+/* ---------------------------------------------------------- body */
+
 #main { height: 1fr; }
-#rail { width: 28; border-right: solid $primary; }
-#content { width: 1fr; padding: 0 1; }
-#step-title { height: auto; padding: 1 0 0 0; }
-#step-explanation { height: auto; color: $text-muted; padding-bottom: 1; }
-#body { height: 1fr; }
-#nav { height: auto; dock: bottom; }
-#nav Button { margin-right: 1; }
-#status { height: auto; padding: 0 1; background: $boost; }
-#status.error { background: $error 30%; }
-#help-dialog { width: 80%; height: 80%; border: thick $primary; background: $surface; padding: 1; }
-.section { margin-bottom: 1; height: auto; }
-.heading { text-style: bold; color: $accent; }
+#rail {
+    width: 28;
+    background: $splice-sidebar;
+    border-right: solid $splice-border;
+    padding: 0 1;
+}
+.rail-heading { color: $splice-muted; text-style: bold; padding: 1 0 0 1; height: 2; }
+.rail-item {
+    width: 100%;
+    height: 1;
+    min-width: 0;
+    border: none;
+    background: $splice-sidebar;
+    color: $splice-muted;
+    content-align: left middle;
+    text-align: left;
+    padding: 0 1;
+}
+.rail-item:hover { background: $splice-selected; color: $foreground; }
+.rail-item:focus { background: $splice-selected; color: $foreground; text-style: bold; }
+.rail-item.current { background: $splice-selected; color: $foreground; text-style: bold; border-left: outer $accent; }
+.rail-item.state-ready, .rail-item.state-published { color: $success; }
+.rail-item.state-needs_review { color: $warning; }
+.rail-item.state-blocked { color: $error; }
+.rail-item.current.state-ready, .rail-item.current.state-needs_review, .rail-item.current.state-blocked { color: $foreground; }
+
+#workspace { width: 1fr; }
+#pages { height: 1fr; }
+.page { padding: 1 2; background: $background; }
+.page-top { height: auto; margin-bottom: 1; }
+.page-heading { width: 1fr; height: auto; min-width: 30; }
+.page-title { text-style: bold; color: $foreground; height: auto; }
+.page-lead { color: $splice-muted; height: auto; }
+.page-ai { height: auto; margin-top: 1; }
+.page-tag { width: auto; max-width: 40; }
+.ai-context { color: $accent; }
+.lead { color: $splice-muted; height: auto; margin-bottom: 1; }
+.muted { color: $splice-muted; height: auto; }
+.good-text { color: $success; }
+
+.card {
+    height: auto;
+    background: $surface;
+    border: round $splice-border;
+    border-title-color: $foreground;
+    border-title-style: bold;
+    padding: 0 1;
+    margin-bottom: 1;
+}
+.card:focus-within { border: round $accent; }
+.placeholder { align: center middle; padding: 1 2; border: dashed $splice-border; }
+.placeholder-icon { color: $accent; text-align: center; width: 100%; }
+.placeholder-title { text-style: bold; text-align: center; width: 100%; }
+.placeholder Button { margin: 1 0; }
+.notice { height: auto; padding: 0 1; border-left: outer $accent; margin: 1 0; }
+.notice.good { border-left: outer $success; }
+.notice.warn { border-left: outer $warning; color: $warning; }
+.detail {
+    height: auto;
+    max-height: 8;
+    color: $splice-muted;
+    border-top: solid $splice-border;
+    margin-top: 1;
+    overflow-y: auto;
+}
+.code { height: auto; max-height: 14; color: $splice-muted; overflow-y: auto; }
 .row { height: auto; }
 .row Input { width: 1fr; }
-DataTable { height: auto; max-height: 14; margin-bottom: 1; }
-Input { margin-bottom: 1; }
-.issues { color: $warning; height: auto; }
-#ask-dialog { width: 90%; height: 85%; border: thick $accent; background: $surface; padding: 1; }
-#ask-scroll { height: 1fr; }
-#session-dialog { width: 96%; height: 94%; border: thick $accent; background: $surface; padding: 0 1; }
-#session-title { height: auto; padding-bottom: 1; }
-#session-stages { height: auto; color: $text-muted; padding-bottom: 1; }
-#session-log-scroll { height: 1fr; min-height: 6; border: solid $primary; }
-#session-log { height: auto; }
-#session-proposal { height: auto; max-height: 16; }
-#session-diff-scroll { height: auto; max-height: 12; }
-#session-diff { height: auto; color: $text-muted; }
-#session-start .row Label { padding: 0 1; }
+.row Select { width: 30; }
+.grid { height: auto; }
+.grid > .card { width: 1fr; margin-right: 1; }
+.stats { height: auto; margin-bottom: 1; }
+.stat {
+    width: 1fr;
+    height: 4;
+    background: $surface;
+    border: round $splice-border;
+    padding: 0 1;
+    margin-right: 1;
+    text-style: bold;
+}
+.page-actions { height: auto; margin: 1 0; }
+.page-actions Static { width: 1fr; padding-top: 1; }
+Button { margin-right: 1; }
+Button.compact { height: 3; min-width: 6; }
+Button:focus { text-style: bold reverse; }
+Input, Select, TextArea { border: tall $splice-control; }
+Input:focus, Select:focus, TextArea:focus { border: tall $accent; }
+TextArea { height: 5; }
+.short-text { height: 4; }
+DataTable { height: auto; max-height: 18; }
+Tree { height: auto; max-height: 22; background: $surface; }
+Collapsible { background: $surface; border: round $splice-border; margin-bottom: 1; }
+Checkbox, RadioButton { background: $surface; }
+RadioSet { height: auto; background: $surface; border: tall $splice-control; }
+.field-row { height: auto; }
+.field-label { color: $foreground; text-style: bold; height: auto; margin-top: 1; }
+.field-label.wide { width: 22; margin-top: 1; }
+.field-input { width: 1fr; }
+.source-chip { width: 22; color: $splice-muted; padding: 1 0 0 1; }
+.field-error { color: $error; height: auto; }
+.issue-list { height: auto; margin: 1 0; }
+.issue { height: auto; }
+.issue-error { color: $error; }
+.issue-warning { color: $warning; }
+.review-row { height: auto; }
+.review-actions { height: auto; margin-bottom: 1; padding-left: 28; }
+.review-group { width: 28; text-style: bold; color: $warning; }
+.review-detail { width: 1fr; color: $splice-muted; }
+.part-row { height: auto; }
+.part-text { width: 1fr; padding-top: 1; }
+.part-kind { width: 42; }
+.conflict { border: round $warning; }
+
+#actionbar {
+    height: 3;
+    background: $splice-header;
+    border-top: solid $splice-border;
+    padding: 0 1;
+}
+#step-position { width: 1fr; color: $splice-muted; padding-top: 1; }
+#statusbar { height: 1; background: $splice-sidebar; padding: 0 1; }
+#hints { width: auto; color: $splice-muted; }
+#status-message { width: 1fr; text-align: right; color: $splice-muted; }
+#status-message.tone-good { color: $success; }
+#status-message.tone-warn { color: $warning; }
+#status-message.tone-bad { color: $error; }
+#too-small { padding: 2; color: $warning; }
+
+/* ---------------------------------------------------------- AI dock */
+
+#dock {
+    width: 56;
+    background: $splice-sidebar;
+    border-left: thick $accent;
+}
+#dock-header { height: auto; background: $splice-header; padding: 0 1; border-bottom: solid $splice-border; }
+#dock-title { width: 1fr; text-style: bold; padding-top: 1; }
+#dock-tabs { height: 3; }
+.dock-tab { width: 1fr; }
+.dock-tab.active { background: $splice-selected; border: tall $accent; text-style: bold; }
+#dock-body { height: 1fr; padding: 0 1; }
+#dock-footer { height: auto; padding: 0 1; border-top: solid $splice-border; background: $splice-header; }
+#dock TextArea { height: 4; }
+
+/* Medium terminals: compact rail; headings and review rows stack. */
+Screen.medium #rail { width: 22; }
+Screen.medium #subtitle, Screen.medium #pipeline-name { display: none; }
+Screen.medium .page-top, Screen.narrow .page-top { layout: vertical; }
+Screen.medium .page-tag, Screen.narrow .page-tag { margin-top: 1; }
+Screen.medium .review-row, Screen.narrow .review-row { layout: vertical; }
+Screen.medium .review-actions, Screen.narrow .review-actions { padding-left: 0; }
+Screen.medium .review-group, Screen.narrow .review-group,
+Screen.medium .review-detail, Screen.narrow .review-detail { width: 100%; }
+Screen.medium #top-assist, Screen.medium #top-autonomous { display: none; }
+/* Narrow terminals: the rail becomes a short menu; the dock overlays. */
+Screen.narrow #rail { width: 16; }
+Screen.narrow #subtitle, Screen.narrow #pipeline-name, Screen.narrow #mode-chip { display: none; }
+Screen.narrow #top-ask, Screen.narrow #top-assist, Screen.narrow #top-autonomous { display: none; }
+Screen.narrow #hints { display: none; }
+Screen.medium #dock, Screen.narrow #dock {
+    layer: overlay;
+    dock: right;
+    width: 100%;
+    height: 100%;
+}
+Screen.medium #dock { width: 80%; }
+
+/* ---------------------------------------------------------- dialogs */
+
+ModalScreen { align: center middle; background: $background 70%; }
+.dialog {
+    width: 80;
+    max-width: 95%;
+    height: auto;
+    max-height: 90%;
+    background: $background;
+    border: thick $accent;
+    padding: 1 2;
+}
+.dialog-wide { width: 110; height: 90%; }
+.dialog-title { text-style: bold; height: auto; margin-bottom: 1; }
+.dialog-text { height: auto; margin-bottom: 1; }
+.dialog-body { height: auto; max-height: 30; }
+.dialog-actions { height: auto; margin-top: 1; align-horizontal: right; }
+#viewer-text { height: 1fr; }
+#list-table { height: 1fr; max-height: 100%; }
+#editor-steps { height: 1fr; }
+#output-editor TextArea { height: 4; }

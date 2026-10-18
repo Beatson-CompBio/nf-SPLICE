@@ -227,19 +227,19 @@ def test_migration_never_overwrites_and_survives_interruption(
     assert migration.apply_migration(root)["migrated"] is True
 
 
-def test_wizard_progress_is_kept_with_the_working_copy(tmp_path: Path) -> None:
-    from nf_splice.interfaces.tui.state import (
-        SessionStore,
-        WizardSession,
+def test_workspace_navigation_is_kept_with_the_working_copy(tmp_path: Path) -> None:
+    from nf_splice.interfaces.tui.store import (
+        NavigationState,
+        NavigationStore,
         default_session_directory,
         repository_key,
     )
 
     ready_repository(tmp_path)
     directory = default_session_directory(tmp_path, environment={})
-    assert directory == tmp_path.resolve() / ".splice-local" / "sessions" / "wizard"
-    store = SessionStore(directory)
-    store.save(tmp_path, WizardSession(repository_key=repository_key(tmp_path)))
+    assert directory == tmp_path.resolve() / ".splice-local" / "sessions" / "workspace"
+    store = NavigationStore(directory)
+    store.save(tmp_path, NavigationState(repository_key=repository_key(tmp_path)))
     saved = list(directory.glob("*.json"))
     assert len(saved) == 1
-    assert json.loads(saved[0].read_text("utf-8"))["current_step"] == "welcome"
+    assert json.loads(saved[0].read_text("utf-8"))["current_page"] == "welcome"

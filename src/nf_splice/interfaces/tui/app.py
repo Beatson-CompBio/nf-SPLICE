@@ -1,290 +1,1460 @@
-"""Guided Textual wizard over the shared file-first services (ADR-0038)."""
+"""The unified nf-SPLICE workspace: manual authoring, Ask, Assist and autonomy.
+
+One Textual application, one step rail, one set of drafts (ADR-0067). The AI
+assistant is a dock beside every page, driven by one application-owned
+:class:`~nf_splice.interfaces.tui.coordinator.AgentCoordinator`. Pages render
+an immutable model built in a worker; writes go through the shared layer
+services, never from the event loop, and are refused while the agent may be
+writing the same drafts.
+"""
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
-from textual.screen import ModalScreen
-from textual.widgets import Button, Footer, Header, ListView, Markdown, Static
+from textual.events import Resize
+from textual.widgets import Button, Checkbox, ContentSwitcher, Input, Static, TextArea
 
 from nf_splice.agents.protocol import AgentProvider
-from nf_splice.agents.state import InteractionMode
-from nf_splice.domain.audit import ChangeOrigin
-from nf_splice.interfaces.tui.screens import VIEWS
-from nf_splice.interfaces.tui.state import (
-    SessionStore,
-    WizardSession,
-    WizardSnapshot,
-    build_snapshot,
-    changed_files,
+from nf_splice.domain.audit import ActorKind, ChangeOrigin
+from nf_splice.interfaces.tui.coordinator import (
+    AgentCoordinator,
+    AgentSnapshot,
+    AgentState,
+)
+from nf_splice.interfaces.tui.dock import AgentDock
+from nf_splice.interfaces.tui.model import (
+    ModelCache,
+    ReadinessView,
+    WorkspaceModel,
+    build_model,
+    build_readiness,
+    empty_model,
+)
+from nf_splice.interfaces.tui.navigation import (
+    LABELS,
+    PAGE_IDS,
+    Target,
+    next_page,
+    page,
+    previous_page,
+    stage_for_page,
+)
+from nf_splice.interfaces.tui.pages import PAGE_CLASSES, PageView
+from nf_splice.interfaces.tui.store import (
+    NavigationState,
+    NavigationStore,
     repository_key,
 )
-from nf_splice.interfaces.tui.steps import (
-    STEPS,
-    next_step,
-    previous_step,
-    resume_step,
-    step,
-    unlocked,
+from nf_splice.interfaces.tui.themes import (
+    DEFAULT_THEME,
+    THEMES,
+    load_theme_preference,
+    save_theme_preference,
 )
-from nf_splice.interfaces.tui.widgets import ProgressRail, StatusLine, StepView
+from nf_splice.interfaces.tui.widgets import (
+    ActionBar,
+    RailItem,
+    StatusStrip,
+    StepRail,
+    TopBar,
+)
 from nf_splice.layers import ChangeContext
 from nf_splice.services.audit import resolve_actor
 
-
-class HelpScreen(ModalScreen[None]):
-    """Contextual F1 help for the current step."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [Binding("escape,f1", "dismiss", "Close")]
-
-    def __init__(self, title: str, text: str) -> None:
-        super().__init__()
-        self._title = title
-        self._text = text
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="help-dialog"):
-            yield Markdown(f"# {self._title}\n\n{self._text}")
-            yield Button("Close", id="help-close")
-
-    def on_button_pressed(self, _event: Button.Pressed) -> None:
-        self.dismiss(None)
+#: Terminal sizes (columns) for the responsive layout.
+WIDE = 120
+MEDIUM = 80
+NARROW = 60
+MIN_HEIGHT = 20
 
 
 class NfSpliceApp(App[None]):
-    """Manual, AI-assisted or autonomous authoring of a SPLICE bundle."""
+    """Prepare a SPLICE workflow bundle by hand, with AI help, or both."""
 
-    TITLE = "nf-splice"
-    SUB_TITLE = "Guided SPLICE bundle wizard"
+    TITLE = "nf-SPLICE"
+    SUB_TITLE = "Workflow integration"
     CSS_PATH = "tui.tcss"
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("f1", "help", "Help"),
-        Binding("ctrl+n", "continue", "Continue"),
-        Binding("escape", "step_back", "Back"),
-        Binding("ctrl+d", "defer", "Finish later"),
         Binding("ctrl+r", "reload", "Reload files"),
-        Binding("ctrl+a", "assistant", "Ask AI"),
-        Binding("ctrl+q", "quit", "Quit"),
+        Binding("ctrl+a", "assistant", "Ask AI / dock"),
+        Binding("ctrl+q", "quit_safely", "Quit", priority=True),
+        Binding("escape", "close_dock", "Close dock", show=False),
+        Binding("ctrl+right", "step_continue", "Continue", show=False),
+        Binding("ctrl+left", "step_back", "Back", show=False),
     ]
 
     def __init__(
         self,
         repository: str | Path,
         *,
-        sessions: SessionStore | None = None,
-        actor: str | None = None,
-        start: str | None = None,
+        navigation: NavigationStore | None = None,
+        user: str | None = None,
         agent_provider: AgentProvider | None = None,
         allow_remote_model: bool = False,
+        start: str | None = None,
+        remember_theme: bool = False,
+        inspect_only: bool = False,
     ) -> None:
         super().__init__()
         self.repository = Path(repository).resolve()
-        self.sessions = sessions or SessionStore(None)
-        self.actor_label = actor
-        self.snapshot = WizardSnapshot(repository=self.repository, status=None)
-        self.session = self.sessions.load(self.repository) or WizardSession(
-            repository_key=repository_key(self.repository)
+        self.navigation = navigation or NavigationStore(None)
+        self.user = user
+        self.remember_theme = remember_theme
+        self.inspect_only = inspect_only
+        self.saved_state = self.navigation.load(self.repository)
+        self.current = start or (
+            self.saved_state.current_page if self.saved_state else "welcome"
         )
-        self.current = start or self.session.current_step
-        self.inspect_only = False
-        self.busy = False
-        self.agent_provider = agent_provider
-        self.allow_remote_model = allow_remote_model
+        if self.current not in PAGE_IDS:
+            self.current = "welcome"
+        self.model: WorkspaceModel = empty_model(self.repository)
+        self.model_ready = False
+        self.cache = ModelCache()
+        self.readiness: ReadinessView | None = None
+        self._generations: dict[str, int] = {}
+        self._writing = False
+        self._last_busy = False
+        self._dock_open = False
+        self.coordinator = AgentCoordinator(
+            self.repository,
+            agent_provider,
+            allow_remote_model=allow_remote_model,
+            person=user,
+            notify=self._agent_notify,
+        )
+        for theme in THEMES:
+            self.register_theme(theme)
+        self.theme = load_theme_preference() if remember_theme else DEFAULT_THEME
 
     # ------------------------------------------------------------ layout
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield TopBar(id="topbar")
         with Horizontal(id="main"):
-            yield ProgressRail(id="rail")
-            with Vertical(id="content"):
-                yield Static("", id="step-title")
-                yield Static("", id="step-explanation")
-                yield VerticalScroll(id="body")
-                with Horizontal(id="nav"):
-                    yield Button("Back", id="nav-back")
-                    yield Button("Finish later", id="nav-defer")
-                    yield Button("Continue", id="nav-continue", variant="primary")
-        yield StatusLine("", id="status")
-        yield Footer()
+            yield StepRail(id="rail")
+            with Vertical(id="workspace"):
+                yield ContentSwitcher(id="pages")
+                yield ActionBar(id="actionbar")
+            yield AgentDock(id="dock")
+        yield StatusStrip(id="statusbar")
+        yield Static(
+            "This terminal is too small for nf-SPLICE. Make it at least 60 "
+            "columns by 20 lines; nothing has been changed.",
+            id="too-small",
+        )
 
     def on_mount(self) -> None:
-        self.snapshot = build_snapshot(self.repository)
-        changed = changed_files(self.session, self.snapshot)
-        if changed:
-            self.set_status(
-                "Reloaded drafts changed outside the wizard: " + ", ".join(changed)
-            )
-        self.show_step(self.current)
+        self.query_one("#dock").display = False
+        self.query_one("#too-small").display = False
+        self._layout(self.size.width, self.size.height)
+        self.coordinator.attach_latest()
+        self.show_page(self.current)
+        self.set_status("Reading your drafts…")
+        self.refresh_model(first=True)
+        self.set_interval(0.4, self._poll_agent)
+        self._agent_changed()
+        if self.inspect_only:
+            self.set_status("Inspect-only mode: browsing without writing.", "warn")
 
-    # ------------------------------------------------------------ services
+    def on_resize(self, event: Resize) -> None:
+        self._layout(event.size.width, event.size.height)
+
+    def _layout(self, width: int, height: int) -> None:
+        screen = self.screen
+        for name in ("wide", "medium", "narrow"):
+            screen.remove_class(name)
+        tiny = width < NARROW or height < MIN_HEIGHT
+        screen.add_class(
+            "wide" if width >= WIDE else "medium" if width >= MEDIUM else "narrow"
+        )
+        try:
+            self.query_one("#too-small").display = tiny
+            self.query_one("#main").display = not tiny
+        except NoMatches:
+            return
+
+    # ------------------------------------------------------------ status
+
+    def set_status(self, message: str, tone: str = "") -> None:
+        try:
+            self.query_one("#statusbar", StatusStrip).show(message, tone)
+        except NoMatches:
+            return
 
     def change_context(self) -> ChangeContext:
         return ChangeContext(
-            actor=resolve_actor(self.actor_label), origin=ChangeOrigin.MANUAL_TUI
+            actor=resolve_actor(self.user), origin=ChangeOrigin.MANUAL_TUI
         )
 
-    def set_status(self, message: str, *, error: bool = False) -> None:
-        self.query_one("#status", StatusLine).show(message, error=error)
+    def current_sha(self, layer: str) -> str | None:
+        from nf_splice.layers.base import read_layer
 
-    def perform(
+        return read_layer(self.repository, layer).file.sha256
+
+    # ------------------------------------------------------------ model
+
+    def _generation(self, name: str) -> int:
+        self._generations[name] = self._generations.get(name, 0) + 1
+        return self._generations[name]
+
+    def refresh_model(
+        self, *, first: bool = False, then: Callable[[], None] | None = None
+    ) -> None:
+        """Rebuild the model in a worker; only the newest build is applied."""
+        generation = self._generation("model")
+
+        def work() -> None:
+            try:
+                model = build_model(self.repository, self.cache)
+            except Exception as error:  # keep the interface usable
+                self.call_from_thread(self._model_failed, generation, error)
+                return
+            self.call_from_thread(self._model_built, generation, model, first, then)
+
+        self.run_worker(work, thread=True, group="model", exclusive=True)
+
+    def _model_failed(self, generation: int, error: Exception) -> None:
+        if generation == self._generations.get("model"):
+            self.set_status(f"Could not read the drafts: {error}", "bad")
+
+    def _model_built(
+        self,
+        generation: int,
+        model: WorkspaceModel,
+        first: bool,
+        then: Callable[[], None] | None,
+    ) -> None:
+        if generation != self._generations.get("model"):
+            return
+        previous = self.model.key
+        self.model = model
+        self.model_ready = True
+        if previous != model.key:
+            self.readiness = (
+                None
+                if self.readiness and self.readiness.key != model.key
+                else self.readiness
+            )
+        self._apply_model()
+        if first:
+            changed = (
+                self.saved_state is not None
+                and self.saved_state.model_key not in ("", model.key)
+            )
+            self.set_status(
+                "Drafts changed outside nf-SPLICE since you last worked here; this "
+                "view shows the current files."
+                if changed
+                else "Ready."
+                if model.has_drafts
+                else "No drafts yet: start on Welcome."
+            )
+        if then is not None:
+            then()
+        self._save_navigation()
+
+    def _apply_model(self) -> None:
+        model = self.model
+        states = model.step_states()
+        if self.coordinator.engine is not None and self.coordinator.busy:
+            focus = self.coordinator.snapshot().stage
+            if focus:
+                for page_id in PAGE_IDS:
+                    if stage_for_page(page_id) == focus:
+                        from nf_splice.interfaces.tui.navigation import StepState
+
+                        states[page_id] = StepState.IN_PROGRESS
+        self.query_one("#rail", StepRail).show(states, self.current)
+        current = self.current_page()
+        if current is not None and self.model_ready:
+            current.show_model(model)
+        for view in self.query(PageView):
+            if view is not current:
+                view.model = None  # re-render when shown again
+        self._update_topbar()
+        self._update_actionbar()
+
+    def request_readiness(self, *, force: bool = False) -> None:
+        """Lifecycle and coverage for the current drafts (in a worker)."""
+        if not self.model_ready:
+            return
+        model = self.model
+        if not force and self.readiness is not None and self.readiness.key == model.key:
+            self._deliver_readiness()
+            return
+        if not force and self._generations.get("readiness-key") == hash(model.key):
+            return
+        self._generations["readiness-key"] = hash(model.key)
+
+        def build() -> ReadinessView:
+            return build_readiness(model.repository, model.drafts_valid, model.key)
+
+        def done(view: ReadinessView) -> None:
+            self.readiness = view
+            self._generations.pop("readiness-key", None)
+            self._deliver_readiness()
+
+        self.run_view("readiness", build, done)
+
+    def _deliver_readiness(self) -> None:
+        if self.readiness is None:
+            return
+        for view in self.query(PageView):
+            handler = getattr(view, "show_readiness", None)
+            if handler is not None and view.model is not None:
+                handler(self.readiness)
+
+    def run_view(
+        self, name: str, build: Callable[[], Any], done: Callable[[Any], None]
+    ) -> None:
+        """Build a slower view off the event loop; stale results are dropped."""
+        generation = self._generation(name)
+
+        def work() -> None:
+            try:
+                result = build()
+            except Exception as error:
+                self.call_from_thread(self._view_failed, name, generation, error)
+                return
+            self.call_from_thread(self._view_built, name, generation, result, done)
+
+        self.run_worker(work, thread=True, group=f"view-{name}", exclusive=True)
+
+    def _view_built(
+        self, name: str, generation: int, result: Any, done: Callable[[Any], None]
+    ) -> None:
+        if generation == self._generations.get(name):
+            done(result)
+
+    def _view_failed(self, name: str, generation: int, error: Exception) -> None:
+        if generation == self._generations.get(name):
+            self.set_status(f"Could not compute {name}: {error}", "bad")
+
+    # ------------------------------------------------------------ writing
+
+    def write(
         self,
         label: str,
         action: Callable[[], Any],
         *,
         then: Callable[[Any], None] | None = None,
+        page: PageView | None = None,
+        layer: str | None = None,
+        force: bool = False,
     ) -> None:
-        """Run a service call off the event loop, then refresh from disk."""
-        if self.inspect_only or self.snapshot.read_only:
-            self.set_status("Inspect-only mode: no changes are written.", error=True)
+        """Run a draft write in a worker, after the safety checks.
+
+        Refused in inspect-only mode, while another write runs, while the
+        agent may be writing drafts (offering a pause instead), and when the
+        draft changed on disk since the form was filled (offering a reload).
+        """
+        if self.inspect_only or self.model.read_only:
+            self.set_status("Inspect-only mode: no changes are written.", "warn")
             return
-        self.busy = True
+        if self._writing:
+            self.set_status(
+                "Another change is still being saved; try again in a moment.", "warn"
+            )
+            return
+        if self.coordinator.writes_locked():
+            self._offer_takeover(label)
+            return
+        if page is not None and layer is not None and not force and page.stale():
+            self._stale_write(label, action, then, page, layer)
+            return
+        self._writing = True
         self.set_status(f"{label}…")
+        generation = self._generation("model")
 
         def work() -> None:
             try:
                 result = action()
             except Exception as error:
-                self.call_from_thread(self._failed, error)
+                self.call_from_thread(self._write_failed, label, error)
                 return
-            snapshot = build_snapshot(self.repository)
-            self.call_from_thread(self._succeeded, label, result, snapshot, then)
+            try:
+                model = build_model(self.repository, self.cache)
+            except Exception as error:
+                self.call_from_thread(self._write_failed, label, error)
+                return
+            self.call_from_thread(self._written, generation, model, result, then)
 
-        self.run_worker(work, thread=True, exclusive=True, group="actions")
+        self.run_worker(work, thread=True, group="write")
 
-    def _failed(self, error: Exception) -> None:
-        self.busy = False
-        self.set_status(str(error), error=True)
+    def _write_failed(self, label: str, error: Exception) -> None:
+        self._writing = False
+        self.set_status(f"{label} failed; nothing was changed: {error}", "bad")
+        self.refresh_model()
 
-    def _succeeded(
+    def _written(
         self,
-        label: str,
+        generation: int,
+        model: WorkspaceModel,
         result: Any,
-        snapshot: WizardSnapshot,
         then: Callable[[Any], None] | None,
     ) -> None:
-        self.busy = False
-        self.apply_snapshot(snapshot)
-        self.set_status(f"{label}: done.")
+        self._writing = False
+        self.readiness = None
+        if generation == self._generations.get("model"):
+            self.model = model
+            self.model_ready = True
+            self._apply_model()
+            self._save_navigation()
+        else:
+            self.refresh_model()
         if then is not None:
             then(result)
 
-    def apply_snapshot(self, snapshot: WizardSnapshot) -> None:
-        self.snapshot = snapshot
-        self._update_rail()
-        view = self.current_view()
-        if view is not None:
-            view.refresh_view(snapshot)
-        self._save_session()
+    def _stale_write(
+        self,
+        label: str,
+        action: Callable[[], Any],
+        then: Callable[[Any], None] | None,
+        page: PageView,
+        layer: str,
+    ) -> None:
+        from nf_splice.interfaces.tui.modals import ListDialog
+
+        def chosen(result: Any) -> None:
+            if not result:
+                return
+            choice = result[0]
+            if choice == "reload":
+                page.loaded_sha = None
+                page.discard_unsaved()
+                self.refresh_model()
+                self.set_status(
+                    "Reloaded the draft from disk; your unsaved values were discarded."
+                )
+            elif choice == "compare":
+                self.open_draft(layer, view=True)
+
+        self.push_screen(
+            ListDialog(
+                "The draft changed on disk",
+                f"{label}: the draft was changed outside this form (in an editor, "
+                "by the CLI or by the agent) after you started editing. nf-SPLICE "
+                "never overwrites it silently.",
+                ("Choice", "What happens"),
+                (
+                    ("Reload", "Discard my unsaved values and show the file"),
+                    ("Compare", "Open the current file to compare"),
+                    ("Cancel", "Keep editing; nothing is written"),
+                ),
+                actions=(
+                    ("reload", "Reload from file"),
+                    ("compare", "Compare"),
+                    ("cancel", "Cancel"),
+                ),
+            ),
+            chosen,
+        )
+
+    def _offer_takeover(self, label: str) -> None:
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+
+        def chosen(result: Any) -> None:
+            if result:
+                self.coordinator.request_pause()
+                self.set_status(
+                    "Pause requested: waiting for a safe checkpoint. You can edit once "
+                    "the assistant says PAUSED.",
+                    "warn",
+                )
+
+        self.push_screen(
+            ConfirmDialog(
+                "The agent is working on the drafts",
+                f"{label} would change a draft the agent may be writing. Request a "
+                "pause, wait until the assistant says PAUSED, then make your change. "
+                "Nothing has been written.",
+                confirm="Request pause & take over",
+                cancel="Keep the agent working",
+            ),
+            chosen,
+        )
+
+    def require_person(self, then: Callable[[], None]) -> None:
+        """Ask for the person's name once when an action must be attributed."""
+        if resolve_actor(self.user).kind is ActorKind.HUMAN:
+            then()
+            return
+        from nf_splice.interfaces.tui.modals import FormDialog
+
+        def done(values: Any) -> None:
+            if values and values.get("name"):
+                self.user = values["name"]
+                self.coordinator.set_person(values["name"])
+                then()
+
+        self.push_screen(
+            FormDialog(
+                "Your name",
+                "This decision is recorded with the person who made it. Give the "
+                "name to record (never an e-mail address); it is kept for this "
+                "session. `nf-splice --user NAME tui` sets it in advance.",
+                [("name", "Your name", "")],
+                submit="Continue",
+                validate=lambda values: None if values.get("name") else "Enter a name.",
+            ),
+            done,
+        )
 
     # ------------------------------------------------------------ navigation
 
-    def current_view(self) -> StepView | None:
-        found = list(self.query_one("#body", VerticalScroll).query(StepView))
-        return found[0] if found else None
-
-    def _visited(self) -> frozenset[str]:
-        return frozenset(self.session.visited)
-
-    def _update_rail(self) -> None:
-        self.query_one("#rail", ProgressRail).update_steps(
-            self.snapshot,
-            self.current,
-            self._visited(),
-            frozenset(self.session.deferred),
-        )
-
-    def show_step(self, step_id: str) -> None:
-        target = step(step_id)
-        if not unlocked(target, self.snapshot, visited=self._visited()):
-            self.set_status(
-                f"{target.title} is locked until earlier steps are done.", error=True
-            )
-            return
-        view = self.current_view()
-        if view is not None:
-            try:
-                self.session.unsaved[view.step_id] = view.unsaved()
-            except NoMatches:
-                pass
-            view.remove()
-        self.current = step_id
-        if step_id not in self.session.visited:
-            self.session.visited.append(step_id)
-        new_view = VIEWS[step_id]()
-        self.query_one("#body", VerticalScroll).mount(new_view)
-        self.query_one("#step-title", Static).update(f"[b]{target.title}[/b]")
-        self.query_one("#step-explanation", Static).update(target.help)
-        self._update_rail()
-        self._save_session()
-
-    def _save_session(self) -> None:
-        self.session.current_step = self.current
-        self.session.file_hashes = dict(self.snapshot.draft_hashes)
+    def current_page(self) -> PageView | None:
         try:
-            self.sessions.save(self.repository, self.session)
+            return self.query_one(f"#page-{self.current}", PageView)
+        except NoMatches:
+            return None
+
+    def show_page(self, page_id: str, target: Target | None = None) -> None:
+        if page_id not in PAGE_IDS:
+            return
+        switcher = self.query_one("#pages", ContentSwitcher)
+        created = False
+        try:
+            view = switcher.query_one(f"#page-{page_id}", PageView)
+        except NoMatches:
+            view = PAGE_CLASSES[page_id]()
+            switcher.mount(view)
+            created = True
+        switcher.current = f"page-{page_id}"
+        self.current = page_id
+        if not created and self.model_ready and view.model is not self.model:
+            view.show_model(self.model)
+        self.query_one("#rail", StepRail).show(self.model.step_states(), page_id)
+        self._update_actionbar()
+        self._save_navigation()
+        self.call_after_refresh(self._update_dock_context)
+        if target is not None and created:
+            # A newly mounted page composes later; it focuses on mount.
+            view.pending_target = target
+        elif target is not None:
+            self.call_after_refresh(view.focus_target, target)
+
+    def jump(self, target: Target) -> None:
+        """Open the page and field a Fix button or an intervention names."""
+        self.show_page(target.page, target)
+        if self._dock_open and self.screen.has_class("narrow", "medium"):
+            self.action_close_dock()
+
+    def _update_actionbar(self) -> None:
+        index = PAGE_IDS.index(self.current)
+        label = "Review publication →" if self.current == "review" else "Continue →"
+        try:
+            bar = self.query_one("#actionbar", ActionBar)
+        except NoMatches:
+            return
+        bar.show(f"Step {index + 1} of {len(PAGE_IDS)} · All changes local", label)
+        bar.query_one("#nav-back").disabled = index == 0
+        bar.query_one("#nav-continue").display = self.current != "publish"
+
+    def _save_navigation(self) -> None:
+        try:
+            self.navigation.save(
+                self.repository,
+                NavigationState(
+                    repository_key=repository_key(self.repository),
+                    current_page=self.current,
+                    model_key=self.model.key,
+                ),
+            )
         except (OSError, ValueError) as error:
-            self.set_status(f"session not saved: {error}", error=True)
+            self.set_status(f"Navigation state not saved: {error}", "warn")
 
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        if event.item is not None and event.item.id:
-            self.show_step(event.item.id.removeprefix("rail-"))
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        actions = {
-            "nav-back": self.action_step_back,
-            "nav-continue": self.action_continue,
-            "nav-defer": self.action_defer,
+    def _update_topbar(self) -> None:
+        model = self.model
+        pipeline = model.pipeline()
+        name = str(pipeline.get("name") or model.repository.name)
+        snapshot = self.coordinator.snapshot()
+        driving = snapshot.state not in {
+            AgentState.STOPPED,
+            AgentState.COMPLETED,
+            AgentState.READY,
+            AgentState.OFF,
         }
-        if event.button.id in actions:
-            event.stop()
-            actions[event.button.id]()
+        mode = "MANUAL"
+        if driving and snapshot.mode == "assisted":
+            mode = "AI-ASSISTED"
+        elif driving and snapshot.mode == "autonomous":
+            mode = "AUTONOMOUS"
+        if self.inspect_only:
+            mode = "INSPECT ONLY"
+        if not model.has_drafts:
+            state = ("○ NOT STARTED", "")
+        elif model.published and model.drafts_valid:
+            state = ("● PUBLISHED", "good")
+        elif model.drafts_valid:
+            state = ("✓ READY TO PUBLISH", "good")
+        else:
+            state = ("○ NEEDS REVIEW", "warn")
+        self.query_one("#topbar", TopBar).show(name, mode, state, snapshot)
 
-    def action_continue(self) -> None:
-        self.show_step(next_step(self.current, self.snapshot, visited=self._visited()))
+    # ------------------------------------------------------------ agent
 
-    def action_step_back(self) -> None:
-        self.show_step(previous_step(self.current))
+    def _agent_notify(self) -> None:
+        """Called by the coordinator from any thread."""
+        if threading.get_ident() == getattr(self, "_thread_id", None):
+            self._agent_changed()
+            return
+        try:
+            self.call_from_thread(self._agent_changed)
+        except RuntimeError:
+            return
 
-    def action_defer(self) -> None:
-        if self.current not in self.session.deferred:
-            self.session.deferred.append(self.current)
-        self.set_status(
-            f"{step(self.current).title} deferred; publishing stays blocked."
-        )
-        self.action_continue()
+    def _poll_agent(self) -> None:
+        if self.coordinator.busy or self.coordinator.asking or self._last_busy:
+            self._agent_changed()
 
-    def action_reload(self) -> None:
-        self.apply_snapshot(build_snapshot(self.repository))
-        self.set_status("Reloaded current files from disk.")
+    def _agent_changed(self) -> None:
+        try:
+            snapshot = self.coordinator.snapshot()
+        except Exception as error:
+            self.set_status(f"Agent state unavailable: {error}", "bad")
+            return
+        busy = snapshot.busy
+        if self._last_busy and not busy:
+            # The agent may have changed drafts: show the current files.
+            self.cache.invalidate()
+            self.refresh_model()
+        self._last_busy = busy
+        try:
+            self._update_topbar()
+            self.query_one("#dock", AgentDock).render_snapshot(snapshot)
+        except NoMatches:
+            return
 
-    def action_help(self) -> None:
-        view = self.current_view()
-        target = step(self.current)
-        self.push_screen(
-            HelpScreen(target.title, view.help_text() if view else target.help)
-        )
+    def _update_dock_context(self) -> None:
+        view = self.current_page()
+        try:
+            selection = view.selection_label() if view is not None else ""
+        except NoMatches:  # the page is still being composed
+            selection = ""
+        try:
+            self.query_one("#dock", AgentDock).set_context(self.current, selection)
+        except NoMatches:
+            return
+
+    def open_dock(self, tab: str | None = None) -> None:
+        dock = self.query_one("#dock", AgentDock)
+        dock.display = True
+        self._dock_open = True
+        self._update_dock_context()
+        dock.show_tab(tab or dock.tab)
+        dock.render_snapshot(self.coordinator.snapshot())
+        self.screen.add_class("dock-open")
+
+    def action_close_dock(self) -> None:
+        """Presentation only: a running session keeps running."""
+        if not self._dock_open:
+            return
+        self.query_one("#dock").display = False
+        self._dock_open = False
+        self.screen.remove_class("dock-open")
+        view = self.current_page()
+        if view is not None:
+            view.focus()
 
     def action_assistant(self) -> None:
-        """Ask AI: read-only contextual help on any step."""
-        from nf_splice.interfaces.tui.screens.ask import AskScreen
+        if self._dock_open:
+            self.action_close_dock()
+        else:
+            self.open_dock("ask")
 
-        self.push_screen(AskScreen(self))
+    def _guard(self, action: Callable[[], None]) -> None:
+        try:
+            action()
+        except PermissionError as error:
+            self.open_dock()
+            self.set_status(str(error), "warn")
+            try:
+                self.query_one("#dock-person", Input).focus()
+            except NoMatches:
+                pass
+        except Exception as error:
+            self.set_status(str(error), "bad")
+        self._agent_changed()
 
-    def open_session(self, mode: InteractionMode) -> None:
-        """Open the AI-assisted or autonomous session view."""
-        from nf_splice.interfaces.tui.screens.session import SessionScreen
+    def start_assist(self, stage: str, guidance: str = "") -> None:
+        self.open_dock("assist")
+        self._guard(lambda: self.coordinator.assist(stage, guidance))
 
-        self.push_screen(SessionScreen(self, mode))
+    def _assist_here(self) -> None:
+        dock = self.query_one("#dock", AgentDock)
+        stage = stage_for_page(self.current)
+        if self.current in {"welcome", "overview"}:
+            stage = "identity"
+        if self.current == "review":
+            self.open_dock("assist")
+            self.set_status("Choose a blocker on Review and press Propose a fix.")
+            return
+        if self.current == "publish" or stage is None:
+            self.open_dock("ask")
+            dock.query_one("#ask-question").focus()
+            return
+        guidance = dock.text("#assist-guidance", clear=True)
+        view = self.current_page()
+        if (
+            dock.query_one("#assist-selection", Checkbox).value
+            and view is not None
+            and view.selection_label()
+        ):
+            guidance = f"Focus on: {view.selection_label()}. {guidance}".strip()
+        self.start_assist(stage, guidance)
 
-    def resume(self) -> None:
-        self.show_step(resume_step(self.snapshot, visited=self._visited()))
+    def _ask(self, text: str = "") -> None:
+        dock = self.query_one("#dock", AgentDock)
+        question = text or dock.text("#ask-question")
+        if not question:
+            question = page(self.current).ask_example
+        context = dock.context()
+        view = self.current_page()
+        if view is not None:
+            context |= view.ai_context()
+        self._guard(lambda: self.coordinator.ask(question, context))
+
+    def _dock_button(self, identifier: str) -> bool:
+        coordinator = self.coordinator
+        dock = self.query_one("#dock", AgentDock)
+        if identifier == "dock-close":
+            self.action_close_dock()
+        elif identifier.startswith("dock-tab-"):
+            dock.show_tab(identifier.removeprefix("dock-tab-"))
+        elif identifier == "ask-send":
+            self._ask()
+        elif identifier == "ask-example":
+            dock.query_one("#ask-question", TextArea).text = page(
+                self.current
+            ).ask_example
+        elif identifier == "ask-cancel":
+            coordinator.cancel_answer()
+        elif identifier == "ask-to-assist":
+            dock.show_tab("assist")
+        elif identifier == "assist-start":
+            self._assist_here()
+        elif identifier in {"assist-pause", "auto-pause"}:
+            self._guard(coordinator.request_pause)
+            self.set_status("Pause requested: waiting for a safe checkpoint.", "warn")
+        elif identifier == "proposal-approve":
+            self._guard(coordinator.approve)
+        elif identifier == "proposal-revise":
+            text = dock.text("#proposal-revision")
+            if not text:
+                self.set_status("Say what should change in the proposal first.", "warn")
+                return True
+            self._guard(
+                lambda: coordinator.revise(dock.text("#proposal-revision", clear=True))
+            )
+        elif identifier == "proposal-reject":
+            self._guard(
+                lambda: coordinator.reject(dock.text("#proposal-revision", clear=True))
+            )
+        elif identifier == "proposal-diff-view":
+            proposal = coordinator.snapshot().proposal
+            if proposal is not None:
+                self.view_text(
+                    f"Proposed changes ({proposal.id})",
+                    proposal.diff or "(no diff)",
+                    language="diff",
+                )
+        elif identifier in {"proposal-manual", "question-edit", "paused-manual"}:
+            snapshot = coordinator.snapshot()
+            stage = (
+                snapshot.proposal.stage if snapshot.proposal else None
+            ) or snapshot.stage
+            target = (
+                snapshot.interventions[0].target
+                if snapshot.interventions
+                else Target(self._page_for_stage(stage))
+            )
+            self.jump(target)
+            self.set_status(
+                "Edit the draft here. A pending proposal is withdrawn if the draft "
+                "changes before you approve it."
+            )
+        elif identifier == "question-answer":
+            text = dock.text("#question-reply", clear=True)
+            self._guard(lambda: coordinator.reply(text))
+        elif identifier in {"question-resume", "paused-resume", "intervention-resume"}:
+            self._guard(
+                lambda: coordinator.resume(dock.text("#intervention-note", clear=True))
+            )
+        elif identifier == "intervention-answer":
+            text = dock.text("#intervention-note", clear=True)
+            if not text:
+                self.set_status("Type your answer first.", "warn")
+                return True
+            if coordinator.snapshot().mode == "assisted":
+                self._guard(lambda: coordinator.reply(text))
+            else:
+                self._guard(lambda: coordinator.resume(f"answer: {text}"))
+        elif identifier == "intervention-skip":
+            text = dock.text("#intervention-note", clear=True)
+            if not text:
+                self.set_status("Say why the decision is skipped first.", "warn")
+                return True
+            self._guard(lambda: coordinator.resume(f"skipped: {text}"))
+        elif identifier == "intervention-open":
+            snapshot = coordinator.snapshot()
+            if snapshot.interventions:
+                self.jump(snapshot.interventions[0].target)
+        elif identifier == "intervention-evidence":
+            snapshot = coordinator.snapshot()
+            lines = []
+            for item in snapshot.interventions:
+                lines += [
+                    f"## {item.stage_title}: {item.decision}",
+                    f"Why: {item.reason}",
+                    *(f"- {value}" for value in item.evidence),
+                    f"Suggestion: {item.suggestion}",
+                    f"Field: {item.pointer or item.artefact}",
+                    f"Checkpoint: {item.checkpoint or 'none'}",
+                    "",
+                ]
+            lines += ["## Recent activity", *snapshot.activity]
+            self.view_text("Intervention evidence", "\n".join(lines))
+        elif identifier in {"intervention-stop", "auto-stop", "paused-stop"}:
+            self._confirm_stop()
+        elif identifier == "paused-assist":
+            dock.show_tab("assist")
+        elif identifier == "paused-scope":
+            dock.show_scope(True)
+            dock.render_snapshot(coordinator.snapshot())
+        elif identifier == "auto-start":
+            self._start_autonomous()
+        elif identifier == "finished-review":
+            self.show_page("review")
+        elif identifier == "finished-validate":
+            self.action_reload()
+        elif identifier == "finished-publish":
+            self.show_page("publish")
+        else:
+            return False
+        return True
+
+    def _page_for_stage(self, stage: str | None) -> str:
+        if stage is None:
+            return self.current
+        for page_id in PAGE_IDS:
+            if stage_for_page(page_id) == stage:
+                return page_id
+        return "review"
+
+    def _start_autonomous(self) -> None:
+        dock = self.query_one("#dock", AgentDock)
+        grants = dock.grants()
+        budget = dock.budget()
+
+        def go() -> None:
+            dock.show_scope(False)
+            self.coordinator.start_autonomous(grants, budget)
+            self.set_status("Autonomous session started within the approved scope.")
+
+        self._guard(go)
+
+    def _confirm_stop(self) -> None:
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+
+        def chosen(result: Any) -> None:
+            if result:
+                self._guard(self.coordinator.stop)
+                self.set_status(
+                    "Stopping at the next safe point; the session will not resume."
+                )
+
+        self.push_screen(
+            ConfirmDialog(
+                "Stop the session for good?",
+                "Stopping cancels this session at its next safe point. Its changes so "
+                "far stay in the drafts, but a stopped session is never resumed: you "
+                "would start a new one. To continue later instead, use Request pause.",
+                confirm="Stop the session",
+                danger=True,
+            ),
+            chosen,
+        )
+
+    def on_checkbox_changed(self, event: Any) -> None:
+        if getattr(event.checkbox, "id", None) == "dock-consent":
+            self.coordinator.consent(bool(event.value))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "dock-person" and event.value.strip():
+            self.user = event.value.strip()
+            self.coordinator.set_person(self.user)
+            self.set_status(f"Changes and approvals are recorded as {self.user}.")
+
+    # ------------------------------------------------------------ buttons
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        identifier = event.button.id or ""
+        if isinstance(event.button, RailItem):
+            event.stop()
+            self.show_page(event.button.page_id)
+            return
+        simple: dict[str, Callable[[], None]] = {
+            "nav-back": self.action_step_back,
+            "nav-continue": self.action_step_continue,
+            "nav-later": self.action_finish_later,
+            "agent-status": lambda: self.open_dock(),
+            "top-ask": lambda: self.open_dock("ask"),
+            "top-assist": lambda: self.open_dock("assist"),
+            "top-autonomous": lambda: self.open_dock("autonomous"),
+            "tool-drafts": self.action_drafts,
+            "tool-sources": self.action_sources,
+            "tool-theme": self.action_theme,
+            "tool-help": self.action_help,
+            "welcome-start": self.start_manually,
+            "welcome-resume": self.resume_work,
+            "welcome-ask": lambda: self.open_dock("ask"),
+            "welcome-assist": lambda: self.open_dock("assist"),
+            "welcome-autonomous": lambda: self.open_dock("autonomous"),
+            "welcome-inspect": self.inspect,
+            "welcome-theme": self.action_theme,
+            "overview-browse": self.action_sources,
+            "overview-fresh": self.start_fresh,
+        }
+        if identifier in simple:
+            event.stop()
+            simple[identifier]()
+            return
+        if (
+            identifier.startswith("ask-")
+            and identifier.removeprefix("ask-") in PAGE_IDS
+        ):
+            event.stop()
+            self.open_dock("ask")
+            return
+        if (
+            identifier.startswith("assist-")
+            and identifier.removeprefix("assist-") in PAGE_IDS
+        ):
+            event.stop()
+            self.open_dock("assist")
+            return
+        if self._dock_button(identifier):
+            event.stop()
+
+    # ------------------------------------------------------------ actions
+
+    def action_step_continue(self) -> None:
+        if self.current == "review" and not self.model.drafts_valid:
+            self.set_status(
+                "Publishing is blocked until Review is clear; you can still look.",
+                "warn",
+            )
+        self.show_page(next_page(self.current))
+
+    def action_step_back(self) -> None:
+        self.show_page(previous_page(self.current))
+
+    def action_reload(self) -> None:
+        self.cache.invalidate()
+        self.readiness = None
+        self.refresh_model(
+            then=lambda: self.set_status("Reloaded the current files from disk.")
+        )
+
+    def action_help(self) -> None:
+        from nf_splice.interfaces.tui.modals import HelpDialog
+
+        view = self.current_page()
+        text = (view.help_text if view is not None else "") or page(self.current).lead
+        text += (
+            "\n\n---\n**Keys:** F1 help · Ctrl+P commands and theme · Ctrl+R reload "
+            "files · Ctrl+A open or close the AI assistant · Ctrl+Q quit · Tab moves "
+            "between controls · Enter activates."
+        )
+        self.push_screen(HelpDialog(page(self.current).title, text))
+
+    def action_theme(self) -> None:
+        from nf_splice.interfaces.tui.modals import ThemeDialog
+
+        def chosen(name: Any) -> None:
+            if name:
+                self.theme = name
+                if self.remember_theme:
+                    save_theme_preference(name)
+                self.set_status(f"Theme: {name}")
+
+        self.push_screen(ThemeDialog(), chosen)
+
+    def watch_theme(self, name: str) -> None:
+        if self.remember_theme and name in {theme.name for theme in THEMES}:
+            save_theme_preference(name)
+
+    def action_finish_later(self) -> None:
+        unsaved = [
+            view.spec.title for view in self.query(PageView) if view.has_unsaved()
+        ]
+
+        def leave(result: Any = True) -> None:
+            if result:
+                self._save_navigation()
+                self._exit_safely("Saved your place. Nothing was published.")
+
+        if unsaved:
+            from nf_splice.interfaces.tui.modals import ConfirmDialog
+
+            self.push_screen(
+                ConfirmDialog(
+                    "Leave with unsaved changes?",
+                    "Unsaved changes on: " + ", ".join(unsaved) + ". They are not "
+                    "written to the drafts if you leave now.",
+                    confirm="Leave without saving",
+                    cancel="Stay",
+                    danger=True,
+                ),
+                leave,
+            )
+        else:
+            leave()
+
+    def action_quit_safely(self) -> None:
+        self.action_finish_later()
+
+    def _exit_safely(self, message: str) -> None:
+        if not self.coordinator.busy:
+            self.exit(message=message)
+            return
+        from nf_splice.interfaces.tui.modals import QuitDialog
+
+        def chosen(result: Any) -> None:
+            if not result:
+                return
+            self.set_status("Waiting for the agent to reach a safe checkpoint…", "warn")
+
+            def wait() -> None:
+                self.coordinator.shutdown(timeout=600)
+                self.call_from_thread(
+                    lambda: self.exit(message="The session is paused; resume it later.")
+                )
+
+            self.run_worker(wait, thread=True, group="shutdown")
+
+        self.push_screen(QuitDialog(), chosen)
+
+    def start_manually(self) -> None:
+        """Create the drafts once (existing drafts are kept), then Overview."""
+        if self.model.all_drafts:
+            self.show_page("overview")
+            return
+        if self.inspect_only or self.model.read_only:
+            self.set_status("Inspect-only mode: drafts are not created.", "warn")
+            return
+        from nf_splice.services.workspace import initialise
+
+        self.set_status("Preparing your editable drafts…")
+        button = self.query_one("#welcome-start", Button)
+        button.disabled = True
+
+        def done(_result: Any) -> None:
+            button.disabled = False
+            self.show_page("overview")
+            self.set_status(
+                "Your six drafts are ready in .splice-local/drafts/.", "good"
+            )
+
+        def write() -> Any:
+            return initialise(self.repository, self.change_context())
+
+        self.write("Preparing your editable drafts", write, then=done)
+
+    def resume_work(self) -> None:
+        states = self.model.step_states()
+        for page_id in PAGE_IDS[2:]:
+            if states[page_id].value not in {"ready", "published"}:
+                self.show_page(page_id)
+                return
+        self.show_page("review")
+
+    def inspect(self) -> None:
+        self.inspect_only = True
+        self._update_topbar()
+        self.set_status("Inspect-only mode: browsing without writing.", "warn")
+        self.show_page("overview")
+
+    def start_fresh(self) -> None:
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+        from nf_splice.services.workspace import start_fresh
+
+        def confirmed(result: Any) -> None:
+            if not result:
+                return
+            self.write(
+                "Starting fresh from exact metadata",
+                lambda: start_fresh(self.repository, self.change_context()),
+                then=lambda report: self.set_status(
+                    f"Backed up the previous drafts to {report.backup} and recreated "
+                    "them from exact metadata.",
+                    "good",
+                ),
+            )
+
+        self.push_screen(
+            ConfirmDialog(
+                "Start fresh from exact metadata?",
+                "Every current draft and config is copied to a private backup under "
+                ".splice-local/backups/, then the drafts are recreated from exact "
+                "metadata only. Your published splice/ files are not touched. You "
+                "can restore the backup by copying it back.",
+                confirm="Back up and start fresh",
+                danger=True,
+            ),
+            confirmed,
+        )
+
+    # ------------------------------------------------------------ tools
+
+    def view_text(
+        self,
+        title: str,
+        text: str,
+        *,
+        path: Path | None = None,
+        language: str | None = None,
+    ) -> None:
+        from nf_splice.interfaces.tui.modals import ViewerDialog
+
+        def closed(result: Any) -> None:
+            if result == "edited":
+                self.action_reload()
+
+        self.push_screen(
+            ViewerDialog(title, text, path=path, language=language), closed
+        )
+
+    def view_file(self, relative: str) -> None:
+        path = (self.repository / relative).resolve()
+        if not path.is_relative_to(self.repository) or not path.is_file():
+            self.set_status(
+                f"{relative} is not a readable file in this repository.", "warn"
+            )
+            return
+
+        def read() -> str:
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                return handle.read(2_000_000)
+
+        self.run_view(
+            "file", read, lambda text: self.view_text(relative, text, path=path)
+        )
+
+    def edit_file(self, path: Path) -> None:
+        from nf_splice.interfaces.tui.modals import open_in_editor
+
+        if self.coordinator.writes_locked():
+            self._offer_takeover(f"Editing {path.name}")
+            return
+        self.set_status(open_in_editor(self, path))
+        self.action_reload()
+
+    def open_draft(self, layer: str, *, view: bool = False) -> None:
+        from nf_splice.layers.base import layer_spec
+
+        path = self.repository / layer_spec(layer).draft
+        if view or not path.is_file():
+            self.view_file(layer_spec(layer).draft)
+        else:
+            self.edit_file(path)
+
+    def action_drafts(self) -> None:
+        from nf_splice.interfaces.tui.modals import ListDialog
+
+        layers = list(self.model.layers.values())
+        labels = {
+            "bundle": "Identity and assays",
+            "inputs": "Parameters",
+            "outputs": "Outputs",
+            "components": "Software & containers",
+            "execution-profiles": "Execution",
+            "provenance": "Provenance",
+        }
+        configs = sorted(self.model.configs)
+        rows = [
+            (
+                labels.get(item.name, item.name),
+                item.path,
+                "missing"
+                if not item.exists
+                else "malformed"
+                if item.malformed
+                else f"{len(item.errors)} error(s)"
+                if item.errors
+                else "valid",
+            )
+            for item in layers
+        ] + [
+            (
+                "Execution config",
+                f".splice-local/drafts/configs/{name}",
+                "native config",
+            )
+            for name in configs
+        ]
+        paths = [item.path for item in layers] + [
+            f".splice-local/drafts/configs/{name}" for name in configs
+        ]
+
+        def chosen(result: Any) -> None:
+            if not result or result[1] is None:
+                return
+            action, index = result
+            relative = paths[index]
+            if action == "view":
+                self.view_file(relative)
+            elif action == "edit":
+                self.edit_file(self.repository / relative)
+
+        self.push_screen(
+            ListDialog(
+                "Authoritative YAML drafts",
+                "The drafts in .splice-local/drafts/ are the source of truth; every "
+                "screen is a view over them. Edit them in any editor: nf-SPLICE "
+                "reloads them and never overwrites your edits silently.",
+                ("Step", "File", "State"),
+                rows,
+                actions=(("view", "View"), ("edit", "Open in editor")),
+            ),
+            chosen,
+        )
+
+    def action_sources(self) -> None:
+        from nf_splice.interfaces.tui.sources import list_sources
+
+        def show(entries: list[tuple[str, str, str]]) -> None:
+            from nf_splice.interfaces.tui.modals import ListDialog
+
+            def chosen(result: Any) -> None:
+                if result and result[1] is not None:
+                    self.view_file(entries[result[1]][0])
+
+            self.push_screen(
+                ListDialog(
+                    "Browse pipeline sources",
+                    "Recognised file types only. Exact keys are read from structured "
+                    "metadata; documentation such as the README is for you to read, "
+                    "never copied into a field.",
+                    ("Path", "Kind", "Size"),
+                    entries,
+                    actions=(("view", "Preview"),),
+                ),
+                chosen,
+            )
+
+        self.run_view("sources", lambda: list_sources(self.repository), show)
+
+    def browse_routes(self) -> None:
+        from nf_splice.interfaces.tui.sources import route_rows
+
+        def show(rows: list[tuple[str, str, str, str]]) -> None:
+            from nf_splice.interfaces.tui.modals import ListDialog
+
+            def chosen(result: Any) -> None:
+                if not result or result[1] is None:
+                    return
+                action, index = result
+                _status, instance, glob, _where = rows[index]
+                if action == "add":
+                    view = self.current_page()
+                    if hasattr(view, "edit"):
+                        example = glob.replace("*", "EXAMPLE")
+                        view.edit(None, mode="add", example=example)  # type: ignore[union-attr]
+                elif action == "exclude":
+                    self.exclude_route(instance, glob)
+
+            self.push_screen(
+                ListDialog(
+                    "Published routes (read-only evidence)",
+                    "Routes the pipeline's code publishes, and whether an output "
+                    "covers them. Nothing here is written to your catalogue unless "
+                    "you add an output or exclude a route with a reason.",
+                    ("Coverage", "Process", "Published path", "Declared at"),
+                    rows,
+                    actions=(
+                        ("add", "Add an output for it"),
+                        ("exclude", "Exclude it…"),
+                    ),
+                ),
+                chosen,
+            )
+
+        self.run_view("routes", lambda: route_rows(self.repository), show)
+
+    def exclude_route(self, instance: str, glob: str) -> None:
+        from nf_splice.interfaces.tui.modals import FormDialog
+        from nf_splice.layers.base import edit_draft, ops_for
+
+        def done(values: Any) -> None:
+            if not values:
+                return
+            data = self.model.layer("outputs").data
+            existing = list(data.get("excluded_routes") or [])
+            entry = {"glob": glob, "kind": values["kind"], "reason": values["reason"]}
+            self.write(
+                f"Excluding {glob}",
+                lambda: edit_draft(
+                    self.repository,
+                    "outputs",
+                    ops_for(data, {"/excluded_routes": [*existing, entry]}),
+                    self.change_context(),
+                    action="exclude_route",
+                ),
+                then=lambda _r: self.set_status(
+                    f"Excluded {glob} with your reason.", "good"
+                ),
+            )
+
+        self.push_screen(
+            FormDialog(
+                f"Exclude {glob}",
+                f"{instance} publishes this path. Say why it is not in the catalogue; "
+                "the reason is kept in outputs.draft.yaml.",
+                [
+                    (
+                        "kind",
+                        "Why",
+                        (
+                            [
+                                (
+                                    "intermediate",
+                                    "An intermediate SPLICE need not show",
+                                ),
+                                (
+                                    "false_positive",
+                                    "Static analysis is wrong: it is not published",
+                                ),
+                                ("out_of_scope", "Outside this integration's scope"),
+                            ],
+                            None,
+                        ),
+                    ),
+                    ("reason", "Reason", ""),
+                ],
+                submit="Exclude route",
+                validate=lambda values: (
+                    None
+                    if values.get("kind") and values.get("reason")
+                    else "Choose why and give a reason."
+                ),
+            ),
+            done,
+        )
+
+    def suggest_assay(self) -> None:
+        from nf_splice.interfaces.tui.modals import FormDialog
+
+        contact = support_contact()
+
+        def done(values: Any) -> None:
+            if not values:
+                return
+            text = (
+                "SPLICE assay vocabulary suggestion\n"
+                f"Assay: {values['name']}\nDescription: {values['description']}\n"
+                f"Pipeline: {self.model.pipeline().get('name') or self.repository.name}"
+            )
+            self.copy_to_clipboard(text)
+            self.set_status(
+                (
+                    f"Suggestion copied; send it to {contact}."
+                    if contact
+                    else "Suggestion copied. Contact details are not configured: "
+                    "share it with your SPLICE team."
+                )
+                + " It is not added to the vocabulary automatically.",
+                "good",
+            )
+
+        self.push_screen(
+            FormDialog(
+                "Suggest an assay addition",
+                (
+                    f"Suggestions go to {contact}."
+                    if contact
+                    else "Contact details are not configured "
+                    "(NF_SPLICE_SUPPORT_CONTACT). The suggestion is copied so you "
+                    "can share it."
+                )
+                + " A suggestion is not added to the governed vocabulary "
+                "automatically.",
+                [("name", "Assay name", ""), ("description", "Short description", "")],
+                submit="Copy suggestion",
+                validate=lambda values: (
+                    None if values.get("name") else "Name the assay."
+                ),
+            ),
+            done,
+        )
+
+    def export_bundle(self) -> None:
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+        from nf_splice.services.export import export_archive
+
+        def confirmed(result: Any) -> None:
+            if result:
+                self.write(
+                    "Exporting a verified ZIP",
+                    lambda: export_archive(self.repository, overwrite=True),
+                    then=lambda report: self.set_status(
+                        f"Exported and verified {report.path}", "good"
+                    ),
+                )
+
+        self.push_screen(
+            ConfirmDialog(
+                "Export a ZIP of the bundle?",
+                "Writes a verified ZIP of splice/ into .splice-local/exports/ "
+                "(replacing an earlier export). Private drafts are never included.",
+                confirm="Export ZIP",
+            ),
+            confirmed,
+        )
+
+    def commit_bundle(self) -> None:
+        from nf_splice.interfaces.tui.modals import FormDialog
+        from nf_splice.services.gitops import commit
+
+        def done(values: Any) -> None:
+            if values and values.get("message"):
+                self.write(
+                    "Committing splice/ locally",
+                    lambda: commit(self.repository, values["message"]),
+                    then=lambda result: self.set_status(
+                        f"Committed locally: {result.get('commit') or result}. "
+                        "Nothing was pushed.",
+                        "good",
+                    ),
+                )
+
+        self.push_screen(
+            FormDialog(
+                "Commit the bundle locally",
+                "Commits only the validated splice/ to this working copy's current "
+                "branch. Private drafts are never committed and nothing is pushed.",
+                [("message", "Commit message", "Add SPLICE workflow bundle")],
+                submit="Commit locally",
+            ),
+            done,
+        )
 
 
-__all__ = ["STEPS", "NfSpliceApp"]
+def support_contact() -> str | None:
+    """The configured SPLICE support contact, if any (never invented)."""
+    import os
+
+    value = os.environ.get("NF_SPLICE_SUPPORT_CONTACT", "").strip()
+    return value or None
+
+
+__all__ = ["LABELS", "AgentSnapshot", "NfSpliceApp"]
