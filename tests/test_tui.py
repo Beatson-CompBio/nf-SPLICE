@@ -475,7 +475,8 @@ async def test_review_groups_blockers_and_fix_opens_the_field(tmp_path: Path) ->
             for group in report.groups
             for item in group.blocking
         )
-        assert report.cascaded >= 1
+        # The other layers compile against the identity without its assays.
+        assert report.cascaded == 0
         # The empty catalogue is incomplete authoring, not a wrong value.
         assert {item.code for item in groups["outputs"].incomplete} >= {
             "missing_required"
@@ -483,7 +484,6 @@ async def test_review_groups_blockers_and_fix_opens_the_field(tmp_path: Path) ->
         text = page_text(app)
         assert "NOT READY TO PUBLISH" in text
         assert report.summary() in text
-        assert "waiting on" in text and "resolves with it" in text
         assert app.screen.query_one("#review-publish", Button).disabled
         screenshot(app, "review")
         # Publish states the same count from the same account.
@@ -494,6 +494,23 @@ async def test_review_groups_blockers_and_fix_opens_the_field(tmp_path: Path) ->
         await settle(app, pilot)
         await press_named(app, pilot, "review-fix-outputs")
         assert app.current == "outputs"
+        # A broken identity is one root cause; the layers waiting on it are
+        # shown as its consequences, never counted as blockers of their own.
+        edit_draft_file(
+            root, "bundle", lambda data: data["pipeline"].update(name=None, id=None)
+        )
+        app.action_reload()
+        await settle(app, pilot)
+        app.show_page("review")
+        await settle(app, pilot)
+        report = app.current_page().report  # type: ignore[union-attr]
+        assert report.cascaded >= 1
+        assert not any(
+            item.code == "identity_not_ready"
+            for group in report.groups
+            for item in group.blocking
+        )
+        assert "waiting on Identity" in page_text(app)
 
 
 async def test_publish_shows_the_plan_and_four_separate_facts(tmp_path: Path) -> None:

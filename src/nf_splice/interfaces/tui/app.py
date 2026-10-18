@@ -618,7 +618,14 @@ class NfSpliceApp(App[None]):
             bar = self.query_one("#actionbar", ActionBar)
         except NoMatches:
             return
-        bar.show(f"Step {index + 1} of {len(PAGE_IDS)} · All changes local", label)
+        wide = self.screen.has_class("wide")
+        bar.show(
+            f"Step {index + 1} of {len(PAGE_IDS)}"
+            + (" · All changes local" if wide else "")
+            if wide or self.screen.has_class("medium")
+            else f"{index + 1}/{len(PAGE_IDS)}",
+            label,
+        )
         bar.query_one("#nav-back").disabled = index == 0
         bar.query_one("#nav-continue").display = self.current != "publish"
 

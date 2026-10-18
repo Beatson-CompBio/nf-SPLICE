@@ -114,11 +114,13 @@ class TopBar(Horizontal):
         self.query_one("#mode-chip", Chip).show(mode, "info")
         self.query_one("#state-chip", Chip).show(*state)
         button = self.query_one("#agent-status", Button)
-        provider = f" · {agent.provider.name}" if agent.provider else ""
-        button.label = f"{agent.glyph} {agent.label}{provider}"
+        button.label = f"{agent.glyph} {agent.label}"
         button.set_class(agent.attention, "attention")
-        button.tooltip = "Open the AI assistant. " + (
-            agent.unavailable or "Closing it never cancels a session."
+        provider = f"Provider: {agent.provider.name}. " if agent.provider else ""
+        button.tooltip = (
+            provider
+            + "Open the AI assistant. "
+            + (agent.unavailable or "Closing it never cancels a session.")
         )
 
 
@@ -273,18 +275,21 @@ def app_of(widget: Widget) -> NfSpliceApp:
     return app
 
 
-class TakeoverBar(Horizontal):
+class TakeoverBar(Vertical):
     """Shown over the page while an agent waits for a person's decision."""
 
     def compose(self) -> ComposeResult:
         yield Static("", id="takeover-text")
-        yield Button("Return to AI panel (F6)", id="takeover-return", classes="compact")
-        yield Button(
-            "Resume same session",
-            id="takeover-resume",
-            classes="compact",
-            variant="primary",
-        )
+        with Horizontal(id="takeover-actions"):
+            yield Button(
+                "Return to AI panel (F6)", id="takeover-return", classes="compact"
+            )
+            yield Button(
+                "Resume same session",
+                id="takeover-resume",
+                classes="compact",
+                variant="primary",
+            )
 
     def show(self, text: str) -> None:
         self.query_one("#takeover-text", Static).update(plain(text))

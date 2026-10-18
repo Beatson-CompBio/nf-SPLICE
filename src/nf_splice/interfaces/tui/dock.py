@@ -480,8 +480,12 @@ class AgentDock(Vertical):
             if snapshot.interventions:
                 item = snapshot.interventions[0]
                 more = len(snapshot.interventions) - 1
-                where = page_spec(item.target.page).title + (
-                    f" · {field_label(item.pointer)}" if item.pointer else ""
+                title = page_spec(item.target.page).title
+                label = field_label(item.pointer) if item.pointer else ""
+                where = title + (
+                    f" · {label}"
+                    if label and label.casefold() != title.casefold()
+                    else ""
                 )
                 lines = [f"What I need from you ({where}):", f"  {item.decision}"]
                 if item.reason:

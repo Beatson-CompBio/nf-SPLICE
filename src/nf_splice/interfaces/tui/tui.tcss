@@ -121,6 +121,8 @@ TopBar Button { height: 3; min-width: 6; margin-right: 1; }
 .page-actions Static { width: 1fr; padding-top: 1; }
 Button { margin-right: 1; }
 Button.compact { height: 3; min-width: 6; }
+.toolbar Button { padding: 0 1; }
+#step-position { min-width: 4; }
 Button:focus { text-style: bold reverse; }
 Input, Select, TextArea { border: tall $splice-control; }
 Input:focus, Select:focus, TextArea:focus { border: tall $accent; }
@@ -170,7 +172,8 @@ RadioSet { height: auto; background: $surface; border: tall $splice-control; }
     border: round $warning;
     padding: 0 1;
 }
-#takeover-text { width: 1fr; color: $warning; padding-top: 1; }
+#takeover-text { width: 100%; height: auto; max-height: 3; color: $warning; }
+#takeover-actions { height: auto; }
 
 /* ---------------------------------------------------------- AI dock */
 

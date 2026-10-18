@@ -54,14 +54,18 @@ class OutputsPage(PageView):
             )
             yield Button("+ Add an output", id="outputs-add-first", variant="primary")
         with Card(title="Output catalogue", id="outputs-catalogue"):
-            with Horizontal(classes="row"):
-                yield Input(
-                    placeholder="Search key, title or category…", id="outputs-search"
+            yield Input(
+                placeholder="Search key, title or category…", id="outputs-search"
+            )
+            with Horizontal(classes="row toolbar"):
+                yield Button(
+                    "+ Add", id="outputs-add", variant="primary", classes="compact"
                 )
-                yield Button("+ Add output", id="outputs-add", variant="primary")
-                yield Button("Duplicate", id="outputs-duplicate")
-                yield Button("Edit", id="outputs-edit")
-                yield Button("Remove", id="outputs-remove", variant="error")
+                yield Button("Duplicate", id="outputs-duplicate", classes="compact")
+                yield Button("Edit", id="outputs-edit", classes="compact")
+                yield Button(
+                    "Remove", id="outputs-remove", variant="error", classes="compact"
+                )
             table: DataTable[Any] = DataTable(id="outputs-table", cursor_type="row")
             yield table
             yield Static("", id="outputs-detail", classes="detail")
