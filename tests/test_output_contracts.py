@@ -11,7 +11,6 @@ import yaml  # type: ignore[import-untyped]
 
 from layer_fixtures import ADA, ready_repository
 from nf_splice.domain import (
-    DEFAULT_JOB_CATEGORY,
     OutputEntityType,
     OutputFormat,
     OutputScope,
@@ -31,7 +30,7 @@ OUTPUTS = (
         key="run_report_html",
         title="Run report",
         description="Job-level HTML report.",
-        category=DEFAULT_JOB_CATEGORY,
+        category="job_report",
         formats=(OutputFormat.HTML,),
         scopes=(OutputScope.JOB,),
         entity_types=(OutputEntityType.FILE,),

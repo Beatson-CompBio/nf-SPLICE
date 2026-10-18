@@ -118,14 +118,6 @@ def copy_fixture(tmp_path: Path) -> Path:
     return root
 
 
-def reviewed_output(candidate: Any) -> dict[str, Any] | None:
-    """The complete reviewed output for a candidate, or None to reject it."""
-    base = OUTPUTS.get(candidate.suggested_key)
-    if base is None or candidate.path_pattern is None:
-        return None
-    return base | {"entity_types": ["file"]}
-
-
 def author_all(root: Path, context: ChangeContext = ADA) -> None:
     """Initialise the fixture, then author every draft directly.
 
@@ -134,7 +126,6 @@ def author_all(root: Path, context: ChangeContext = ADA) -> None:
     person would in an editor. No candidate is accepted or rejected.
     """
     from layer_fixtures import edit_draft_file
-    from nf_splice.inspectors.outputs import discover_output_candidates
     from nf_splice.layers.bundle import add_assay_capability
     from nf_splice.layers.execution import CONFIGS_DIR
     from nf_splice.layers.inputs import iter_parameters
@@ -160,19 +151,22 @@ def author_all(root: Path, context: ChangeContext = ADA) -> None:
                 target = resolve(data, parameter.pointer)
                 target["x-splice-access"] = {"editable_by": ACCESS[parameter.name]}
 
-    outputs: list[dict[str, Any]] = []
+    from nf_splice.layers.outputs import route_coverage
+
+    # A person describes the outputs (the reviewed OUTPUTS) and excludes the
+    # remaining published routes with a reason; nothing is guessed.
+    outputs = [item | {"entity_types": ["file"]} for item in OUTPUTS.values()]
+    coverage = route_coverage(
+        root,
+        patterns=[pattern for item in outputs for pattern in item["path_patterns"]],
+        exclusions=[],
+    )
     excluded: list[dict[str, str]] = []
-    for item in discover_output_candidates(root):
-        output = reviewed_output(item.candidate)
-        if output is not None:
-            if output["key"] not in {entry["key"] for entry in outputs}:
-                outputs.append(output)
-        else:
-            for process in item.candidate.processes:
-                if process not in {entry.get("process") for entry in excluded}:
-                    excluded.append(
-                        {"process": process, "reason": "Not a platform output"}
-                    )
+    for route in coverage.uncovered:
+        if route.instance not in {entry["process"] for entry in excluded}:
+            excluded.append(
+                {"process": route.instance, "reason": "Not a platform output"}
+            )
 
     def catalogue(data: dict[str, Any]) -> None:
         data["outputs"] = outputs

@@ -28,10 +28,6 @@ from nf_splice.domain.inspection import (
     UnsafeCollision,
 )
 from nf_splice.domain.outputs import (
-    DEFAULT_JOB_CATEGORY,
-    SUGGESTED_OUTPUT_CATEGORIES,
-    SUGGESTED_OUTPUT_STAGES,
-    OutputCandidate,
     OutputEntityType,
     OutputFormat,
     OutputLabel,
@@ -41,9 +37,6 @@ from nf_splice.domain.outputs import (
 )
 
 __all__ = [
-    "DEFAULT_JOB_CATEGORY",
-    "SUGGESTED_OUTPUT_CATEGORIES",
-    "SUGGESTED_OUTPUT_STAGES",
     "UNATTRIBUTED",
     "Actor",
     "ActorKind",
@@ -59,7 +52,6 @@ __all__ = [
     "ExecutionProfileCandidate",
     "ExecutionProfileType",
     "InspectedPath",
-    "OutputCandidate",
     "OutputEntityType",
     "OutputFormat",
     "OutputLabel",

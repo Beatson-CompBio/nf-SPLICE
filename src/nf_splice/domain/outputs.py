@@ -36,35 +36,6 @@ OutputFormatText = Annotated[
     ),
 ]
 
-#: Default category suggested for workflow-wide (job-scoped) outputs.
-DEFAULT_JOB_CATEGORY = "job_report"
-#: Non-binding suggestions offered by interfaces; any safe label is valid.
-SUGGESTED_OUTPUT_CATEGORIES = (
-    DEFAULT_JOB_CATEGORY,
-    "sample_metadata",
-    "aggregate_qc",
-    "quality_control",
-    "preprocessing",
-    "alignment",
-    "postprocessing",
-    "coverage",
-    "quantification",
-    "umi",
-    "reference",
-)
-SUGGESTED_OUTPUT_STAGES = (
-    "raw",
-    "trimmed",
-    "filtered",
-    "aligned",
-    "markduplicates",
-    "genomic_dedup",
-    "transcriptomic_dedup",
-    "sorted",
-    "merged",
-    "final",
-)
-
 _PATH_PLACEHOLDERS = {
     "{sample}": r"(?P<sample_id>[^/]+)",
     "{run}": r"(?P<run_id>[^/]+)",
@@ -151,36 +122,6 @@ class OutputLabel(DomainModel):
 
     name: NonEmptyString
     value: NonEmptyString
-
-
-class OutputCandidate(DomainModel):
-    """One explainable output proposal created from detected evidence."""
-
-    id: NonEmptyString
-    suggested_key: NonEmptyString
-    path_pattern: NonEmptyString | None = None
-    source_locations: tuple[NonEmptyString, ...]
-    processes: tuple[NonEmptyString, ...] = ()
-    suggested_title: NonEmptyString | None = None
-    suggested_description: NonEmptyString | None = None
-    suggested_format: OutputFormat | None = None
-    likely_scope: OutputScope | None = None
-    likely_entity_type: OutputEntityType | None = None
-    confidence: float = Field(ge=0.0, le=1.0)
-    conditional: bool = False
-    unresolved_fields: tuple[NonEmptyString, ...]
-
-    @model_validator(mode="after")
-    def validate_collections(self) -> OutputCandidate:
-        """Keep merged discovery evidence deterministic and unambiguous."""
-        for values, label in (
-            (self.source_locations, "source_locations"),
-            (self.processes, "processes"),
-            (self.unresolved_fields, "unresolved_fields"),
-        ):
-            if len(values) != len(set(values)):
-                raise ValueError(f"{label} must be unique")
-        return self
 
 
 class ReviewedOutput(DomainModel):

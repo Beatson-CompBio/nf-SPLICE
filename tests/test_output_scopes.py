@@ -17,7 +17,6 @@ from nf_splice.domain import (
     OutputScope,
     ReviewedOutput,
 )
-from nf_splice.inspectors import discover_output_candidates
 from nf_splice.renderers import OutputContractInput, OutputPipeline, render_outputs
 from nf_splice.runtime import (
     AnalysisOutputError,
@@ -280,24 +279,3 @@ def test_cli_generates_from_job_metadata(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     removed = runner.invoke(app, [*common, "--run-metadata", str(job)])
     assert removed.exit_code == 2
-
-
-def test_discovery_suggests_job_and_ignores_unversioned_catalogues(
-    tmp_path: Path,
-) -> None:
-    tree = tmp_path / "tree"
-    (tree / "multiqc").mkdir(parents=True)
-    (tree / "multiqc" / "report.html").write_text("x", encoding="utf-8")
-    discovered = discover_output_candidates(tmp_path, example_output_tree=tree)
-    assert [item.candidate.likely_scope for item in discovered] == [OutputScope.JOB]
-
-    splice = tmp_path / "splice"
-    splice.mkdir()
-    (splice / "outputs.yaml").write_text(
-        "schema_version: '1.0'\noutputs:\n  - key: old_report\n    scope: [run]\n",
-        encoding="utf-8",
-    )
-    keys = {
-        item.candidate.suggested_key for item in discover_output_candidates(tmp_path)
-    }
-    assert "old_report" not in keys

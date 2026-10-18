@@ -6,8 +6,6 @@ import re
 import shutil
 from pathlib import Path
 
-from nf_splice.domain import OutputScope
-from nf_splice.inspectors import discover_output_candidates
 from nf_splice.inspectors.routes import (
     CoverageStatus,
     analyse_routes,
@@ -73,36 +71,6 @@ def test_declared_outputs_are_not_published_outputs(tmp_path: Path) -> None:
     assert all(
         item.status is CoverageStatus.NOT_PUBLISHED for item in analysis.unpublished
     )
-
-
-def test_discovery_offers_every_published_route_and_no_intermediates(
-    tmp_path: Path,
-) -> None:
-    root = _repository(tmp_path)
-    candidates = [item.candidate for item in discover_output_candidates(root)]
-    by_process = {item.processes: item for item in candidates}
-
-    assert ("SAMTOOLS_SORT",) not in by_process
-    assert not any(item.suggested_key == "versions" for item in candidates)
-    star = by_process[("STAR_ALIGN",)] if ("STAR_ALIGN",) in by_process else None
-    keys = {item.suggested_key for item in candidates}
-    # Shared emit names are qualified by process; unique ones are kept.
-    assert {"star_align_bam", "hisat2_align_bam", "quant", "report"} <= keys
-    del star
-    hisat2 = next(
-        item for item in candidates if item.suggested_key == "hisat2_align_bam"
-    )
-    assert hisat2.path_pattern == r"^hisat2/(?P<sample_id>[^/]+)\.bam$"
-    assert hisat2.likely_scope is OutputScope.SAMPLE
-    assert hisat2.conditional is True
-    fastqc = next(item for item in candidates if item.suggested_key == "html")
-    assert fastqc.suggested_description == "FastQC report per sample."
-    sources = {
-        evidence.provenance.source
-        for item in discover_output_candidates(root)
-        for evidence in item.evidence
-    }
-    assert {"process_output", "publish_rule"} <= sources
 
 
 def test_nf_core_default_rule_and_selector_filters(tmp_path: Path) -> None:

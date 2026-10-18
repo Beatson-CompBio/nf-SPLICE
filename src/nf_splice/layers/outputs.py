@@ -83,8 +83,9 @@ def seed_catalogue(
 ) -> tuple[dict[str, Any], list[str]]:
     """Build the first ``outputs.draft.yaml``.
 
-    Only a previously published catalogue (``splice/outputs.yaml``, in 0.3.0
-    or an earlier layout) seeds entries: people wrote it. Otherwise the
+    Only the catalogue of a bundle already published in this repository
+    (``splice/outputs.yaml``, 0.3.0 or an earlier layout) seeds entries, as
+    earlier authoring state to edit. Otherwise the
     catalogue starts with no entries; published routes are evidence to browse
     (:func:`route_coverage`), never provisional entries (ADR-0068).
     """
@@ -104,7 +105,7 @@ def seed_catalogue(
             if key in used and value
         }
         notes.append(
-            f"seeded {len(published.outputs)} output(s) from the published "
+            f"seeded {len(published.outputs)} output(s) from "
             f"{published.location} ({published.format} layout)"
         )
         notes.extend(published.notes)
