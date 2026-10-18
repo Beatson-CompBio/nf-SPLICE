@@ -38,7 +38,9 @@ from nf_splice.agents import (
     Permission,
     SessionEngine,
     ask_for_help,
+    validate_grants,
 )
+from nf_splice.agents.permissions import PolicyViolation
 from nf_splice.agents.protocol import (
     AgentEvent,
     EventKind,
@@ -153,6 +155,30 @@ class _BridgeSession:
         return None
 
 
+def policy_for(grant_names: list[str]) -> ExecutionPolicy:
+    """The bridge's permission set: a narrow baseline plus explicit grants.
+
+    The evaluation bridge deliberately starts below the product's defaults
+    (read and draft_edit only); ``--grant build`` adds the deterministic
+    publication into ``splice/`` so the whole lifecycle is exercised. Names
+    are checked first so a mistyped or never-grantable permission fails at
+    launch. ``validate_grants`` is used for the checks only: its *result*
+    would also carry the product's default grants, which the bridge does not
+    want.
+    """
+    validate_grants(list(grant_names))
+    return ExecutionPolicy(
+        grants=sorted(
+            {
+                Permission.READ,
+                Permission.DRAFT_EDIT,
+                *(Permission(item) for item in grant_names),
+            },
+            key=lambda item: item.value,
+        )
+    )
+
+
 def serve(arguments: argparse.Namespace) -> int:
     folder = Path(arguments.folder).resolve()
     folder.mkdir(parents=True, exist_ok=True)
@@ -172,16 +198,11 @@ def serve(arguments: argparse.Namespace) -> int:
 
         asyncio.run(ask())
         return 0
-    policy = ExecutionPolicy(
-        grants=sorted(
-            {
-                Permission.READ,
-                Permission.DRAFT_EDIT,
-                *(Permission(item) for item in arguments.grant),
-            },
-            key=lambda item: item.value,
-        )
-    )
+    try:
+        policy = policy_for(arguments.grant)
+    except PolicyViolation as error:
+        print(f"--grant: {error}", file=sys.stderr)
+        return 2
     policy.examples = list(arguments.example)
     engine = SessionEngine.create(
         root,
