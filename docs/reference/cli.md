@@ -8,12 +8,12 @@ step-by-step use, start with the [user guide](../USAGE.md).
 ## Global options
 
 Global options go before the command name, for example
-`nf-splice --actor "Ada Lovelace" configure outputs`.
+`nf-splice --user "Ada Lovelace" configure outputs`.
 
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--version` |  |  | Show the nf-splice version and exit. |
-| `--actor` | `<str>` |  | Public actor label recorded with review events (never an e-mail). |
+| `--user` | `<str>` |  | Your public name, recorded with the changes you make and the sessions you approve (never an e-mail address). |
 
 ## Commands
 
@@ -30,14 +30,14 @@ Global options go before the command name, for example
 | [`nf-splice export`](#nf-splice-export) | Create and verify a ZIP of the validated bundle or pipeline copy. |
 | [`nf-splice assess`](#nf-splice-assess) | Report contract validity, observed outputs and route coverage separately. |
 | [`nf-splice ask`](#nf-splice-ask) | Ask AI about your pipeline or drafts; read-only, it never changes anything. |
-| [`nf-splice tui`](#nf-splice-tui) | Open the terminal wizard: manual, AI-assisted or autonomous. |
+| [`nf-splice tui`](#nf-splice-tui) | Open the workspace: author by hand, ask AI, approve proposals or delegate. |
 | [`nf-splice analysis-output generate`](#nf-splice-analysis-output-generate) | Generate and schema-validate analysis_output.json for one completed job. |
 | [`nf-splice analysis-output validate`](#nf-splice-analysis-output-validate) | Validate an existing analysis_output.json against the static contract. |
 | [`nf-splice schema list`](#nf-splice-schema-list) | List the contract families and revisions emitted by this release. |
 | [`nf-splice schema show`](#nf-splice-schema-show) | Print the packaged formal definition of one family revision. |
 | [`nf-splice schema validate`](#nf-splice-schema-validate) | Validate one document offline against its packaged contract definition. |
 | [`nf-splice schema check`](#nf-splice-schema-check) | Check every published contract file in splice/, or compare revisions. |
-| [`nf-splice audit identity`](#nf-splice-audit-identity) | Show the actor label that would be recorded and the Git suggestion. |
+| [`nf-splice audit identity`](#nf-splice-audit-identity) | Show the name that would be recorded with your changes. |
 | [`nf-splice audit show`](#nf-splice-audit-show) | Export this repository's private audit records, redacted by default. |
 | [`nf-splice draft list`](#nf-splice-draft-list) | List every draft with its derived state (read-only). |
 | [`nf-splice draft inspect`](#nf-splice-draft-inspect) | Show per-field issues for one draft (read-only). |
@@ -52,6 +52,7 @@ Global options go before the command name, for example
 | [`nf-splice draft resources`](#nf-splice-draft-resources) | Resource selectors, task.memory uses and one config's memory settings. |
 | [`nf-splice draft check-config`](#nf-splice-draft-check-config) | Ask Nextflow for the effective configuration of one profile (opt-in). |
 | [`nf-splice draft check-crate`](#nf-splice-draft-check-crate) | Assess the RO-Crate and check the draft graph (standards check opt-in). |
+| [`nf-splice draft routes`](#nf-splice-draft-routes) | List published routes the output catalogue covers, excludes or misses. |
 | [`nf-splice draft recover`](#nf-splice-draft-recover) | Restore the previous release after an interrupted publication. |
 | [`nf-splice containers plan`](#nf-splice-containers-plan) | Which image each container needs and how it would be obtained (offline). |
 | [`nf-splice containers store`](#nf-splice-containers-store) | Configure the image store (no secrets; kept in your config folder). |
@@ -86,7 +87,6 @@ Global options go before the command name, for example
 | [`nf-splice git commit`](#nf-splice-git-commit) | Commit the validated splice/ and .gitignore with your Git identity. |
 | [`nf-splice git push`](#nf-splice-git-push) | Push the integration branch to a remote you choose (never automatic). |
 | [`nf-splice preview outputs`](#nf-splice-preview-outputs) | Print the derived outputs.schema.json/outputs.yaml (never written). |
-| [`nf-splice catalogue recommend`](#nf-splice-catalogue-recommend) | Investigate the pipeline and recommend assay capabilities (read-only, no AI). |
 | [`nf-splice catalogue info`](#nf-splice-catalogue-info) | Which vocabulary snapshot this nf-splice carries, and its provenance. |
 | [`nf-splice catalogue modalities`](#nf-splice-catalogue-modalities) | List the top-level modalities and their subtypes. |
 | [`nf-splice catalogue assays`](#nf-splice-catalogue-assays) | List assays a pipeline can declare, with type, modalities and paths. |
@@ -145,7 +145,6 @@ nf-splice init [OPTIONS]
 | `--description` | `<str>` |  | Concise description. |
 | `--title` | `<str>` |  | Display title. |
 | `--licence` | `<str>` |  | Licence identifier. |
-| `--example-output-tree` | `<path>` |  | Outputs: example results directory, or a saved 'ls -R'/'tree' listing of one, to discover output candidates from. |
 | `--contract-version` | `<str>` |  | Reviewed analysis-output schema version (X.Y.Z). |
 | `--accept-detected` |  |  | Explicitly confirm every unanimous detected identity value. |
 | `--json` |  |  | Emit stable JSON. |
@@ -167,11 +166,10 @@ nf-splice configure [OPTIONS] LAYER
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--set` | `<str>` |  | Repeatable explicit review value KEY=VALUE. |
 | `--visibility` | `<str>` |  | Inputs: NAME=standard\|advanced\|hidden. |
-| `--decision-file` | `<path>` |  | Batch review file: a YAML 'actions' list for outputs, or a JSON array of parameter policies for inputs. |
-| `--example-output-tree` | `<path>` |  | Outputs: example results directory, or a saved 'ls -R'/'tree' listing of one, to discover output candidates from. |
-| `--publish-directory` | `<path>` |  | Outputs: publish directory of a completed job to discover output candidates from. |
-| `--contract-version` | `<str>` |  | Outputs: reviewed analysis-output schema version X.Y.Z. |
-| `--export-unresolved` | `<path>` |  | Write pending candidates as JSON ('-' for stdout). |
+| `--decision-file` | `<path>` |  | Inputs: a JSON array of parameter policies to apply in one batch. |
+| `--contract-version` | `<str>` |  | Outputs: the version (X.Y.Z) of this workflow's analysis_output.json schema; not the pipeline release. |
+| `--add-output` | `<path>` |  | Outputs: add complete output(s) from a YAML or JSON file (one mapping or a list). Repeatable. |
+| `--export-unresolved` | `<path>` |  | Components/profiles: write detected entries not yet in the draft as JSON ('-' for stdout). |
 | `--accept-detected` |  |  | Identity/components: explicitly accept unambiguous evidence. |
 | `--approve-maintainer-publication` |  |  | Identity: approve publishing maintainer contacts. |
 | `--require-downloadable` | `<str>` |  | Components: true/false whether images must be downloadable. |
@@ -185,7 +183,6 @@ nf-splice configure [OPTIONS] LAYER
 | `--assay-evidence` | `<str>` | `asserted` | Identity: why the assays are declared: asserted (your statement), documented or detected (cite --assay-source). |
 | `--assay-rationale` | `<str>` |  | Identity: the reason the pipeline supports the added assays. |
 | `--assay-source` | `<str>` |  | Identity: evidence location path:line. Repeatable. |
-| `--reject-assay` | `<str>` |  | Identity: reject a recommended assay that does not apply (give the reason with --assay-rationale). Repeatable. |
 
 ### nf-splice plan
 
@@ -314,7 +311,7 @@ nf-splice ask [OPTIONS] QUESTION
 
 ### nf-splice tui
 
-Open the terminal wizard: manual, AI-assisted or autonomous.
+Open the workspace: author by hand, ask AI, approve proposals or delegate.
 
 ```text
 nf-splice tui [OPTIONS]
@@ -323,10 +320,11 @@ nf-splice tui [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--no-session` |  |  | Do not read or write wizard sessions. |
-| `--provider` | `<str>` |  | Enable agentic AI in the wizard: claude, or scripted with --script. |
+| `--no-session` |  |  | Do not read or write where you left off (navigation state only). |
+| `--provider` | `<str>` |  | Make AI available in the workspace (see `nf-splice provider list`); without it everything works manually and AI shows as off. |
 | `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
 | `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
+| `--inspect-only` |  |  | Browse without writing any file. |
 
 ### nf-splice analysis-output generate
 
@@ -426,7 +424,7 @@ nf-splice schema check [OPTIONS]
 
 ### nf-splice audit identity
 
-Show the actor label that would be recorded and the Git suggestion.
+Show the name that would be recorded with your changes.
 
 ```text
 nf-splice audit identity [OPTIONS]
@@ -435,7 +433,7 @@ nf-splice audit identity [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--actor` | `<str>` |  | Explicit public actor label. |
+| `--user` | `<str>` |  | Your public name, as --user. |
 | `--json` |  |  | Emit JSON. |
 
 ### nf-splice audit show
@@ -650,6 +648,22 @@ nf-splice draft check-crate [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--allow` | `<str>` |  | external_tools: run rocrate-validator; network: let it fetch profile contexts (otherwise it runs offline). |
+| `--json` |  |  | Emit stable JSON. |
+
+### nf-splice draft routes
+
+List published routes the output catalogue covers, excludes or misses.
+
+Read-only. Coverage is ingestion-readiness evidence: a valid, deliberately
+limited catalogue can be published while coverage is incomplete.
+
+```text
+nf-splice draft routes [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice draft recover
@@ -1167,19 +1181,6 @@ nf-splice preview outputs [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--format` | `<str>` | `json` | json or yaml. |
-
-### nf-splice catalogue recommend
-
-Investigate the pipeline and recommend assay capabilities (read-only, no AI).
-
-```text
-nf-splice catalogue recommend [OPTIONS]
-```
-
-| Option | Value | Default | Description |
-| --- | --- | --- | --- |
-| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
-| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice catalogue info
 

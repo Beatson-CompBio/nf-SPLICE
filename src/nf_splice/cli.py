@@ -153,13 +153,6 @@ def _existing_path(help_text: str) -> Any:
     return typer.Option(exists=True, resolve_path=True, help=help_text)
 
 
-ExampleOutputTreeOption = Annotated[
-    Path | None,
-    _existing_path(
-        "Outputs: example results directory, or a saved 'ls -R'/'tree' listing "
-        "of one, to discover output candidates from."
-    ),
-]
 OutputDirectoryOption = Annotated[
     Path,
     typer.Option(
@@ -191,13 +184,13 @@ _ERRORS = (
     DraftStoreError,
     DraftConflictError,
 )
-_STATE: dict[str, str | None] = {"actor": None}
+_STATE: dict[str, str | None] = {"user": None}
 T = TypeVar("T")
 P = ParamSpec("P")
 
 
 def _context(origin: ChangeOrigin = ChangeOrigin.MANUAL_CLI) -> ChangeContext:
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     return ChangeContext(actor=actor, origin=origin)
 
 
@@ -237,15 +230,16 @@ def cli(
         is_eager=True,
         help="Show the nf-splice version and exit.",
     ),
-    actor: str | None = typer.Option(
+    user: str | None = typer.Option(
         None,
-        "--actor",
-        help="Public actor label recorded with review events (never an e-mail).",
-        envvar="NF_SPLICE_ACTOR",
+        "--user",
+        help="Your public name, recorded with the changes you make and the "
+        "sessions you approve (never an e-mail address).",
+        envvar="NF_SPLICE_USER",
     ),
 ) -> None:
     """Author and maintain a SPLICE workflow bundle from editable drafts."""
-    _STATE["actor"] = actor
+    _STATE["user"] = user
 
 
 def _value(text: str) -> Any:
@@ -355,7 +349,6 @@ def init_command(
     description: str | None = typer.Option(None, help="Concise description."),
     title: str | None = typer.Option(None, help="Display title."),
     licence: str | None = typer.Option(None, help="Licence identifier."),
-    example_output_tree: ExampleOutputTreeOption = None,
     contract_version: str | None = typer.Option(
         None, help="Reviewed analysis-output schema version (X.Y.Z)."
     ),
@@ -385,7 +378,6 @@ def init_command(
             _context(),
             identity=explicit,
             accept_detected=accept_detected,
-            example_output_tree=example_output_tree,
             contract_version=contract_version,
         )
     )
@@ -438,7 +430,6 @@ def _configure_assays(
     repository: Path,
     add: list[str],
     remove: list[str],
-    reject: list[str],
     evidence: str,
     rationale: str | None,
     sources: tuple[str, ...],
@@ -446,24 +437,13 @@ def _configure_assays(
     from nf_splice.layers.bundle import (
         add_assay_capability,
         declared_capabilities,
-        reject_assay_candidate,
         remove_assay_capability,
     )
 
-    if (add or reject) and not rationale:
+    if add and evidence != "asserted" and not rationale:
         raise typer.BadParameter(
-            "--assay-rationale is required with --add-assay or --reject-assay: say "
-            "why the assay does or does not apply"
-        )
-    for reference in reject:
-        _run(
-            partial(
-                reject_assay_candidate,
-                repository,
-                reference,
-                _context(),
-                reason=str(rationale),
-            )
+            f"--assay-rationale is required with {evidence} evidence: say why the "
+            "pipeline supports the assay"
         )
     for reference in remove:
         _run(partial(remove_assay_capability, repository, reference, _context()))
@@ -475,12 +455,16 @@ def _configure_assays(
                 reference,
                 _context(),
                 evidence=evidence,
-                rationale=str(rationale),
+                rationale=rationale or "",
                 sources=sources,
             )
         )
     if not declared_capabilities(repository):
-        _print_recommendations(repository, err=True)
+        typer.echo(
+            "No assay capability is declared yet; ingestion needs at least one. "
+            "`nf-splice catalogue assays` lists the vocabulary.",
+            err=True,
+        )
 
 
 def _access_for(value: str) -> list[str]:
@@ -563,58 +547,23 @@ def _parameter_access(repository: Path, name: str) -> list[str]:
 _LIST_OUTPUT_FIELDS = {"formats", "scopes", "entity_types", "path_patterns"}
 
 
-def _output_reviews(repository: Path, assignments: list[tuple[str, str]]) -> None:
-    candidates = {item.id: item for item in output_layer.pending_candidates(repository)}
+def _output_edits(repository: Path, assignments: list[tuple[str, str]]) -> None:
     keys = set(output_layer.output_keys(repository)) if assignments else set()
-    fields: dict[str, dict[str, str]] = {}
     edits: dict[str, dict[str, Any]] = {}
     for left, value in assignments:
         target, dot, field = left.rpartition(".")
-        if dot and target in keys:
-            edits.setdefault(target, {})[field] = (
-                [part for part in value.split(",") if part]
-                if field in _LIST_OUTPUT_FIELDS
-                else value
-            )
-            continue
-        if not dot or target not in candidates:
+        if not dot or target not in keys:
             raise LayerError(
-                "--set must use OUTPUT_KEY.FIELD=VALUE for an output in the draft "
-                "(or PENDING_CANDIDATE_ID.FIELD=VALUE)"
+                "--set must use OUTPUT_KEY.FIELD=VALUE for an output in the draft; "
+                "add outputs by editing outputs.draft.yaml or in the TUI"
             )
-        fields.setdefault(target, {})[field] = value
+        edits.setdefault(target, {})[field] = (
+            [part for part in value.split(",") if part]
+            if field in _LIST_OUTPUT_FIELDS
+            else value
+        )
     for key, changes in edits.items():
         _call(output_layer.update_output, repository, key, changes, _context())
-    for candidate_id, assigned in fields.items():
-        candidate = candidates[candidate_id]
-        if assigned.pop("action", "accept") == "reject":
-            _call(
-                output_layer.reject_output,
-                repository,
-                candidate_id,
-                assigned.get("reason", ""),
-                _context(),
-            )
-            continue
-        output: dict[str, Any] = {
-            "key": candidate.suggested_key,
-            "title": candidate.suggested_title or candidate.suggested_key,
-            "description": candidate.suggested_description or "",
-            "formats": [candidate.suggested_format.value]
-            if candidate.suggested_format
-            else [],
-            "scopes": [candidate.likely_scope.value] if candidate.likely_scope else [],
-            "entity_types": [candidate.likely_entity_type.value]
-            if candidate.likely_entity_type
-            else [],
-            "path_patterns": [candidate.path_pattern] if candidate.path_pattern else [],
-        }
-        for field, value in assigned.items():
-            if field in {"formats", "scopes", "entity_types", "path_patterns"}:
-                output[field] = [part for part in value.split(",") if part]
-            elif field != "reason":
-                output[field] = value
-        _call(output_layer.accept_output, repository, candidate_id, output, _context())
 
 
 def _export(path: Path | None, items: Iterable[Any]) -> None:
@@ -748,24 +697,30 @@ def configure_command(
     decision_file: Annotated[
         Path | None,
         _existing_path(
-            "Batch review file: a YAML 'actions' list for outputs, or a JSON "
-            "array of parameter policies for inputs."
-        ),
-    ] = None,
-    example_output_tree: ExampleOutputTreeOption = None,
-    publish_directory: Annotated[
-        Path | None,
-        _existing_path(
-            "Outputs: publish directory of a completed job to discover output "
-            "candidates from."
+            "Inputs: a JSON array of parameter policies to apply in one batch."
         ),
     ] = None,
     contract_version: str | None = typer.Option(
-        None, help="Outputs: reviewed analysis-output schema version X.Y.Z."
+        None,
+        help="Outputs: the version (X.Y.Z) of this workflow's analysis_output.json "
+        "schema; not the pipeline release.",
     ),
+    add_output: Annotated[
+        list[Path] | None,
+        typer.Option(
+            "--add-output",
+            exists=True,
+            resolve_path=True,
+            help="Outputs: add complete output(s) from a YAML or JSON file (one "
+            "mapping or a list). Repeatable.",
+        ),
+    ] = None,
     export_unresolved: Annotated[
         Path | None,
-        typer.Option(help="Write pending candidates as JSON ('-' for stdout)."),
+        typer.Option(
+            help="Components/profiles: write detected entries not yet in the draft "
+            "as JSON ('-' for stdout)."
+        ),
     ] = None,
     accept_detected: bool = typer.Option(
         False, help="Identity/components: explicitly accept unambiguous evidence."
@@ -828,14 +783,6 @@ def configure_command(
             "--assay-source", help="Identity: evidence location path:line. Repeatable."
         ),
     ] = None,
-    reject_assay: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--reject-assay",
-            help="Identity: reject a recommended assay that does not apply "
-            "(give the reason with --assay-rationale). Repeatable.",
-        ),
-    ] = None,
 ) -> None:
     """Review one layer by targeted, attributed edits to its draft."""
     name = _run(lambda: layer_spec("bundle" if layer == "identity" else layer).name)
@@ -845,7 +792,6 @@ def configure_command(
             repository,
             list(add_assay or []),
             list(remove_assay or []),
-            list(reject_assay or []),
             assay_evidence,
             assay_rationale,
             tuple(assay_source or []),
@@ -854,7 +800,7 @@ def configure_command(
             repository, assignments, accept_detected, approve_maintainer_publication
         )
         return
-    if add_assay or remove_assay or reject_assay:
+    if add_assay or remove_assay:
         raise typer.BadParameter("assay options apply to identity")
     if name == "inputs":
         _configure_inputs(
@@ -862,26 +808,18 @@ def configure_command(
         )
         return
     if name == "outputs":
-        _run(
-            lambda: output_layer.discover_outputs(
-                repository,
-                example_output_tree=example_output_tree,
-                publish_directory=publish_directory,
-            )
-        )
+        _run(lambda: output_layer.discover_outputs(repository))
         if contract_version is not None:
             _run(
                 lambda: output_layer.set_contract_version(
                     repository, contract_version, _context()
                 )
             )
-        if decision_file is not None:
-            loaded = yaml.safe_load(decision_file.read_text(encoding="utf-8"))
-            _run(
-                lambda: output_layer.apply_decision_file(repository, loaded, _context())
-            )
-        _output_reviews(repository, assignments)
-        _export(export_unresolved, output_layer.pending_candidates(repository))
+        for path in add_output or []:
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for output in loaded if isinstance(loaded, list) else [loaded]:
+                _call(output_layer.add_output, repository, output, _context())
+        _output_edits(repository, assignments)
         _finish(repository, "outputs", "Outputs draft saved")
         return
     if name == "components":
@@ -1346,6 +1284,29 @@ def draft_check_crate_command(
         "status"
     ] in {"failed", "error"}:
         raise typer.Exit(code=2)
+
+
+@draft_app.command("routes")
+def draft_routes_command(
+    repository: RepositoryOption = Path("."), json_output: JsonOption = False
+) -> None:
+    """List published routes the output catalogue covers, excludes or misses.
+
+    Read-only. Coverage is ingestion-readiness evidence: a valid, deliberately
+    limited catalogue can be published while coverage is incomplete.
+    """
+    coverage = output_layer.route_coverage(repository.resolve())
+    if json_output:
+        typer.echo(dumps(coverage.to_json()))
+        return
+    typer.echo(coverage.summary().capitalize() + ".")
+    for item in coverage.uncovered:
+        typer.echo(f"  {item.kind}: {item.message()}")
+    if coverage.uncovered:
+        typer.echo(
+            "Add outputs for them, or list them under excluded_routes in "
+            "outputs.draft.yaml with a kind and a reason."
+        )
 
 
 @draft_app.command("recover")
@@ -2495,11 +2456,11 @@ def schema_check_command(
 @audit_app.command("identity")
 def audit_identity_command(
     repository: RepositoryOption = Path("."),
-    actor: str | None = typer.Option(None, help="Explicit public actor label."),
+    user: str | None = typer.Option(None, help="Your public name, as --user."),
     json_output: bool = typer.Option(False, "--json", help="Emit JSON."),
 ) -> None:
-    """Show the actor label that would be recorded and the Git suggestion."""
-    resolved = resolve_actor(actor)
+    """Show the name that would be recorded with your changes."""
+    resolved = resolve_actor(user or _STATE["user"])
     suggestion = suggest_git_identity(repository)
     payload = {
         "actor": resolved.model_dump(mode="json"),
@@ -2514,11 +2475,11 @@ def audit_identity_command(
     if json_output:
         typer.echo(json.dumps(payload, indent=2))
         return
-    typer.echo(f"Public actor label: {resolved.label} ({resolved.kind.value})")
+    typer.echo(f"Recorded name: {resolved.label} ({resolved.kind.value})")
     if suggestion is not None and suggestion.name:
         typer.echo(
-            f"Git suggests {suggestion.name!r} (unconfirmed); pass --actor or set "
-            "NF_SPLICE_ACTOR to use a public label."
+            f"Git suggests {suggestion.name!r} (unconfirmed); pass --user or set "
+            "NF_SPLICE_USER to record your name."
         )
     typer.echo(f"Private audit store: {audit_directory()}")
 
@@ -2610,11 +2571,10 @@ def _agent_run(action: Callable[[], T]) -> T:
 
 
 def _human() -> Any:
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     if actor.kind is not ActorKind.HUMAN:
         typer.echo(
-            "this needs a person's actor label: pass --actor NAME or set "
-            "NF_SPLICE_ACTOR",
+            "this needs a person's name: pass --user NAME or set NF_SPLICE_USER",
             err=True,
         )
         raise typer.Exit(code=2)
@@ -3056,7 +3016,7 @@ def session_ask_command(
     """Ask the session's agent a question; nothing changes."""
     import asyncio
 
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     engine = _open_engine(repository, session)
     typer.echo(_agent_run(lambda: asyncio.run(engine.ask(question, actor))))
 
@@ -3082,7 +3042,7 @@ def session_pause_command(
     """Pause a session; resume it later in any mode."""
     from nf_splice.agents import SessionEngine
 
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     engine = _agent_run(lambda: SessionEngine.open(repository, session))
     _agent_run(lambda: engine.pause(actor))
     typer.echo(f"Paused {engine.state.id}.")
@@ -3095,7 +3055,7 @@ def session_cancel_command(
     """Cancel a session; drafts and published files are kept as they are."""
     from nf_splice.agents import SessionEngine
 
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     engine = _agent_run(lambda: SessionEngine.open(repository, session))
     _agent_run(lambda: engine.cancel(actor))
     typer.echo(f"Cancelled {engine.state.id}; your drafts are unchanged.")
@@ -3130,7 +3090,7 @@ def session_resume_command(
 
     from nf_splice.agents import InteractionMode, SessionStatus
 
-    actor = resolve_actor(_STATE["actor"])
+    actor = resolve_actor(_STATE["user"])
     engine = _open_engine(repository, session)
     target = InteractionMode(mode) if mode else engine.state.mode
     if target is not InteractionMode.MANUAL:
@@ -3152,9 +3112,11 @@ def session_resume_command(
         _agent_run(lambda: engine.switch_provider(replacement, human, model=model))
     if target is not engine.state.mode or policy is not None:
         _agent_run(lambda: engine.switch_mode(target, actor, policy=policy))
-    elif engine.state.status is SessionStatus.PAUSED:
-        engine.state.status = SessionStatus.ACTIVE
-        engine.state.interruption = None
+    elif target is not InteractionMode.MANUAL and engine.state.status in {
+        SessionStatus.PAUSED,
+        SessionStatus.BLOCKED,
+    }:
+        _agent_run(lambda: engine.resume(actor))
     if target is InteractionMode.MANUAL:
         typer.echo(
             f"{engine.state.id} is paused for manual work. Edit with nf-splice "
@@ -3286,85 +3248,6 @@ def _catalogue_run(action: Callable[[], T]) -> T:
     except CatalogueError as error:
         typer.echo(f"{error.code}: {error}", err=True)
         raise typer.Exit(code=2) from error
-
-
-def _print_recommendations(repository: Path, *, err: bool = False) -> None:
-    """The deterministic assay assessment, as plain text."""
-    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
-    from nf_splice.services.assay_discovery import assess_assays
-
-    declared = tuple(
-        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
-        for item in declared_capabilities(repository)
-    )
-    assessment = assess_assays(
-        repository, declared=declared, rejected=rejected_assays(repository)
-    )
-
-    def say(text: str) -> None:
-        typer.echo(text, err=err)
-
-    if not assessment.candidates:
-        say(
-            "Assay discovery: no scientific domain could be established from the "
-            "repository's tools, parameters, outputs or documentation. Declare the "
-            "assays it processes: `nf-splice catalogue assays` lists them."
-        )
-    else:
-        domains = ", ".join(
-            f"{item.label} [{item.entity_type.value}]" for item in assessment.domains
-        )
-        say(f"Detected scientific domain: {domains}")
-        for finding in assessment.findings:
-            terms = ", ".join(sorted({item.term for item in finding.evidence})[:8])
-            say(
-                f"  established {finding.entity.label} "
-                f"[{finding.entity.entity_type.value}] from: {terms}"
-            )
-        say("Assay capabilities to review:")
-        for item in assessment.candidates:
-            mark = "declared" if item.reference in declared else item.status
-            say(
-                f"  {item.reference:<16} {item.entity.label} "
-                f"[{item.entity.entity_type.value}]  {mark} "
-                f"(confidence {item.to_json()['confidence']})"
-            )
-            if item.uncertainty and item.reference not in declared:
-                say(f"      {item.uncertainty}")
-        for question in assessment.questions:
-            say(f"Question: {question}")
-    for discounted in assessment.discounted:
-        label, reason = discounted["entity"]["label"], discounted["reason"]
-        say(f"Considered and not established: {label} ({reason})")
-    say(
-        "Recommendations are not capabilities: declare with "
-        "`nf-splice configure identity --add-assay CODE` or reject with "
-        "`nf-splice configure identity --reject-assay CODE`."
-    )
-
-
-@catalogue_app.command("recommend")
-def catalogue_recommend_command(
-    repository: RepositoryOption = Path("."), json_output: JsonOption = False
-) -> None:
-    """Investigate the pipeline and recommend assay capabilities (read-only, no AI)."""
-    if json_output:
-        from nf_splice.layers.bundle import declared_capabilities, rejected_assays
-        from nf_splice.services.assay_discovery import assess_assays
-
-        declared = tuple(
-            str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
-            for item in declared_capabilities(repository)
-        )
-        typer.echo(
-            dumps(
-                assess_assays(
-                    repository, declared=declared, rejected=rejected_assays(repository)
-                ).to_json()
-            )
-        )
-        return
-    _print_recommendations(repository)
 
 
 @catalogue_app.command("info")
@@ -3885,40 +3768,41 @@ def provider_test_command(
 def tui_command(
     repository: RepositoryOption = Path("."),
     no_session: bool = typer.Option(
-        False, "--no-session", help="Do not read or write wizard sessions."
+        False,
+        "--no-session",
+        help="Do not read or write where you left off (navigation state only).",
     ),
     provider: str | None = typer.Option(
         None,
         "--provider",
-        help="Enable agentic AI in the wizard: claude, or scripted with --script.",
+        help="Make AI available in the workspace (see `nf-splice provider list`); "
+        "without it everything works manually and AI shows as off.",
     ),
     script: ScriptOption = None,
     allow_remote_model: AllowRemoteOption = False,
+    inspect_only: bool = typer.Option(
+        False, "--inspect-only", help="Browse without writing any file."
+    ),
 ) -> None:
-    """Open the terminal wizard: manual, AI-assisted or autonomous."""
+    """Open the workspace: author by hand, ask AI, approve proposals or delegate."""
     from nf_splice.interfaces.tui import (
+        NavigationStore,
         NfSpliceApp,
-        SessionStore,
         default_session_directory,
     )
 
-    sessions = SessionStore(
+    navigation = NavigationStore(
         None if no_session else default_session_directory(repository)
     )
-    agent = None
-    if provider is not None:
-        agent = _make_provider(provider, script)
-        if agent.capabilities.remote and not allow_remote_model:
-            typer.echo(
-                f"--provider {provider} requires --allow-remote-model consent", err=True
-            )
-            raise typer.Exit(code=2)
+    agent = _make_provider(provider, script) if provider is not None else None
     NfSpliceApp(
         repository,
-        sessions=sessions,
-        actor=_STATE["actor"],
+        navigation=navigation,
+        user=_STATE["user"],
         agent_provider=agent,
         allow_remote_model=allow_remote_model,
+        remember_theme=True,
+        inspect_only=inspect_only,
     ).run()
 
 

@@ -174,7 +174,7 @@ def test_draft_edit_plans_then_applies_and_reports_conflicts(tmp_path: Path) -> 
     applied = runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "draft",
             "edit",
@@ -226,7 +226,7 @@ def test_input_decision_file_errors_are_explained(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "--actor",
+            "--user",
             "Ada",
             "configure",
             "inputs",

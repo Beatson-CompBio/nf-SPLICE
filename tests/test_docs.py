@@ -45,7 +45,7 @@ def _resolve(arguments: list[str]) -> tuple[Any, list[str]]:
     while hasattr(command, "get_command"):
         while remaining and remaining[0].startswith("--"):
             option = remaining.pop(0)
-            if option == "--actor":
+            if option == "--user":
                 remaining.pop(0)
         if not remaining:
             break

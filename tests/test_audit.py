@@ -34,7 +34,7 @@ def _clock() -> datetime.datetime:
 def test_actor_resolution_never_requires_git_configuration() -> None:
     assert resolve_actor(environment={}).kind is ActorKind.UNATTRIBUTED
     assert resolve_actor("Ada", environment={}).label == "Ada"
-    assert resolve_actor(environment={"NF_SPLICE_ACTOR": "Lab"}).label == "Lab"
+    assert resolve_actor(environment={"NF_SPLICE_USER": "Lab"}).label == "Lab"
     ci = resolve_actor(environment={"GITHUB_ACTIONS": "true", "GITHUB_ACTOR": "bot"})
     assert (ci.label, ci.kind) == ("ci:bot", ActorKind.AUTOMATION)
     with pytest.raises(ValidationError, match="e-mail"):
@@ -138,7 +138,7 @@ def test_audit_cli_reports_identity_without_publishing_email(tmp_path: Path) -> 
     result = runner.invoke(
         app,
         ["audit", "identity", "--repository", str(tmp_path), "--json"],
-        env={"NF_SPLICE_ACTOR": "Ada"},
+        env={"NF_SPLICE_USER": "Ada"},
     )
     assert result.exit_code == 0, result.output
     assert json.loads(result.output)["actor"] == {"label": "Ada", "kind": "human"}

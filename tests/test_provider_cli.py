@@ -69,7 +69,7 @@ def test_select_persists_and_api_billing_needs_confirmation() -> None:
 def test_session_needs_an_explicit_provider(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
-        ["--actor", "Ada", "session", "start", "--repository", str(tmp_path)],
+        ["--user", "Ada", "session", "start", "--repository", str(tmp_path)],
     )
     assert result.exit_code == 2
     assert "provider select" in result.output

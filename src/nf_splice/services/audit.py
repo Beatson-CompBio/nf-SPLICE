@@ -117,14 +117,14 @@ def resolve_actor(
 ) -> Actor:
     """Choose the public actor label without requiring Git configuration.
 
-    Precedence: explicit ``--actor`` value, ``NF_SPLICE_ACTOR``, a CI
+    Precedence: explicit ``--user`` value, ``NF_SPLICE_USER``, a CI
     identity (recorded as automation), otherwise ``unattributed``. Git
     identity is only ever a suggestion and is never used implicitly.
     """
     env = os.environ if environment is None else environment
     if explicit and explicit.strip():
         return Actor(label=explicit.strip(), kind=ActorKind.HUMAN)
-    configured = env.get("NF_SPLICE_ACTOR", "").strip()
+    configured = env.get("NF_SPLICE_USER", "").strip()
     if configured:
         return Actor(label=configured, kind=ActorKind.HUMAN)
     if env.get("GITHUB_ACTIONS") == "true" and env.get("GITHUB_ACTOR"):

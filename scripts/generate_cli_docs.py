@@ -128,7 +128,7 @@ def render() -> str:
         "## Global options",
         "",
         "Global options go before the command name, for example",
-        '`nf-splice --actor "Ada Lovelace" configure outputs`.',
+        '`nf-splice --user "Ada Lovelace" configure outputs`.',
         "",
         *_parameters(root),
         "## Commands",
