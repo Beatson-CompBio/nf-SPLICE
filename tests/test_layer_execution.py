@@ -184,8 +184,13 @@ def test_an_engine_the_profile_config_does_not_enable_warns(tmp_path: Path) -> N
     discover_execution(tmp_path)
     _profiles(
         tmp_path,
-        [_profile("repository", config={"adopt": "conf/local.config"},
-                  container_engine="docker")],
+        [
+            _profile(
+                "repository",
+                config={"adopt": "conf/local.config"},
+                container_engine="docker",
+            )
+        ],
         "repository",
     )
     issues = validate_execution_draft(tmp_path).issues
@@ -195,7 +200,7 @@ def test_an_engine_the_profile_config_does_not_enable_warns(tmp_path: Path) -> N
 
 
 def test_review_profile_can_leave_the_engine_unset(tmp_path: Path) -> None:
-    import yaml
+    import yaml  # type: ignore[import-untyped]
 
     _repository(tmp_path)
     discover_execution(tmp_path)

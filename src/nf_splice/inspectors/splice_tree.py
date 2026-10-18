@@ -178,10 +178,7 @@ def _require_execution_profiles(path: Path) -> str | None:
             if field == "container_engine" and value in (None, ""):
                 continue  # optional execution metadata (ADR-0070)
             if value not in vocabulary:
-                return (
-                    f"profiles[{index}].{field} uses unsupported value "
-                    f"{value!r}"
-                )
+                return f"profiles[{index}].{field} uses unsupported value {value!r}"
         identifiers.append(profile["id"])
         config = profile["config"]
         config_path = path.parent / config

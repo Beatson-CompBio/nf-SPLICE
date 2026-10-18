@@ -442,9 +442,7 @@ def _vocabulary(
         return (
             ExecutionProfileType(profile_type).value,
             ExecutionExecutor(executor).value,
-            None
-            if not container_engine
-            else ContainerEngine(container_engine).value,
+            None if not container_engine else ContainerEngine(container_engine).value,
         )
     except ValueError as error:
         raise LayerError(str(error)) from error

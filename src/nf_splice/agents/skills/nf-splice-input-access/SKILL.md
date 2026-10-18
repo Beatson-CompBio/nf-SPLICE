@@ -17,7 +17,10 @@ parameter when a job is submitted, or checking whether a job can run.
 - `nf-splice init` imported `nextflow_schema.json` losslessly into JSON
   Schema 2020-12. Every parameter starts with `x-splice-access.editable_by:
   []` (nobody may change it at run time) and `x-splice-ui.visibility:
-  hidden`. That is a valid policy, not a missing one.
+  hidden`. That all-empty seed is the intended starting point of the
+  stage, not a seeding defect to report: the work here is the
+  per-parameter judgement below, and a parameter that should belong to
+  nobody keeps `[]`. It is a valid policy, not a missing one.
 
 ## Workflow
 

@@ -139,14 +139,19 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
     ),
     Stage.INPUTS: (
         "Read the schema and parameter_usage: every declared parameter stays; "
-        "undeclared executable references may need declaring.",
-        "Decide editable_by for each parameter from its use in code: sample "
+        "undeclared executable references may need declaring. The imported "
+        "seed (every parameter editable_by [] and hidden) is the intended "
+        "starting point, not a seeding defect to report.",
+        "Decide editable_by for each parameter by its semantics and its use "
+        "in code, never by its name alone: sample "
         "sheets, output and work locations, resource limits and infrastructure "
         "paths are the platform's; scientific choices (reference, aligner, "
         "thresholds) may be the user's; risky free-form arguments stay "
         "restricted. [] (nobody) is a valid, conservative policy.",
         "Make sure indispensable runtime inputs can be supplied (by the "
-        "platform, a default or the profile config).",
+        "platform, a default or the profile config); one that cannot is a "
+        "runtime-parameters readiness finding, never a reason to widen a "
+        "policy.",
         "Apply the whole policy as one revision (replace_draft or "
         "set_parameter_access batches), with reasons for uncertain cases.",
     ),

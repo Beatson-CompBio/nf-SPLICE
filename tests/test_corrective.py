@@ -763,9 +763,7 @@ def test_a_null_engine_asks_nothing_of_container_sources(tmp_path: Path) -> None
     path.write_text(json.dumps(document))
     deployment = assess_readiness(root).dimensions["deployment"]
     assert deployment.status == "ready", deployment.blockers
-    assert any(
-        "declares no container engine" in item for item in deployment.notes
-    )
+    assert any("declares no container engine" in item for item in deployment.notes)
 
 
 # ------------------------------------------------------------ wizard
