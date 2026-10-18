@@ -540,3 +540,31 @@ def test_init_accepts_an_nf_core_modules_json(tmp_path: Path) -> None:
     )
     assert fastqc["tool"] == {"name": "fastqc", "version": "0.12.1"}
     assert "unresolved" not in fastqc
+
+
+def test_only_configs_a_default_run_reads_override_containers(tmp_path: Path) -> None:
+    """Profile-only and never-included configs are not default overrides."""
+    from nf_splice.inspectors.containers import config_overrides
+
+    conf = tmp_path / "conf"
+    conf.mkdir()
+    (tmp_path / "nextflow.config").write_text(
+        "includeConfig 'conf/base.config'\n"
+        "profiles {\n  arm64 {\n    includeConfig 'conf/arm.config'\n"
+        "    process { withName: 'TOOL' { container = 'in/profile:1' } }\n  }\n}\n",
+        encoding="utf-8",
+    )
+    (conf / "base.config").write_text(
+        "process { withName: 'TOOL' { container = 'quay.io/org/tool:1.0' } }\n",
+        encoding="utf-8",
+    )
+    (conf / "arm.config").write_text(
+        "process { withName: 'TOOL' { container = 'quay.io/org/tool:1.0-arm' } }\n",
+        encoding="utf-8",
+    )
+    (conf / "containers_docker_arm64.config").write_text(
+        "process { withName: 'TOOL' { container = 'quay.io/org/tool:x' } }\n",
+        encoding="utf-8",
+    )
+    found = config_overrides(tmp_path)
+    assert [item.raw for item in found["TOOL"]] == ["quay.io/org/tool:1.0"]

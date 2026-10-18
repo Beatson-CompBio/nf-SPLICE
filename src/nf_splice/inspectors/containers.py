@@ -199,15 +199,59 @@ def sources_in_text(
     return tuple(found)
 
 
+_INCLUDE = re.compile(r"""^\s*includeConfig\s+(['"])(?P<path>[^'"$]+)\1\s*$""", re.M)
+_PROFILES = re.compile(r"\bprofiles\s*\{")
+
+
+def _without_profiles(text: str) -> str:
+    """The text outside ``profiles { ... }``: what applies to every run."""
+    match = _PROFILES.search(text)
+    if match is None:
+        return text
+    depth = 0
+    for index in range(match.end() - 1, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[: match.start()] + _without_profiles(text[index + 1 :])
+    return text[: match.start()]
+
+
+def default_config_files(root: Path) -> list[Path]:
+    """Configs that apply to a run without a profile.
+
+    ``nextflow.config`` and every file it includes with a literal
+    ``includeConfig`` outside ``profiles { }``, recursively. Files only a
+    profile includes, conditional includes and files nothing includes do not
+    apply to the default run.
+    """
+    found: list[Path] = []
+    pending = [root / "nextflow.config"]
+    while pending:
+        path = pending.pop(0)
+        if path in found or path.is_symlink() or not path.is_file():
+            continue
+        try:
+            resolved = path.resolve()
+            resolved.relative_to(root.resolve())
+        except (OSError, ValueError):
+            continue
+        found.append(path)
+        text = _without_profiles(path.read_text(encoding="utf-8", errors="replace"))
+        for match in _INCLUDE.finditer(text):
+            pending.append(path.parent / match.group("path"))
+    return found
+
+
 def config_overrides(root: Path) -> dict[str, list[ContainerSource]]:
-    """Return ``withName`` container overrides from repository configs."""
+    """``withName`` container overrides that apply to a run without a profile."""
     overrides: dict[str, list[ContainerSource]] = {}
-    for path in sorted(
-        [root / "nextflow.config", *sorted((root / "conf").glob("*.config"))]
-    ):
+    for path in default_config_files(root):
         if path.is_symlink() or not path.is_file():
             continue
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = _without_profiles(path.read_text(encoding="utf-8", errors="replace"))
         relative = PurePosixPath(path.relative_to(root).as_posix())
         for block in _WITH_NAME.finditer(text):
             for item in _CONFIG_CONTAINER.finditer(block.group("body")):
