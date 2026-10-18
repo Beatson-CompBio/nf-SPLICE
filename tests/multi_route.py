@@ -102,13 +102,13 @@ OUTPUTS: dict[str, dict[str, Any]] = {
 ASSAYS = {"polya_rnaseq": "poly(A) RNA-seq", "total_rnaseq": "Total RNA-seq"}
 #: Published path globs of each route, as static analysis reports them.
 GLOBS = {
-    "html": ("fastqc/{sample}_fastqc.html",),
-    "zip": ("fastqc/{sample}_fastqc.zip",),
-    "hisat2_align_bam": ("hisat2/{sample}.bam",),
+    "html": ("fastqc/{meta.id}_fastqc.html",),
+    "zip": ("fastqc/{meta.id}_fastqc.zip",),
+    "hisat2_align_bam": ("hisat2/{meta.id}.bam",),
     "report": ("multiqc/multiqc_report.html",),
-    "quant": ("salmon/{sample}/quant.sf",),
-    "star_align_bam": ("star/{sample}.Aligned.sortedByCoord.out.bam",),
-    "log_final": ("star/{sample}.Log.final.out",),
+    "quant": ("salmon/{meta.id}/quant.sf",),
+    "star_align_bam": ("star/{meta.id}.Aligned.sortedByCoord.out.bam",),
+    "log_final": ("star/{meta.id}.Log.final.out",),
 }
 
 

@@ -68,6 +68,10 @@ _NF_CORE_DEFAULT = re.compile(
     r"\.tokenize\(\s*['\"]_['\"]\s*\)\[0\]\.toLowerCase\(\)\s*\}"
 )
 _META_ID = re.compile(r"\$\{\s*meta\.id\s*\}|\$meta\.id\b")
+#: How a route shows a name built from the process's ``meta.id``. It is what
+#: the code says, not a scope: ``meta.id`` is often a sample, but in other
+#: steps a reference, a batch or a plate. The author or agent decides.
+META_ID = "{meta.id}"
 _INTERPOLATION = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_.]*")
 _WHEN_BOILERPLATE = re.compile(
     r"^task\.ext\.when\s*==\s*null\s*\|\|\s*task\.ext\.when$"
@@ -113,7 +117,7 @@ class DeclaredOutput:
     path: str | None
     optional: bool
     location: str
-    per_sample: bool = False
+    named_by_meta: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -371,7 +375,7 @@ def _resolve_literal(raw: str | None, process: str) -> tuple[str | None, bool]:
         return None, True
     value = _NF_CORE_DEFAULT.sub(process.split("_")[0].lower(), raw.strip())
     value = _OUTDIR.sub("", value).strip("/")
-    value = _META_ID.sub("{sample}", value)
+    value = _META_ID.sub(META_ID, value)
     dynamic = bool(_INTERPOLATION.search(value))
     value = _INTERPOLATION.sub("*", value)
     return value or None, dynamic
@@ -510,7 +514,7 @@ def _declared_outputs(
             continue
         emit = _EMIT.search(line)
         optional = bool(_OPTIONAL.search(line))
-        per_sample = bool(re.search(r"\bval\s*\(\s*meta\s*\)", line))
+        named_by_meta = bool(re.search(r"\bval\s*\(\s*meta\s*\)", line))
         found = False
         for match in _PATH_DECLARATION.finditer(line):
             found = True
@@ -521,7 +525,7 @@ def _declared_outputs(
                     path=match.group(2),
                     optional=optional,
                     location=f"{relative}:{line_number}",
-                    per_sample=per_sample,
+                    named_by_meta=named_by_meta,
                 )
             )
         if not found and _UNQUOTED_PATH.search(line):
@@ -834,17 +838,18 @@ def _route_conditions(
 
 
 def _glob_join(directory: str | None, declared: DeclaredOutput) -> str | None:
-    """Published glob; a per-sample file name's leading ``*`` is the sample."""
+    """Published glob; a leading ``*`` named after an input ``meta`` map is
+    shown as ``{meta.id}`` (nf-core's default prefix), never as a sample."""
     if declared.path is None:
         return None
     path = declared.path.lstrip("./")
-    path = _META_ID.sub("{sample}", path)
+    path = _META_ID.sub(META_ID, path)
     path = _INTERPOLATION.sub("*", path)
     joined = f"{directory}/{path}" if directory else path
-    if declared.per_sample and "{sample}" not in joined:
+    if declared.named_by_meta and META_ID not in joined:
         head, _, name = joined.rpartition("/")
         if name.startswith("*"):
-            name = "{sample}" + name[1:]
+            name = META_ID + name[1:]
             joined = f"{head}/{name}" if head else name
     return joined
 
@@ -1048,18 +1053,15 @@ def analyse_routes(repository_root: str | Path) -> RouteAnalysis:
 def glob_to_regex(value: str) -> str:
     """Anchored regular expression for a published glob.
 
-    ``{sample}`` placeholders become named ``sample_id`` captures (the first
-    one only); other wildcards match one path segment.
+    ``{meta.id}`` and ``*`` match one path segment; ``**`` any depth.
     """
     value = value.lstrip("./")
     parts: list[str] = []
     index = 0
-    sample_used = False
     while index < len(value):
-        if value.startswith("{sample}", index):
-            parts.append("[^/]+" if sample_used else "(?P<sample_id>[^/]+)")
-            sample_used = True
-            index += len("{sample}")
+        if value.startswith(META_ID, index):
+            parts.append("[^/]+")
+            index += len(META_ID)
             continue
         char = value[index]
         if value.startswith("**", index):
@@ -1089,6 +1091,6 @@ def glob_to_regex(value: str) -> str:
 
 def example_path(glob: str) -> str:
     """A concrete illustrative path for a glob (used for catalogue matching)."""
-    value = glob.replace("{sample}", "SAMPLE1")
+    value = glob.replace(META_ID, "ID1")
     value = re.sub(r"\{([^,{}]*)(?:,[^{}]*)?\}", r"\1", value)
     return value.replace("**", "dir/sub").replace("*", "x").replace("?", "x")

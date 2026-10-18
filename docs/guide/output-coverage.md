@@ -34,6 +34,11 @@ sorting step whose output nothing publishes, are listed separately. Routes
 are evidence for you or an agent to read (`nf-splice draft routes`); they
 never become catalogue entries by themselves.
 
+A file name built from the process's `meta` map (`${meta.id}`, or nf-core's
+default `prefix`) is shown as `{meta.id}`. That is what the code says, not a
+scope: `meta.id` is usually a sample, but in reference-preparation steps it
+names a genome or an index. Decide the scope from the code.
+
 Each published route gets a status:
 
 | Status | Meaning |

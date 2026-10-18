@@ -28,7 +28,10 @@ file into `analysis_output.json` that the run did not produce.
 - The identity layer is ready (outputs compile against it).
 - `nf-splice init` has written the draft: entries only from a previously
   published `splice/outputs.yaml`, otherwise an empty catalogue. Published
-  routes are evidence to read (`route_coverage`, `analyse_routes`), never
+  routes are evidence to read (`route_coverage`, `analyse_routes`). A
+  route shows a name built from a process's `meta` map as `{meta.id}`: the
+  code's naming, not a scope (often a sample, sometimes a reference or a
+  batch); decide the scope from the workflow. Routes are never
   entries: you author every output. nf-splice prescribes no category list,
   and formats are any lower-case names (`bam`, `ome-tiff`, `zarr`).
 - `contract.schema_version` (`analysis_output_schema_version`) versions this

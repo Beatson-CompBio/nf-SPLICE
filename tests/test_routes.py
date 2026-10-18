@@ -52,10 +52,10 @@ def test_every_route_is_traced_with_its_conditions(tmp_path: Path) -> None:
     )
     # Config withName rules and per-sample directories (meta.id).
     salmon = published[("SALMON_QUANT", "quant")]
-    assert salmon.published_glob == "salmon/{sample}/quant.sf"
+    assert salmon.published_glob == "salmon/{meta.id}/quant.sf"
     assert salmon.publication is not None
     assert salmon.publication.source == "config"
-    assert published[("HISAT2_ALIGN", "bam")].published_glob == "hisat2/{sample}.bam"
+    assert published[("HISAT2_ALIGN", "bam")].published_glob == "hisat2/{meta.id}.bam"
 
 
 def test_declared_outputs_are_not_published_outputs(tmp_path: Path) -> None:
@@ -150,18 +150,18 @@ workflow { PIPELINE() }
     published = {(item.instance, item.emit): item for item in analysis.published}
 
     html = published[("FASTQC", "html")]
-    assert html.published_glob == "fastqc/{sample}.html"
+    assert html.published_glob == "fastqc/{meta.id}.html"
     assert html.status is CoverageStatus.INFERRED_UNVERIFIED
     assert any("default publishDir" in note for note in html.notes)
     assert ("FASTQC", "versions") not in published
     reads = published[("TRIM", "reads")]
-    assert reads.published_glob == "trimgalore/{sample}.fq.gz"
+    assert reads.published_glob == "trimgalore/{meta.id}.fq.gz"
     assert reads.conditions == (
         ("params.trim", "publishDir enabled: params.save_trimmed"),
     )
     assert (
         published[("TRIM", "log")].published_glob
-        == "trimgalore/logs/{sample}report.txt"
+        == "trimgalore/logs/{meta.id}report.txt"
     )
     dump = published[("CUSTOM_DUMP", "yml")]
     assert dump.status is CoverageStatus.INFERRED_UNVERIFIED
@@ -223,6 +223,6 @@ workflow {
 
 
 def test_glob_helpers_round_trip() -> None:
-    pattern = glob_to_regex("star/{sample}.Aligned.*.{bam,cram}")
-    assert pattern == r"^star/(?P<sample_id>[^/]+)\.Aligned\.[^/]+\.(?:bam|cram)$"
-    assert re.match(pattern, example_path("star/{sample}.Aligned.*.{bam,cram}"))
+    pattern = glob_to_regex("star/{meta.id}.Aligned.*.{bam,cram}")
+    assert pattern == r"^star/[^/]+\.Aligned\.[^/]+\.(?:bam|cram)$"
+    assert re.match(pattern, example_path("star/{meta.id}.Aligned.*.{bam,cram}"))
