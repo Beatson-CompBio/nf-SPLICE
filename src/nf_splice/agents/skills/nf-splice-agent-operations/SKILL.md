@@ -84,7 +84,10 @@ stage's proposal and stop.
    something) or `complete_review` (no change needed, or autonomous). Both
    are refused while required evidence is uninspected, and when your
    `evidence` cites a file you never read. Cite files as `path` or
-   `path:line`, or the analyses you ran. `complete_review` also takes your
+   `path:line`, or the analyses you ran. Cite the draft you assessed as
+   `read_draft(layer=<layer>)` — that call must be in this stage's trace,
+   and a draft path on disk is nf-splice's own output: it never supports a
+   conclusion by itself. `complete_review` also takes your
    `draft_assessment`: `omissions`, `incorrect_assumptions`,
    `unsupported_declarations` and `confirmed` (what you checked and found
    right). A draft you leave unchanged needs `confirmed` entries; never

@@ -21,8 +21,11 @@ references, or planning downloadable images for an HPC deployment.
 
 ## Workflow
 
-1. `component_inventory`: each module's tool, versions, conda pins and every
-   container reference with its runtime and source location.
+1. `component_inventory`: a summary first (count, how many need a decision,
+   every module name), then full rows a page at a time - each module's tool,
+   versions, conda pins and every container reference with its runtime and
+   source location. Page with `offset`/`limit` and filter with `name`; read a
+   single module's whole detail with `name` set to it.
 2. nf-core's `containerEngine in ['apptainer','singularity'] &&
    !task.ext.singularity_pull_docker_container ? A : B` selects `A` for
    Singularity/Apptainer and `B` for Docker and other OCI engines. Keep

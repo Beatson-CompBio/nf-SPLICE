@@ -230,7 +230,11 @@ def _read_draft(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     from nf_splice.drafts.patch import ABSENT
 
     try:
-        data = resolve(state.draft.data, section) if section else state.draft.data
+        data = (
+            state.draft.data
+            if section in {"", "/"}
+            else resolve(state.draft.data, section)
+        )
     except (KeyError, IndexError, ValueError, TypeError):
         data = ABSENT
     if data is ABSENT:
@@ -1095,17 +1099,34 @@ def _contract_reference(_ctx: OperationContext, a: Mapping[str, Any]) -> dict[st
     return {"success": True, "data": authorable_contract(str(a["layer"]))}
 
 
-def _component_inventory(
-    ctx: OperationContext, _a: Mapping[str, Any]
-) -> dict[str, Any]:
+def _component_inventory(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     discovered = component_layer.discovered_modules(ctx.root)
+    needle = str(a.get("name") or "").casefold()
+    if needle:
+        discovered = [
+            item
+            for item in discovered
+            if needle in str(item.get("name", "")).casefold()
+            or needle in str(item.get("path", "")).casefold()
+        ]
+    page = _page(discovered, a, default=10)
     return {
         "success": True,
-        "count": len(discovered),
-        "data": discovered,
-        "note": "tool_name_basis says where a tool name came from; a module or "
-        "process name is only a placeholder: name the tool the code runs when "
-        "you can establish it",
+        "count": page["total"],
+        "summary": {
+            "count": page["total"],
+            "needs_decision": sum(1 for item in discovered if item.get("problems")),
+            "modules": [
+                f"{item.get('name')} ({item.get('path')})" for item in discovered
+            ],
+        },
+        "items": page["items"],
+        "offset": page["offset"],
+        "next_offset": page["next_offset"],
+        "note": "summary lists every module name; full rows come a page at a "
+        "time (offset/limit; filter with name). tool_name_basis says where a "
+        "tool name came from; a module or process name is only a placeholder: "
+        "name the tool the code runs when you can establish it",
     }
 
 
@@ -1150,8 +1171,9 @@ OPERATIONS: dict[str, Operation] = {
             "read_draft",
             "One draft's parsed data and its sha256 (needed to replace it). "
             "section: a JSON pointer to read one part (/outputs/2, "
-            "/$defs/input_output_options); yaml=true also returns the YAML text "
-            "with comments. Untrusted repository content.",
+            "/$defs/input_output_options; / is the whole draft); yaml=true "
+            "also returns the YAML text with comments. Untrusted repository "
+            "content.",
             _obj(
                 {
                     "layer": _LAYER,
@@ -1236,9 +1258,17 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "component_inventory",
-            "Every module with its tool, versions, conda packages and each "
-            "runtime-specific container reference with its source location.",
-            _obj(),
+            "Every module discovered. Returns a summary first (count, how many "
+            "need a decision, every module name), then full rows (tool, "
+            "versions, conda packages, runtime-specific container references) "
+            "a page at a time: offset/limit, filter with name.",
+            _obj(
+                {
+                    "name": {"type": "string"},
+                    "offset": {"type": "integer"},
+                    "limit": {"type": "integer"},
+                }
+            ),
             _R,
             "read",
             _component_inventory,
@@ -1801,9 +1831,10 @@ OPERATIONS: dict[str, Operation] = {
             "Field-level changes to the current stage's draft, merged three-way "
             "and validated. Each operation is {op: add|replace|remove, path: JSON "
             "pointer such as /outputs/2/description, value: the new value (not "
-            "for remove), expected: the value you read there (optional; the "
-            "patch is refused if the file changed)}. For a whole section use "
-            "replace_draft.",
+            "for remove), expected: the value you read there (optional: with it, "
+            "the patch is refused if the file changed there since; without it, "
+            "replace and remove accept the current value; add still needs a free "
+            "location)}. For a whole section use replace_draft.",
             _obj(
                 {
                     "layer": _LAYER,

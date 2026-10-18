@@ -1,18 +1,28 @@
 """JSON-pointer patches whose operations carry the value they expect to replace.
 
-Every operation records the value it observed (``expected``) when it was
+Every operation may record the value it observed (``expected``) when it was
 planned. Applying it to the *current* document succeeds only where that value
 is still present, so independent concurrent edits are preserved and
 overlapping edits are reported as conflicts. This is a three-way merge whose
 base is carried by the patch itself rather than by a stored copy of the file.
+
+An operation that omits ``expected`` asserts nothing about the old value:
+``replace`` and ``remove`` apply to whatever is there now (the whole-file
+check-and-swap of the surrounding draft store still guards the
+read-modify-write), while ``add`` keeps its meaning of a free location.
+Comparison tolerates redaction: a value read through an interface that
+masks secrets matches a file whose secret has not changed.
 """
 
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
+
+from nf_splice.services.audit import redact
 
 JsonValue = Any
 
@@ -48,13 +58,53 @@ class PatchConflict:
     actual: JsonValue
 
 
+def _short(value: JsonValue) -> str:
+    text = (
+        "ABSENT"
+        if value is ABSENT
+        else json.dumps(value, ensure_ascii=False, default=str, sort_keys=True)
+    )
+    return text if len(text) <= 120 else text[:117] + "..."
+
+
+def _redact_tree(value: JsonValue) -> JsonValue:
+    """The value as a redacting display layer would have shown it."""
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, list):
+        return [_redact_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_tree(item) for key, item in value.items()}
+    return value
+
+
+def _expected_matches(expected: JsonValue, actual: JsonValue) -> bool:
+    """True when the planned base describes the current value.
+
+    A value copied out of a redacted tool result still matches the file it
+    came from: the masking is nf-splice's display, not a change of content.
+    """
+    if expected == actual and type(expected) is type(actual):
+        return True
+    return bool(expected == _redact_tree(actual))
+
+
 class PatchConflictError(PatchError):
     """Raised when a patch overlaps a change made after it was planned."""
 
     def __init__(self, conflicts: Sequence[PatchConflict]) -> None:
         self.conflicts = tuple(conflicts)
-        paths = ", ".join(item.path or "/" for item in self.conflicts)
-        super().__init__(f"conflicting concurrent change at {paths}")
+        details = "; ".join(
+            redact(
+                f"{item.path or '/'} expected {_short(item.expected)} but found "
+                f"{_short(item.actual)}"
+            )
+            for item in conflicts
+        )
+        super().__init__(
+            f"conflicting concurrent change: {details}; re-read the draft and "
+            "retry with the value now there (or omit expected to accept it)"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,9 +239,11 @@ def merge(
     """Apply operations to a copy and report every overlapping change.
 
     Operations are evaluated sequentially. For each mapping or replacement
-    location the current value must equal the planned base (``expected``);
-    a location already holding the planned new value is treated as applied.
-    List insertions are positional and need only an existing parent.
+    location the current value must equal the planned base (``expected``)
+    when one was given; a location already holding the planned new value is
+    treated as applied. ``replace`` and ``remove`` without a base apply to
+    whatever is there now, while ``add`` without a base still requires a free
+    location. List insertions are positional and need only an existing parent.
     """
     working = copy.deepcopy(document)
     found: list[PatchConflict] = []
@@ -210,7 +262,11 @@ def merge(
         target = ABSENT if operation.op == "remove" else operation.value
         if actual == target and type(actual) is type(target):
             continue
-        if actual != operation.expected:
+        if operation.expected is ABSENT:
+            if operation.op == "add" and actual is not ABSENT:
+                found.append(PatchConflict(operation.path, ABSENT, actual))
+                continue
+        elif not _expected_matches(operation.expected, actual):
             found.append(PatchConflict(operation.path, operation.expected, actual))
             continue
         try:

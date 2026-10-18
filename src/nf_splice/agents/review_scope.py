@@ -593,6 +593,7 @@ def coverage(
 
 
 _PATHLIKE = re.compile(r"^[\w./@+-]+\.[A-Za-z0-9]+(?::\d+(?:-\d+)?)?$")
+_DRAFT_CITE = re.compile(r"^(?:\./)?(?:\.splice-local/)?drafts/([a-z-]+)\.draft\.yaml$")
 
 
 #: nf-splice's own output: earlier bundles, drafts, reviews and sessions.
@@ -606,7 +607,11 @@ def own_output_citations(evidence: Sequence[str]) -> list[str]:
     for item in evidence:
         text = str(item).strip()
         head = text.split()[0].removeprefix("./") if text else ""
-        if head.startswith(OWN_OUTPUT) or head in {"splice", ".splice-local"}:
+        if (
+            head.startswith(OWN_OUTPUT)
+            or head in {"splice", ".splice-local"}
+            or _DRAFT_CITE.match(head) is not None
+        ):
             found.append(text)
     return found
 
@@ -628,7 +633,19 @@ def unsupported_citations(
     for item in evidence:
         text = str(item).strip()
         head = text.split()[0] if text else ""
-        if _PATHLIKE.match(head):
+        draft = _DRAFT_CITE.match(head)
+        if draft is not None:
+            # The draft under review counts as inspected through its own
+            # tool call, not through read_source: accept the path here and
+            # let own_output_citations keep it from carrying a conclusion.
+            layer = draft.group(1)
+            read = any(
+                _entry(entry)[0] in {"read_draft", "inspect_draft"}
+                and f"layer={layer}" in entry
+                for entry in trace
+            )
+            (supported if read else unsupported).append(text)
+        elif _PATHLIKE.match(head):
             path = re.sub(r":\d+(?:-\d+)?$", "", head).removeprefix("./")
             (supported if path in paths else unsupported).append(text)
         elif head.split("(", 1)[0] in names:

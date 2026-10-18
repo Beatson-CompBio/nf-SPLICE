@@ -45,8 +45,11 @@ How this works:
   draft as it stands (omissions, incorrect assumptions, unsupported
   declarations, and what you confirmed against the evidence), cite the files
   (path or path:line) and analyses that support each conclusion, and list
-  what stays uncertain. Both are refused while required evidence is
-  uninspected or when you cite a file you never read. Evidence counts per
+  what stays uncertain. Cite the draft you assessed as read_draft(layer=X)
+  (that call must be in this stage); a draft path on disk counts as citing
+  nf-splice's own output and never supports a conclusion by itself. Both
+  are refused while required evidence is uninspected or when you cite a
+  file you never read. Evidence counts per
   stage: a file you read in an earlier stage must be read again before you
   cite it here (re-read the lines you rely on). A draft you leave
   unchanged needs explicit confirmations; never accept it unexamined. If

@@ -129,19 +129,22 @@ def assess_crate(
     else:
         action = ADOPT
         reasons.append("the repository's RO-Crate agrees with the reviewed identity")
+    # Key order matters to callers: interfaces clip oversized results, so the
+    # actionable part (what to do, what the draft says) must come first and
+    # the potentially long root-crate findings come last.
     return {
-        "root_crate": {
-            "present": analysis.present,
-            "sha256": analysis.sha256,
-            "findings": [item.to_json() for item in analysis.findings],
-        },
+        "recommendation": {"action": action, "reasons": reasons},
         "draft": {
             "present": crate is not None,
             "origin": origin,
             "errors": draft_errors,
             "warnings": draft_warnings,
         },
-        "recommendation": {"action": action, "reasons": reasons},
+        "root_crate": {
+            "present": analysis.present,
+            "sha256": analysis.sha256,
+            "findings": [item.to_json() for item in analysis.findings],
+        },
         "generator": _generator(root, nf_core_executable),
         "validator": {
             "tool": "rocrate-validator",

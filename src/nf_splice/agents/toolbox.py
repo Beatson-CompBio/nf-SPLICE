@@ -44,6 +44,21 @@ from nf_splice.services.lifecycle import LifecycleError
 
 _MAX_RESULT = 24_000
 
+#: Narrowing arguments a clip hint may suggest, in the order the hint lists
+#: them; only ones the called tool's own schema offers are named.
+_NARROWING = (
+    "section",
+    "process",
+    "name",
+    "path",
+    "start_line",
+    "end_line",
+    "offset",
+    "limit",
+    "config",
+    "kind",
+)
+
 
 class ToolMode(str, Enum):
     """What draft and build operations do in this turn."""
@@ -121,15 +136,29 @@ def inspection(
     return f"{name}({detail})" if detail else name
 
 
-def _clip(value: Any) -> Any:
+def _narrowing_hint(name: str | None) -> str:
+    """Name only the narrowing arguments this tool's schema actually offers."""
+    schema = OPERATIONS[name].schema() if name in OPERATIONS else None
+    properties = set((schema or {}).get("input_schema", {}).get("properties", {}))
+    offered = [item for item in _NARROWING if item in properties]
+    if not offered:
+        return (
+            "the result is too large to return whole: read a part of it "
+            "(for example a section or a narrower path)"
+        )
+    return "the result is too large to return whole: narrow the call with " + ", ".join(
+        offered
+    )
+
+
+def _clip(value: Any, name: str | None = None) -> Any:
     text = json.dumps(value, ensure_ascii=False, default=str)
     if len(text) <= _MAX_RESULT:
         return json.loads(redact(text))
     return {
         "truncated": True,
         "total_chars": len(text),
-        "hint": "the result is too large to return whole: narrow the call (a "
-        "section, a process, a path, start_line/end_line, or offset/limit)",
+        "hint": _narrowing_hint(name),
         "preview": redact(text[:_MAX_RESULT]),
     }
 
@@ -219,7 +248,7 @@ class SessionToolbox:
         ).hexdigest()
         if self._log is not None:
             self._log(record)
-        clipped: dict[str, Any] = _clip(result)
+        clipped: dict[str, Any] = _clip(result, name)
         return clipped
 
     def _dispatch(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -268,7 +297,8 @@ class SessionToolbox:
             return result
         if self.mode is ToolMode.OBSERVE:
             raise PolicyViolation(
-                f"{name} changes files; this turn is read-only (answer, do not edit)"
+                f"{name} changes files and is not available in this mode: asking "
+                "is read-only here (answer the question; nothing can be edited)"
             )
         if self.mode is ToolMode.STAGE:
             result = self._stage(operation, arguments)
@@ -384,7 +414,10 @@ class SessionToolbox:
             raise PolicyViolation(
                 "the evidence cites files you have not read in this stage: "
                 + ", ".join(unsupported[:10])
-                + "; read them first, or cite what you did inspect"
+                + "; read them first, or cite what you did inspect — accepted "
+                "forms: a repository file (path or path:line) you read with "
+                "read_source, an analysis you ran (e.g. analyse_routes), or "
+                "the draft under review as read_draft(layer=<layer>)"
             )
         # The draft under review and earlier bundles may be cited as what
         # was assessed, but nf-splice's own output never supports a
@@ -394,7 +427,9 @@ class SessionToolbox:
             raise PolicyViolation(
                 "nf-splice's own output (drafts, an earlier splice/ bundle) is not "
                 "evidence of what the pipeline does; cite the pipeline's code, "
-                "configuration or documentation you read"
+                "configuration or documentation you read. Cite the draft you "
+                "assessed as read_draft(layer=<layer>); a draft path on disk "
+                "is treated as nf-splice's own output"
             )
         if not supported:
             raise PolicyViolation(

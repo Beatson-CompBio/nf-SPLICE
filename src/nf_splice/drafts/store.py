@@ -241,7 +241,7 @@ def patch_yaml(
     except PatchConflictError as error:
         raise DraftConflictError(
             relative,
-            "edit overlaps a change made after it was planned",
+            f"edit overlaps a change made after it was planned: {error}",
             error.conflicts,
         ) from error
     after = dump_yaml_node(node)
