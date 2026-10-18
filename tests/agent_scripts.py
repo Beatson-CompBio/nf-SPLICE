@@ -7,12 +7,13 @@ every outcome is decided by the validators. Nothing here fakes a result.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
 from layer_fixtures import STAGE_ANALYSIS, follow_scope, review_arguments
-from multi_route import ACCESS, IDENTITY, OUTPUTS
+from multi_route import ACCESS, ASSAYS, GLOBS, IDENTITY, OUTPUTS
 from nf_splice.agents.protocol import ToolInvoker, TurnRequest
 
 
@@ -35,26 +36,23 @@ def _draft(tools: ToolInvoker, layer: str) -> dict[str, Any]:
 
 
 def identity(tools: ToolInvoker) -> None:
+    """Declare the assays the documentation states, citing where it says so."""
     _call(tools, "read_source", path="nextflow.config")
     _call(tools, "set_identity", changes=dict(IDENTITY))
-    assessment = _call(tools, "assess_assays")["data"]
-    for candidate in assessment["candidates"]:
-        if candidate["status"] != "documented":
-            continue
+    _call(tools, "list_assay_candidates")
+    for code, phrase in ASSAYS.items():
+        found = _call(tools, "search_source", pattern=re.escape(phrase))
         sources = sorted(
-            {
-                location
-                for item in candidate["evidence"]
-                if item["kind"] == "text"
-                for location in item["locations"]
-            }
+            {":".join(line.split(":", 2)[:2]) for line in found["data"]["matches"]}
         )
+        if not sources:
+            continue
         _call(
             tools,
             "add_assay_capability",
-            reference=candidate["reference"],
+            reference=code,
             evidence="documented",
-            rationale=f"The documentation names {candidate['entity']['label']}.",
+            rationale=f"The documentation names {phrase}.",
             sources=sources,
         )
 
@@ -69,28 +67,21 @@ def inputs(tools: ToolInvoker) -> None:
 def outputs(
     tools: ToolInvoker, *, skip: Sequence[str] = (), reject: Sequence[str] = ()
 ) -> None:
-    """Rewrite the seeded catalogue in one revision, from the route evidence."""
+    """Write the catalogue in one revision from the published routes.
+
+    ``OUTPUTS`` is what this scripted stand-in concludes from the routes; a
+    model would read them. ``skip`` leaves a route uncatalogued; ``reject``
+    excludes it with a reason.
+    """
     _call(tools, "analyse_routes")
+    coverage = _call(tools, "route_coverage")
+    assert coverage["success"], coverage
     draft = _draft(tools, "outputs")
-    catalogue: list[dict[str, Any]] = []
-    candidates = _call(tools, "list_pending", layer="outputs", include_decided=True)[
-        "data"
+    catalogue = [
+        reviewed | {"entity_types": ["file"]}
+        for key, reviewed in OUTPUTS.items()
+        if key not in skip and key not in reject
     ]
-    for candidate in candidates:
-        key = candidate["suggested_key"]
-        reviewed = OUTPUTS.get(str(key))
-        if (
-            reviewed is None
-            or key in skip
-            or key in reject
-            or candidate["path_pattern"] is None
-            or reviewed["key"] in {item["key"] for item in catalogue}
-        ):
-            continue
-        catalogue.append(
-            reviewed
-            | {"entity_types": ["file"], "path_patterns": [candidate["path_pattern"]]}
-        )
     result = _call(
         tools,
         "replace_draft",
@@ -100,6 +91,25 @@ def outputs(
         data=catalogue,
     )
     assert result["success"], result
+    if reject:
+        draft = _draft(tools, "outputs")
+        result = _call(
+            tools,
+            "replace_draft",
+            layer="outputs",
+            expected_sha256=draft["sha256"],
+            section="/excluded_routes",
+            data=[
+                {
+                    "glob": glob,
+                    "kind": "out_of_scope",
+                    "reason": "Not observed in the example run.",
+                }
+                for key in reject
+                for glob in GLOBS.get(key, ())
+            ],
+        )
+        assert result["success"], result
     _call(tools, "set_output_contract_version", version="1.0.0")
 
 

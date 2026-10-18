@@ -18,16 +18,10 @@ from nf_splice.agents import ExecutionPolicy, InteractionMode, SessionEngine
 from nf_splice.agents.providers.scripted import ScriptedProvider
 from nf_splice.contracts import families
 from nf_splice.drafts import DraftStoreError, read_yaml
-from nf_splice.layers.outputs import (
-    discover_outputs,
-    pending_candidates,
-    preview_outputs,
-)
+from nf_splice.layers.outputs import add_output, preview_outputs
 from nf_splice.runtime import generate_analysis_output
 from nf_splice.services.lifecycle import LifecycleError, promote, validate_bundle
 from nf_splice.vocabulary import reserved_terms_in
-
-SNAPSHOTS = Path(__file__).parent / "snapshots" / "tui"
 
 
 def _published(root: Path) -> dict[str, bytes]:
@@ -44,16 +38,19 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
     for root in (manual, assisted):
         root.mkdir()
         ready_repository(root)
-    # Extra outputs to review: one handled manually, one through the assistant.
-    tree = tmp_path / "tree"
-    (tree / "qc").mkdir(parents=True)
-    (tree / "qc" / "summary.json").write_text("{}", encoding="utf-8")
-    for root in (manual, assisted):
-        discover_outputs(root, example_output_tree=tree)
-    candidate = next(item.id for item in pending_candidates(manual))
-    from nf_splice.layers.outputs import reject_output
-
-    reject_output(manual, candidate, "Internal QC only", ADA)
+    # One more output: described by hand in one copy, through the assistant
+    # (a proposal the person approves) in the other.
+    extra = {
+        "key": "qc_summary",
+        "title": "QC summary",
+        "description": "Per-job quality-control summary.",
+        "category": "quality_control",
+        "formats": ["json"],
+        "scopes": ["job"],
+        "entity_types": ["file"],
+        "path_patterns": [r"^qc/summary\.json$"],
+    }
+    add_output(manual, extra, ADA)
 
     def review(stage: str) -> dict[str, object]:
         """A scripted review: inspect the scope, find nothing to change."""
@@ -71,19 +68,13 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
                     "purpose": "plan",
                     "steps": [
                         {"tool": "analyse_routes", "arguments": {}},
-                        {"tool": "list_pending", "arguments": {"layer": "outputs"}},
-                        {
-                            "tool": "reject_output",
-                            "arguments": {
-                                "candidate_id": candidate,
-                                "reason": "Internal QC only",
-                            },
-                        },
+                        {"tool": "route_coverage", "arguments": {}},
+                        {"tool": "add_output", "arguments": {"output": extra}},
                         {"follow": "review_scope"},
                         {
                             "tool": "submit_stage_proposal",
                             "arguments": {
-                                "summary": "Reject the internal QC file.",
+                                "summary": "Add the QC summary output.",
                                 "evidence": ["analyse_routes"],
                             },
                         },
@@ -94,7 +85,7 @@ def test_s03_manual_and_ai_work_are_interchangeable(tmp_path: Path) -> None:
                 review("provenance"),
             ]
         ),
-        objective="review the new candidate",
+        objective="describe the QC summary output",
         policy=ExecutionPolicy(),
         actor=ADA.actor,
     )
@@ -272,8 +263,6 @@ def test_s13_generated_surfaces_avoid_the_reserved_word(tmp_path: Path) -> None:
     for path in (ready_repository_after / "splice").rglob("*"):
         if path.is_file():
             assert not reserved_terms_in(path.read_text(encoding="utf-8")), path
-    for path in SNAPSHOTS.glob("*.txt"):
-        assert not reserved_terms_in(path.read_text(encoding="utf-8")), path
     bundle = json.loads((ready_repository_after / "splice" / "bundle.json").read_text())
     assert bundle["schema_id"].endswith("/workflow-bundle/bundle")
     from nf_splice.inspectors import inspect_pipeline_identity

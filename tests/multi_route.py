@@ -29,7 +29,7 @@ ACCESS = {
     "run_salmon": ["user"],
     "publish_dir_mode": ["platform"],
 }
-#: Reviewed meaning for each discovered candidate key.
+#: Reviewed meaning for each published route, by the route's emit name.
 OUTPUTS: dict[str, dict[str, Any]] = {
     "html": {
         "key": "fastqc_report",
@@ -38,6 +38,7 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "quality_control",
         "formats": ["html"],
         "scopes": ["sample"],
+        "path_patterns": [r"^fastqc/(?P<sample_id>[^/]+)_fastqc\.html$"],
     },
     "zip": {
         "key": "fastqc_archive",
@@ -46,6 +47,7 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "quality_control",
         "formats": ["zip"],
         "scopes": ["sample"],
+        "path_patterns": [r"^fastqc/(?P<sample_id>[^/]+)_fastqc\.zip$"],
     },
     "star_align_bam": {
         "key": "star_alignment",
@@ -54,6 +56,9 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "alignment",
         "formats": ["bam"],
         "scopes": ["sample"],
+        "path_patterns": [
+            r"^star/(?P<sample_id>[^/]+)\.Aligned\.sortedByCoord\.out\.bam$"
+        ],
     },
     "log_final": {
         "key": "star_log",
@@ -62,6 +67,7 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "alignment_qc",
         "formats": ["txt"],
         "scopes": ["sample"],
+        "path_patterns": [r"^star/(?P<sample_id>[^/]+)\.Log\.final\.out$"],
     },
     "hisat2_align_bam": {
         "key": "hisat2_alignment",
@@ -70,6 +76,7 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "alignment",
         "formats": ["bam"],
         "scopes": ["sample"],
+        "path_patterns": [r"^hisat2/(?P<sample_id>[^/]+)\.bam$"],
     },
     "quant": {
         "key": "salmon_quantification",
@@ -78,6 +85,7 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "quantification",
         "formats": ["tsv"],
         "scopes": ["sample"],
+        "path_patterns": [r"^salmon/(?P<sample_id>[^/]+)/quant\.sf$"],
     },
     "report": {
         "key": "multiqc_report",
@@ -86,7 +94,21 @@ OUTPUTS: dict[str, dict[str, Any]] = {
         "category": "quality_control",
         "formats": ["html"],
         "scopes": ["job"],
+        "path_patterns": [r"^multiqc/multiqc_report\.html$"],
     },
+}
+
+#: Assays the fixture's documentation names, by registered code.
+ASSAYS = {"polya_rnaseq": "poly(A) RNA-seq", "total_rnaseq": "Total RNA-seq"}
+#: Published path globs of each route, as static analysis reports them.
+GLOBS = {
+    "html": ("fastqc/{sample}_fastqc.html",),
+    "zip": ("fastqc/{sample}_fastqc.zip",),
+    "hisat2_align_bam": ("hisat2/{sample}.bam",),
+    "report": ("multiqc/multiqc_report.html",),
+    "quant": ("salmon/{sample}/quant.sf",),
+    "star_align_bam": ("star/{sample}.Aligned.sortedByCoord.out.bam",),
+    "log_final": ("star/{sample}.Log.final.out",),
 }
 
 
@@ -101,10 +123,7 @@ def reviewed_output(candidate: Any) -> dict[str, Any] | None:
     base = OUTPUTS.get(candidate.suggested_key)
     if base is None or candidate.path_pattern is None:
         return None
-    return base | {
-        "entity_types": ["file"],
-        "path_patterns": [candidate.path_pattern],
-    }
+    return base | {"entity_types": ["file"]}
 
 
 def author_all(root: Path, context: ChangeContext = ADA) -> None:

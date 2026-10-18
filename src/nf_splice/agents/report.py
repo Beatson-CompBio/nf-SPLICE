@@ -56,8 +56,7 @@ def _git_state(root: Path, state: SessionState) -> dict[str, Any]:
 
 def _readiness(root: Path) -> dict[str, Any]:
     """Structurally valid, scientifically classified and ingestion-ready, apart."""
-    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
-    from nf_splice.services.assay_discovery import assess_assays
+    from nf_splice.layers.bundle import declared_capabilities
     from nf_splice.services.readiness import lifecycle
 
     state = lifecycle(root)
@@ -65,9 +64,6 @@ def _readiness(root: Path) -> dict[str, Any]:
         str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
         for item in declared_capabilities(root)
     ]
-    questions: list[str] = []
-    if not declared:
-        questions = list(assess_assays(root, rejected=rejected_assays(root)).questions)
     return {
         "bundle_published": state.published,
         "drafts_valid": state.drafts_valid,
@@ -79,7 +75,6 @@ def _readiness(root: Path) -> dict[str, Any]:
         "ingestion_ready": bool(state.ingestion_ready and declared),
         "dimensions": state.readiness.to_json()["dimensions"],
         "assay_capabilities": declared,
-        "open_assay_questions": questions,
     }
 
 
@@ -267,9 +262,6 @@ def report_text(report: dict[str, Any]) -> str:
             "Ingestion-ready SPLICE bundle: "
             + ("yes" if readiness["ingestion_ready"] else "no"),
             str(readiness.get("headline", "")),
-        ]
-        lines += [
-            f"  Open question: {item}" for item in readiness["open_assay_questions"]
         ]
         for name, item in (readiness.get("dimensions") or {}).items():
             lines.append(f"  {name.replace('_', ' ')}: {item['status']}")

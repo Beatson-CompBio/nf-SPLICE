@@ -30,7 +30,7 @@ How this works:
 - Investigate before you conclude: read_draft, then read_source and
   search_source on main.nf, workflows, subworkflows, modules, configs and docs,
   and the analysis tools (analyse_routes, parameter_usage, component_inventory,
-  analyse_execution, analyse_ro_crate, assess_assays). nf-splice records which
+  analyse_execution, analyse_ro_crate). nf-splice records which
   files you actually inspected; never claim to have checked what you did not.
   review_scope lists the evidence this stage needs in this pipeline (required
   and advisory), what you have inspected and the gaps; deterministic discovery
@@ -122,8 +122,9 @@ CHECKLISTS: dict[Stage, tuple[str, ...]] = {
         "contradictions with evidence or one question.",
         "Fill every authorable field the evidence supports (contract_reference "
         "lists them); leave the rest null. Never guess ORCIDs, DOIs or licences.",
-        "Assays: investigate every route (assess_assays is a start, not a "
-        "ceiling); declare each supported assay; review declared ones for "
+        "Assays: investigate every route yourself (workflows, modules, "
+        "parameters, documentation; list_assay_candidates only finds named "
+        "mentions); declare each supported assay; review declared ones for "
         "omissions even when the draft validates.",
     ),
     Stage.INPUTS: (
@@ -267,30 +268,25 @@ def stage_instruction(
 
 
 def _assay_brief(root: Path) -> list[str]:
-    """The deterministic assay assessment, so every provider starts from it."""
-    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
-    from nf_splice.services.assay_discovery import assess_assays
+    """What is declared, and how assays are established: by investigation."""
+    from nf_splice.layers.bundle import declared_capabilities
 
     declared = [
         str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
         for item in declared_capabilities(root)
     ]
-    assessment = assess_assays(root, rejected=rejected_assays(root))
-    lines = [
+    return [
         "Assay classification is required for ingestion. Declared: "
         + (", ".join(declared) if declared else "none")
         + ".",
-        f"Deterministic assessment: {assessment.summary()}.",
+        "nf-splice infers no assay: establish them yourself from the workflows, "
+        "modules, parameters and documentation (read_source, search_source, "
+        "analyse_routes; list_assay_candidates finds named mentions, not proof), "
+        "then declare with add_assay_capability citing evidence. Never pick "
+        "between alternatives the evidence cannot distinguish: ask the person "
+        "(AI-assisted, then 'confirmed' evidence) or record_blocker naming the "
+        "alternatives (autonomous).",
     ]
-    lines.extend(f"Open question: {item}" for item in assessment.questions)
-    lines.append(
-        "Investigate with assess_assays and read_source; declare with "
-        "add_assay_capability citing evidence. Never pick between alternatives "
-        "the evidence cannot distinguish: ask the person (AI-assisted, then "
-        "'confirmed' evidence) or record_blocker naming the alternatives "
-        "(autonomous)."
-    )
-    return lines
 
 
 def proposal_text(proposal: Proposal) -> str:

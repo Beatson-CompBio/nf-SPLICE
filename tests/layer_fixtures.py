@@ -218,7 +218,7 @@ def review_turn(stage: str, purpose: str = "plan") -> dict[str, Any]:
 
 #: The analysis each stage's scope always requires, cited as evidence.
 STAGE_ANALYSIS = {
-    "identity": "assess_assays",
+    "identity": "list_assay_candidates",
     "inputs": "parameter_usage",
     "outputs": "analyse_routes",
     "components": "component_inventory",

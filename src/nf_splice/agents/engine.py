@@ -178,7 +178,7 @@ class SessionEngine:
         require_consent(provider, policy.allow_remote_model)
         if actor.kind is not ActorKind.HUMAN:
             raise SessionError(
-                "a person must start a session and approve its scope; pass --actor"
+                "a person must start a session and approve its scope; pass --user"
             )
         root = Path(repository).resolve()
         store = SessionStore(root)
@@ -235,6 +235,15 @@ class SessionEngine:
     def request_cancel(self) -> None:
         """Ask a running autonomous loop to stop at the next safe point."""
         self._cancel.set()
+
+    @property
+    def stop_requested(self) -> bool:
+        """Whether a stop at the next safe point was requested."""
+        return self._cancel.is_set()
+
+    def reset_cancel(self) -> None:
+        """Forget an earlier stop request before the session continues."""
+        self._cancel.clear()
 
     # -------------------------------------------------------- helpers
 
@@ -370,6 +379,14 @@ class SessionEngine:
 
     def _next_stage(self) -> Stage | None:
         assisted = self.state.mode is InteractionMode.ASSISTED
+        focus = self.state.focus
+        if assisted and focus is not None:
+            done = self.state.stages[focus].status in {
+                StageStatus.COMPLETED,
+                StageStatus.CANCELLED,
+                StageStatus.SKIPPED,
+            }
+            return None if done else focus
         for stage in ORDER:
             record = self.state.stages[stage]
             if record.status in {
@@ -436,6 +453,7 @@ class SessionEngine:
         record.issues = list(issues)
         layer = LAYER_FOR_STAGE.get(stage)
         artefact = f".splice-local/drafts ({layer})" if layer else spec(stage).title
+        checkpoint = self.state.checkpoints[-1].id if self.state.checkpoints else ""
         if reported:
             for item in reported:
                 self.state.blockers.append(
@@ -451,6 +469,8 @@ class SessionEngine:
                             item.get("suggested_resolution") or ""
                         ),
                         issues=list(issues),
+                        pointer=str(item.get("pointer") or ""),
+                        checkpoint=checkpoint,
                         at=now(),
                     )
                 )
@@ -464,6 +484,7 @@ class SessionEngine:
                     suggested_resolution="Resume this session in assisted mode to "
                     "discuss it, or fix the listed issues and continue.",
                     issues=list(issues),
+                    checkpoint=checkpoint,
                     at=now(),
                 )
             )
@@ -1308,6 +1329,15 @@ class SessionEngine:
         while True:
             stage = self._next_stage()
             state.current_stage = stage
+            if stage is None and state.focus is not None:
+                state.say(
+                    "system",
+                    "focus_done",
+                    f"{spec(state.focus).title} is complete; ask for help with "
+                    "another section, or continue the whole integration.",
+                )
+                state.focus = None
+                break
             if stage is None:
                 self._finish()
                 break
@@ -1399,7 +1429,7 @@ class SessionEngine:
     async def _approve(self, actor: Actor) -> SessionState:
         """Apply the pending proposal exactly as shown, then validate it."""
         if actor.kind is not ActorKind.HUMAN:
-            raise SessionError("approval needs a person's actor label (--actor)")
+            raise SessionError("approval needs a person's name (--user)")
         previous = self.state.pending
         self._prepare()
         proposal = self.state.pending
@@ -1848,6 +1878,90 @@ class SessionEngine:
         except ProviderInterrupted as interruption:
             return self._pause_for_provider(interruption)
 
+    async def _assist(self, stage: Stage, guidance: str, actor: Actor) -> SessionState:
+        state = self.state
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError("asking for a proposal needs a person's name (--user)")
+        if state.mode is not InteractionMode.ASSISTED:
+            raise SessionError("proposals are made in AI-assisted mode")
+        if state.status is SessionStatus.CANCELLED:
+            raise SessionError("a cancelled session cannot be resumed")
+        self._require_idle()
+        self._prepare()
+        pending = state.pending
+        if pending is not None and pending.stage is stage and not guidance:
+            state.status = SessionStatus.AWAITING_APPROVAL
+            self._save()
+            return state
+        if pending is not None:
+            self._withdraw_pending(
+                f"superseded: {actor.label} asked about {stage.value}"
+            )
+        state.focus = stage
+        state.current_stage = stage
+        state.status = SessionStatus.ACTIVE
+        record = state.stages[stage]
+        if record.status is not StageStatus.PENDING:
+            record.status = StageStatus.PENDING
+            record.attempts = 0
+        self._start_stage(stage)
+        state.say(
+            "user",
+            "assist",
+            f"{actor.label} asked for help with {spec(stage).title}"
+            + (f": {guidance}" if guidance else "."),
+            stage=stage,
+        )
+        if await self._plan_stage(stage, guidance=guidance):
+            state.focus = None
+            state.status = SessionStatus.ACTIVE
+        self._save()
+        return state
+
+    async def assist(
+        self, stage: Stage, actor: Actor, guidance: str = ""
+    ) -> SessionState:
+        """Investigate one stage on request and propose a revision of it.
+
+        The session works on that stage alone: the proposal waits for the
+        person's approval, and once the stage is complete the session is idle
+        rather than moving on to other stages unasked.
+        """
+        try:
+            return await self._assist(stage, guidance, actor)
+        except ProviderInterrupted as interruption:
+            return self._pause_for_provider(interruption)
+
+    def reject(self, actor: Actor, reason: str = "") -> SessionState:
+        """Withdraw the pending proposal without applying or revising it."""
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError("rejecting a proposal needs a person's name (--user)")
+        self._require_idle()
+        pending = self.state.pending
+        if pending is None:
+            raise SessionError("nothing is waiting for approval")
+        self.state.approvals.append(
+            ApprovalRecord(
+                proposal_id=pending.id,
+                stage=pending.stage,
+                decision="rejected",
+                actor=actor.label,
+                actor_kind=actor.kind.value,
+                at=now(),
+                operations_sha256=_digest(pending.operations),
+                drafts_fingerprint=pending.drafts_fingerprint,
+                note=reason,
+            )
+        )
+        self._withdraw_pending(
+            f"rejected by {actor.label}" + (f": {reason}" if reason else "")
+        )
+        self.state.stages[pending.stage].status = StageStatus.PENDING
+        self.state.focus = None
+        self.state.status = SessionStatus.ACTIVE
+        self._save()
+        return self.state
+
     async def approve(self, actor: Actor) -> SessionState:
         """Apply the pending proposal exactly as shown, then validate it."""
         try:
@@ -1893,6 +2007,64 @@ class SessionEngine:
         self._save()
         return self.state
 
+    def open_interventions(self) -> list[Blocker]:
+        """Unresolved blockers: the decisions waiting for a person."""
+        return [item for item in self.state.blockers if not item.resolved]
+
+    def resume(self, actor: Actor, note: str = "") -> SessionState:
+        """Continue the same session after a person resolved its blockers.
+
+        The drafts are re-read: completed stages whose validation no longer
+        passes reopen, a proposal made before the files changed is withdrawn,
+        and every blocked stage is planned again from the current drafts. The
+        caller then advances the session. A cancelled session never resumes.
+        """
+        if actor.kind is not ActorKind.HUMAN:
+            raise SessionError("resuming a session needs a person's name (--user)")
+        self._require_idle()
+        state = self.state
+        if state.status is SessionStatus.CANCELLED:
+            raise SessionError("a cancelled session cannot be resumed")
+        self._prepare()
+        reopened = []
+        for stage in ORDER:
+            record = state.stages[stage]
+            if record.status is StageStatus.BLOCKED:
+                record.status = StageStatus.PENDING
+                record.attempts = 0
+                record.notes.append(f"reopened by {actor.label} on resume")
+                reopened.append(stage)
+        for blocker in state.blockers:
+            if not blocker.resolved and blocker.stage in reopened:
+                blocker.resolved = True
+                blocker.resolution = note or (
+                    f"{actor.label} resumed the session after reviewing the drafts"
+                )
+        for later in FINISHING:
+            if state.stages[later].status in {
+                StageStatus.COMPLETED,
+                StageStatus.SKIPPED,
+                StageStatus.BLOCKED,
+            }:
+                state.stages[later].status = StageStatus.PENDING
+        state.report = None
+        state.interruption = None
+        state.status = SessionStatus.ACTIVE
+        state.say(
+            "user",
+            "resume",
+            f"{actor.label} resumed the session"
+            + (f": {note}" if note else "")
+            + (
+                "; reopened " + ", ".join(stage.value for stage in reopened)
+                if reopened
+                else ""
+            )
+            + ".",
+        )
+        self._save()
+        return state
+
     def cancel(self, actor: Actor) -> SessionState:
         self._require_idle()
         self._withdraw_pending("the session was cancelled")
@@ -1921,7 +2093,7 @@ class SessionEngine:
         if state.status is SessionStatus.CANCELLED:
             raise SessionError("a cancelled session cannot be resumed")
         if mode is not InteractionMode.MANUAL and actor.kind is not ActorKind.HUMAN:
-            raise SessionError("switching to an AI mode needs a person's actor label")
+            raise SessionError("switching to an AI mode needs a person's name (--user)")
         previous = state.mode
         if policy is not None:
             policy.approved_by = actor.label
@@ -1984,7 +2156,7 @@ class SessionEngine:
     def rollback(self, checkpoint_id: str, actor: Actor) -> SessionState:
         """Restore ``splice/`` to a checkpoint (a person's explicit decision)."""
         if actor.kind is not ActorKind.HUMAN:
-            raise SessionError("rolling back needs a person's actor label")
+            raise SessionError("rolling back needs a person's name (--user)")
         self._require_idle()
         with self.store.mutation_lock(self.state.id):
             self.store.restore(self.state, checkpoint_id)

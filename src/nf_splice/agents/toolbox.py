@@ -79,12 +79,12 @@ SOURCE_INSPECTIONS = frozenset(
         "read_source",
         "search_source",
         "analyse_routes",
+        "route_coverage",
         "parameter_usage",
         "component_inventory",
         "analyse_execution",
         "analyse_ro_crate",
         "validate_ro_crate",
-        "assess_assays",
         "list_example_outputs",
         "reconcile_example_outputs",
         "read_config",
@@ -394,16 +394,11 @@ class SessionToolbox:
         return self.root
 
     def _require_route_decisions(self, arguments: Mapping[str, Any]) -> None:
-        """Every uncovered alternative route must be addressed by the review."""
-        from nf_splice.services.lifecycle import validate_layer
+        """Every uncovered published route must be addressed by the review."""
+        from nf_splice.layers.outputs import route_coverage
 
-        issues = validate_layer(self._stage_root(), "outputs").issues
         open_routes = sorted(
-            {
-                item.message.split(" ", 1)[0]
-                for item in issues
-                if item.code == "conditional_route_not_covered"
-            }
+            {item.instance for item in route_coverage(self._stage_root()).uncovered}
         )
         assessment = arguments.get("draft_assessment") or {}
         text = " ".join(
@@ -416,10 +411,10 @@ class SessionToolbox:
         unaddressed = [name for name in open_routes if name not in text]
         if unaddressed:
             raise PolicyViolation(
-                "these published alternative routes are neither catalogued nor "
-                "excluded: " + ", ".join(unaddressed[:20]) + ". Add outputs for "
-                "them, exclude them with a reason, or say in findings or "
-                "uncertainties why each stays out"
+                "these published routes are neither catalogued nor excluded: "
+                + ", ".join(unaddressed[:20])
+                + ". Add outputs for them, exclude them with a reason, or say in "
+                "findings or uncertainties why each stays out"
             )
 
     def _control(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:

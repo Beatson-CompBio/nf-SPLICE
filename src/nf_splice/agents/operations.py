@@ -24,7 +24,6 @@ from nf_splice.agents.permissions import (
     PolicyViolation,
     relative_path,
 )
-from nf_splice.domain import OutputCandidate
 from nf_splice.drafts import ABSENT, DraftSyntaxError, load_yaml_draft
 from nf_splice.inspectors.containers import classify_reference
 from nf_splice.inspectors.parameters import parameter_usage
@@ -372,26 +371,10 @@ def _search_source(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any
     return _untrusted({"matches": matches, "truncated": False})
 
 
-def _candidate_document(root: Path, item: OutputCandidate) -> dict[str, Any]:
-    return item.model_dump(mode="json") | {
-        "evidence": [
-            entry["provenance"]["source"] + " " + entry["provenance"]["location"]
-            for entry in output_layer.candidate_evidence(root, item.id)
-        ]
-    }
-
-
 def _list_pending(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     layer = layer_spec(str(a["layer"])).name
     data: list[Any]
-    if layer == "outputs":
-        candidates = (
-            output_layer.all_candidates(ctx.root)
-            if a.get("include_decided")
-            else output_layer.pending_candidates(ctx.root)
-        )
-        data = [_candidate_document(ctx.root, item) for item in candidates]
-    elif layer == "components":
+    if layer == "components":
         data = [
             {
                 "id": item.id,
@@ -414,6 +397,10 @@ def _list_pending(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]
 
 def _analyse_routes(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
     return {"success": True, "data": analyse_routes(ctx.root).to_json()}
+
+
+def _route_coverage(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
+    return {"success": True, "data": output_layer.route_coverage(ctx.root).to_json()}
 
 
 def _example(ctx: OperationContext, a: Mapping[str, Any]) -> Path:
@@ -556,13 +543,11 @@ def _run_checks(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _initialise(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    example = ctx.examples[0] if ctx.examples else None
     report = initialise(
         ctx.root,
         ctx.change,
         identity=dict(a.get("identity") or {}),
         accept_detected=bool(a.get("accept_detected", False)),
-        example_output_tree=example,
         contract_version=a.get("contract_version"),
     )
     return {
@@ -618,37 +603,6 @@ def _assay_candidates(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str,
             "establishes a library preparation",
         }
     )
-
-
-def _assess_assays(ctx: OperationContext, _a: Mapping[str, Any]) -> dict[str, Any]:
-    from nf_splice.layers.bundle import declared_capabilities, rejected_assays
-    from nf_splice.services.assay_discovery import assess_assays
-
-    declared = tuple(
-        str(item.get("registered_code") or f"entity:{item.get('entity_id')}")
-        for item in declared_capabilities(ctx.root)
-    )
-    assessment = assess_assays(
-        ctx.root, declared=declared, rejected=rejected_assays(ctx.root)
-    )
-    return _untrusted(
-        assessment.to_json()
-        | {
-            "how_to_use": "Candidates with selectable_without_confirmation may be "
-            "declared citing their evidence. Where alternatives cannot be told "
-            "apart, ask the person (AI-assisted) or record_blocker (autonomous) "
-            "with the questions; never pick one by default."
-        }
-    )
-
-
-def _reject_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    from nf_splice.layers.bundle import reject_assay_candidate
-
-    reject_assay_candidate(
-        ctx.root, str(a["reference"]), ctx.change, reason=str(a["reason"])
-    )
-    return {"success": True, "rejected": str(a["reference"])}
 
 
 def _add_assay(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -713,60 +667,18 @@ def _set_access(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     )
 
 
-def _discover_outputs(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    example = _example(ctx, a) if "example" in a else None
-    discovery = output_layer.discover_outputs(
-        ctx.root, example_output_tree=example, schema_version=a.get("schema_version")
-    )
-    return {
-        "success": True,
-        "new_candidates": list(discovery.new_candidates),
-        "pending": len(discovery.pending),
-    }
-
-
 def _contract_version(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
     return _edit(
         output_layer.set_contract_version(ctx.root, str(a["version"]), ctx.change)
     )
 
 
-def _accept_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    return _edit(
-        output_layer.accept_output(
-            ctx.root, str(a["candidate_id"]), dict(a["output"]), ctx.change
-        )
-    )
+def _add_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(output_layer.add_output(ctx.root, dict(a["output"]), ctx.change))
 
 
-def _reject_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    reason = str(a["reason"]).strip()
-    if not reason:
-        raise LayerError("a rejection needs a reason")
-    output_layer.reject_output(ctx.root, str(a["candidate_id"]), reason, ctx.change)
-    return {"success": True, "rejected": a["candidate_id"]}
-
-
-def _merge_outputs(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    return _edit(
-        output_layer.merge_outputs(
-            ctx.root,
-            [str(item) for item in a["candidate_ids"]],
-            dict(a["output"]),
-            ctx.change,
-        )
-    )
-
-
-def _split_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
-    return _edit(
-        output_layer.split_output(
-            ctx.root,
-            str(a["candidate_id"]),
-            [dict(item) for item in a["outputs"]],
-            ctx.change,
-        )
-    )
+def _remove_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
+    return _edit(output_layer.remove_output(ctx.root, str(a["key"]), ctx.change))
 
 
 def _update_output(ctx: OperationContext, a: Mapping[str, Any]) -> dict[str, Any]:
@@ -1158,14 +1070,14 @@ OPERATIONS: dict[str, Operation] = {
         ),
         Operation(
             "list_pending",
-            "Advisory discovery candidates of outputs, components or "
-            "execution-profiles, with evidence (hints, not a review queue; "
-            "include_decided also lists seeded, accepted and rejected ones).",
+            "Modules or repository execution profiles found in the source but "
+            "not yet in the draft (hints, not a review queue). Published output "
+            "routes are listed by route_coverage.",
             _obj(
                 {
                     "layer": {
                         "type": "string",
-                        "enum": ["outputs", "components", "execution-profiles"],
+                        "enum": ["components", "execution-profiles"],
                     },
                     "include_decided": {"type": "boolean"},
                 },
@@ -1174,6 +1086,17 @@ OPERATIONS: dict[str, Operation] = {
             _R,
             "read",
             _list_pending,
+        ),
+        Operation(
+            "route_coverage",
+            "Which published routes the output catalogue covers, which are "
+            "excluded with a reason, and which are uncovered (established, "
+            "conditional or unverified). Coverage is ingestion-readiness "
+            "evidence, never a validation error of declared outputs.",
+            _obj(),
+            _R,
+            "read",
+            _route_coverage,
         ),
         Operation(
             "analyse_routes",
@@ -1329,33 +1252,6 @@ OPERATIONS: dict[str, Operation] = {
             _show_assay,
         ),
         Operation(
-            "assess_assays",
-            "Investigate the pipeline scientifically and recommend assay "
-            "capabilities: the domains its tools, parameters, outputs and "
-            "documentation establish, candidate assays from the SPLICE vocabulary "
-            "with status, confidence, evidence and alternatives, and the questions "
-            "that would decide between them. Read-only.",
-            _obj(),
-            _R,
-            "read",
-            _assess_assays,
-        ),
-        Operation(
-            "reject_assay_candidate",
-            "Record that a recommended assay does not apply to this pipeline, "
-            "with the reason.",
-            _obj(
-                {
-                    "reference": {"type": "string", "minLength": 1},
-                    "reason": {"type": "string", "minLength": 1},
-                },
-                ["reference", "reason"],
-            ),
-            _D,
-            "draft",
-            _reject_assay,
-        ),
-        Operation(
             "list_assay_candidates",
             "Assays the repository names explicitly, with locations, and the "
             "capabilities already declared. Mentions are candidates, not proof.",
@@ -1452,19 +1348,6 @@ OPERATIONS: dict[str, Operation] = {
             _set_access,
         ),
         Operation(
-            "discover_outputs",
-            "Rediscover output candidates, optionally using an authorised example.",
-            _obj(
-                {
-                    "example": {"type": "integer", "minimum": 0},
-                    "schema_version": {"type": "string"},
-                }
-            ),
-            _D,
-            "draft",
-            _discover_outputs,
-        ),
-        Operation(
             "set_output_contract_version",
             "Set the analysis-output schema version (X.Y.Z).",
             _obj({"version": {"type": "string"}}, ["version"]),
@@ -1473,51 +1356,20 @@ OPERATIONS: dict[str, Operation] = {
             _contract_version,
         ),
         Operation(
-            "accept_output",
-            "Accept one candidate as a complete reviewed output.",
-            _obj(
-                {"candidate_id": {"type": "string"}, "output": _OUTPUT_OBJECT},
-                ["candidate_id", "output"],
-            ),
+            "add_output",
+            "Add one complete output to the catalogue.",
+            _obj({"output": _OUTPUT_OBJECT}, ["output"]),
             _D,
             "draft",
-            _accept_output,
+            _add_output,
         ),
         Operation(
-            "reject_output",
-            "Reject one candidate with a reason.",
-            _obj(
-                {"candidate_id": {"type": "string"}, "reason": {"type": "string"}},
-                ["candidate_id", "reason"],
-            ),
+            "remove_output",
+            "Remove one output from the catalogue by key.",
+            _obj({"key": {"type": "string"}}, ["key"]),
             _D,
             "draft",
-            _reject_output,
-        ),
-        Operation(
-            "merge_outputs",
-            "Merge several candidates into one reviewed output.",
-            _obj(
-                {"candidate_ids": _STRINGS, "output": _OUTPUT_OBJECT},
-                ["candidate_ids", "output"],
-            ),
-            _D,
-            "draft",
-            _merge_outputs,
-        ),
-        Operation(
-            "split_output",
-            "Split one candidate into several reviewed outputs.",
-            _obj(
-                {
-                    "candidate_id": {"type": "string"},
-                    "outputs": {"type": "array", "items": _OUTPUT_OBJECT},
-                },
-                ["candidate_id", "outputs"],
-            ),
-            _D,
-            "draft",
-            _split_output,
+            _remove_output,
         ),
         Operation(
             "update_output",
@@ -1804,6 +1656,11 @@ CONTROL_SCHEMAS: dict[str, dict[str, Any]] = {
             {
                 "decision": {"type": "string"},
                 "artefact": {"type": "string"},
+                "pointer": {
+                    "type": "string",
+                    "description": "JSON pointer of the field or entry in the "
+                    "stage's draft that needs the decision, e.g. /outputs/2/scopes",
+                },
                 "attempted_checks": _STRINGS,
                 "suggested_resolution": {"type": "string"},
             },

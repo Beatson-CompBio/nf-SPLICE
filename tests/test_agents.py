@@ -264,7 +264,9 @@ def test_assisted_objection_is_investigated_and_never_approval(
     assert first is not None
     # One coherent revision of the seeded catalogue, without HISAT2.
     assert "replace_draft" in " ".join(item.tool for item in first.operations)
-    assert "-  - key: hisat2_align_bam" in first.diff
+    # The catalogue starts empty (ADR-0068): the first revision leaves the
+    # HISAT2 route out, with a reason, rather than cataloguing it.
+    assert "+  - glob: hisat2/{sample}.bam" in first.diff
     assert "+  - key: hisat2_alignment" not in first.diff
     before = drafts_fingerprint(root)
 

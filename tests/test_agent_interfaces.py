@@ -15,7 +15,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from agent_scripts import RouteAgent
 from layer_fixtures import ADA, ready_repository, review_turns
 from multi_route import EXAMPLE, copy_fixture
 from nf_splice.agents import (
@@ -28,36 +27,42 @@ from nf_splice.agents import (
 from nf_splice.agents.operations import READ_OPERATIONS
 from nf_splice.agents.protocol import EventKind, TurnRequest
 from nf_splice.agents.providers.claude import ClaudeProvider, ClaudeSession
-from nf_splice.agents.providers.scripted import ScriptedProvider
 from nf_splice.agents.stages import Stage
 from nf_splice.agents.state import Usage, drafts_fingerprint
 from nf_splice.agents.toolbox import SessionToolbox, ToolMode
 from nf_splice.cli import app
 from nf_splice.layers import ChangeContext
-from nf_splice.layers.outputs import discover_outputs, pending_candidates
 from nf_splice.services.lifecycle import validate_bundle
 
 runner = CliRunner()
 
 
-def _pending_candidate(root: Path, tmp_path: Path) -> str:
+#: An output the scripted agent proposes to add (the catalogue is authored).
+QC_SUMMARY = {
+    "key": "qc_summary",
+    "title": "QC summary",
+    "description": "Per-job quality-control summary.",
+    "category": "quality_control",
+    "formats": ["json"],
+    "scopes": ["job"],
+    "entity_types": ["file"],
+    "path_patterns": [r"^qc/summary\.json$"],
+}
+
+
+def _ready(root: Path) -> None:
     ready_repository(root)
-    tree = tmp_path / "tree"
-    (tree / "qc").mkdir(parents=True)
-    (tree / "qc" / "summary.json").write_text("{}", encoding="utf-8")
-    discover_outputs(root, example_output_tree=tree)
-    return next(item.id for item in pending_candidates(root))
 
 
 def _cli(*arguments: str, actor: str | None = "Ada", **kwargs: Any) -> Any:
-    prefix = ["--actor", actor] if actor else []
+    prefix = ["--user", actor] if actor else []
     return runner.invoke(app, [*prefix, *arguments], **kwargs)
 
 
 def test_cli_session_lifecycle(tmp_path: Path) -> None:
     root = tmp_path / "pipeline"
     root.mkdir()
-    candidate = _pending_candidate(root, tmp_path)
+    _ready(root)
     script = tmp_path / "script.json"
     script.write_text(
         json.dumps(
@@ -68,19 +73,13 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
                     "purpose": "plan",
                     "steps": [
                         {"tool": "analyse_routes", "arguments": {}},
-                        {"tool": "list_pending", "arguments": {"layer": "outputs"}},
-                        {
-                            "tool": "reject_output",
-                            "arguments": {
-                                "candidate_id": candidate,
-                                "reason": "Internal QC only",
-                            },
-                        },
+                        {"tool": "route_coverage", "arguments": {}},
+                        {"tool": "add_output", "arguments": {"output": QC_SUMMARY}},
                         {"follow": "review_scope"},
                         {
                             "tool": "submit_stage_proposal",
                             "arguments": {
-                                "summary": "Reject the internal QC file.",
+                                "summary": "Add the QC summary output.",
                                 "evidence": ["analyse_routes"],
                             },
                         },
@@ -88,7 +87,7 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
                 },
                 {
                     "purpose": "question",
-                    "steps": [{"message": "qc/summary.json is internal QC."}],
+                    "steps": [{"message": "qc/summary.json is the job QC summary."}],
                 },
                 *review_turns("components", "profiles", "provenance"),
             ]
@@ -115,14 +114,14 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
     assert status["pending"]["stage"] == "outputs"
     assert status["stages"]["identity"] == "completed"
 
-    asked = _cli("session", "ask", "Why reject it?", *repository)
-    assert "internal QC" in asked.output
+    asked = _cli("session", "ask", "What is it?", *repository)
+    assert "job QC summary" in asked.output
 
     unattributed = _cli(
-        "session", "approve", *repository, actor=None, env={"NF_SPLICE_ACTOR": ""}
+        "session", "approve", *repository, actor=None, env={"NF_SPLICE_USER": ""}
     )
     assert unattributed.exit_code == 2
-    assert "person's actor label" in unattributed.output
+    assert "person's name" in unattributed.output
 
     approved = _cli("session", "approve", "--json", *repository)
     assert approved.exit_code == 0, approved.output
@@ -152,23 +151,26 @@ def test_cli_session_lifecycle(tmp_path: Path) -> None:
     names = {item["name"] for item in tools}
     assert {
         "replace_draft",
-        "accept_output",
+        "add_output",
+        "route_coverage",
         "read_source",
         "submit_stage_proposal",
         "complete_review",
     } <= names
     assert "build_bundle" not in names
+    # The candidate queue is gone (ADR-0068).
+    assert not names & {"accept_output", "reject_output", "merge_outputs"}
 
     remote = _cli("ask", "x", "--provider", "claude", *repository)
     assert remote.exit_code == 2 and "allow-remote-model" in remote.output
-    tui = _cli("tui", "--provider", "claude", *repository)
-    assert tui.exit_code == 2 and "allow-remote-model" in tui.output
+    # The workspace asks for this consent in its AI dock instead
+    # (tests/test_tui_agents.py).
 
 
 def test_cli_conversation_in_the_terminal(tmp_path: Path) -> None:
     root = tmp_path / "pipeline"
     root.mkdir()
-    _pending_candidate(root, tmp_path)
+    _ready(root)
     script = tmp_path / "script.json"
     script.write_text(
         json.dumps(
@@ -211,7 +213,7 @@ def test_cli_ask_and_skills(tmp_path: Path) -> None:
                 {
                     "steps": [
                         {"tool": "inspect_draft", "arguments": {"layer": "outputs"}},
-                        {"tool": "accept_output", "arguments": {}},
+                        {"tool": "add_output", "arguments": {}},
                         {"message": "The outputs draft is ready."},
                     ]
                 }
@@ -476,131 +478,3 @@ def test_live_claude_assisted_session_proposes_without_changing_files(
         SessionStatus.AWAITING_APPROVAL,
         SessionStatus.AWAITING_INPUT,
     }
-
-
-# ------------------------------------------------------------ wizard
-
-
-@pytest.mark.asyncio
-async def test_wizard_offers_three_ways_and_ask_ai_is_read_only(
-    tmp_path: Path,
-) -> None:
-    from textual.widgets import Button, Input, Markdown
-
-    from nf_splice.interfaces.tui import NfSpliceApp
-    from nf_splice.interfaces.tui.screens.ask import AskScreen
-    from nf_splice.interfaces.tui.screens.session import SessionScreen
-    from tui_helpers import settle
-
-    root = copy_fixture(tmp_path)
-    off = NfSpliceApp(root)
-    async with off.run_test(size=(160, 60)) as pilot:
-        await settle(off, pilot)
-        labels = {str(item.label) for item in off.query(Button)}
-        assert {"AI-assisted session", "Autonomous integration", "Create new"} <= labels
-        await pilot.press("ctrl+a")
-        await pilot.pause()
-        assert isinstance(off.screen, AskScreen)
-        assert "Agentic AI is off" in str(
-            off.screen.query_one("#ask-off", Markdown).source
-        )
-        await pilot.press("escape")
-        off.query_one("#welcome-autonomous", Button).press()
-        await pilot.pause()
-        assert isinstance(off.screen, SessionScreen)
-
-    def helpful(request: TurnRequest, tools: Any) -> list[str]:
-        tools.call("set_identity", {"changes": {"title": "x"}})
-        return [f"You are on the {request.instruction.split(chr(10))[0]}"]
-
-    from multi_route import author_all
-
-    author_all(root)
-    before = drafts_fingerprint(root)
-    on = NfSpliceApp(root, actor="Ada", agent_provider=ScriptedProvider(helpful))
-    async with on.run_test(size=(160, 60)) as pilot:
-        await settle(on, pilot)
-        on.show_step("outputs")
-        await settle(on, pilot)
-        await pilot.press("ctrl+a")
-        await pilot.pause()
-        screen = on.screen
-        assert isinstance(screen, AskScreen)
-        screen.query_one("#ask-question", Input).value = "Which outputs are optional?"
-        screen.query_one("#ask-run", Button).press()
-        await pilot.pause()
-        await screen.workers.wait_for_complete()
-        await pilot.pause()
-        answer = str(screen.query_one("#ask-answer", Markdown).source)
-        assert "Which outputs are optional?" in answer
-    assert drafts_fingerprint(root) == before
-
-
-@pytest.mark.asyncio
-async def test_wizard_assisted_and_autonomous_sessions_share_cli_state(
-    tmp_path: Path,
-) -> None:
-    from textual.widgets import Button, Input, Static
-
-    from nf_splice.interfaces.tui import NfSpliceApp
-    from nf_splice.interfaces.tui.screens.session import SessionScreen
-    from tui_helpers import settle
-
-    root = copy_fixture(tmp_path)
-    wizard = NfSpliceApp(
-        root, actor="Ada", agent_provider=ScriptedProvider(RouteAgent())
-    )
-    async with wizard.run_test(size=(180, 60)) as pilot:
-        await settle(wizard, pilot)
-        wizard.open_session(InteractionMode.ASSISTED)
-        await pilot.pause()
-        screen = wizard.screen
-        assert isinstance(screen, SessionScreen)
-        screen.query_one("#session-examples", Input).value = str(EXAMPLE)
-        screen.query_one("#session-begin", Button).press()
-        await pilot.pause()
-        await screen.workers.wait_for_complete()
-        await pilot.pause()
-        engine = screen.engine
-        assert engine is not None and engine.state.pending is not None
-        for _ in range(3):
-            screen.query_one("#session-approve", Button).press()
-            await pilot.pause()
-            await screen.workers.wait_for_complete()
-            await pilot.pause()
-        assert engine.state.pending is not None
-        assert engine.state.pending.stage is Stage.OUTPUTS
-        title = str(screen.query_one("#session-title", Static).render())
-        assert "awaiting approval" in title
-        screen.query_one("#session-close-live", Button).press()
-        await pilot.pause()
-
-    # The terminal sees the same session and its pending proposal.
-    status = runner.invoke(
-        app, ["session", "status", "--json", "--repository", str(root)]
-    )
-    assert json.loads(status.output)["pending"]["stage"] == "outputs"
-
-    second = copy_fixture(tmp_path / "second")
-    wizard = NfSpliceApp(
-        second, actor="Ada", agent_provider=ScriptedProvider(RouteAgent())
-    )
-    async with wizard.run_test(size=(180, 60)) as pilot:
-        await settle(wizard, pilot)
-        wizard.open_session(InteractionMode.AUTONOMOUS)
-        await pilot.pause()
-        screen = wizard.screen
-        assert isinstance(screen, SessionScreen)
-        screen.query_one("#session-begin", Button).press()
-        await pilot.pause()
-        await screen.workers.wait_for_complete()
-        await pilot.pause()
-        assert screen.engine is not None
-        assert screen.engine.state.status is SessionStatus.COMPLETED
-        assert not screen.query_one("#session-to-assisted", Button).disabled
-        screen.query_one("#session-to-assisted", Button).press()
-        await pilot.pause()
-        reopened = wizard.screen
-        assert isinstance(reopened, SessionScreen)
-        assert reopened.mode is InteractionMode.ASSISTED
-    assert validate_bundle(second).valid

@@ -261,7 +261,6 @@ def _identity_scope(root: Path) -> list[EvidenceClass | None]:
             "assay evidence and the SPLICE vocabulary",
             True,
             tools=(
-                "assess_assays",
                 "list_assay_candidates",
                 "search_assay_catalogue",
                 "show_assay",

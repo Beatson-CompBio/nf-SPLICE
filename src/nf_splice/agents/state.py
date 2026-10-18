@@ -219,14 +219,26 @@ class EvidenceItem(_Model):
 
 
 class Blocker(_Model):
+    """A decision the agent could not make: a structured intervention.
+
+    ``decision`` is what a person must decide, ``issues`` why, and
+    ``attempted_checks`` the evidence the agent gathered. ``pointer`` names
+    the field or entry in the stage's draft (a JSON pointer) when the agent
+    could name one, so an interface can open that field; ``checkpoint`` is
+    the last checkpoint taken before it.
+    """
+
     stage: Stage
     decision: str
     artefact: str
     attempted_checks: list[str] = Field(default_factory=list)
     suggested_resolution: str = ""
     issues: list[str] = Field(default_factory=list)
+    pointer: str = ""
+    checkpoint: str = ""
     at: str
     resolved: bool = False
+    resolution: str = ""
 
 
 class Checkpoint(_Model):
@@ -287,6 +299,9 @@ class SessionState(_Model):
         default_factory=lambda: {stage: StageRecord() for stage in ORDER}
     )
     current_stage: Stage | None = Stage.DISCOVER
+    #: The one stage a person asked for help with (AI-assisted); the session
+    #: works on it alone and becomes idle when it is complete.
+    focus: Stage | None = None
     pending: Proposal | None = None
     proposals: list[Proposal] = Field(default_factory=list)
     approvals: list[ApprovalRecord] = Field(default_factory=list)
