@@ -373,19 +373,22 @@ class SessionToolbox:
                 "blocker if it cannot be inspected."
             )
         evidence = [str(item) for item in arguments.get("evidence") or []]
-        circular = own_output_citations(evidence)
-        if circular:
-            raise PolicyViolation(
-                "nf-splice's own earlier output is not evidence of what the "
-                "pipeline does: " + ", ".join(circular[:5]) + ". Cite the "
-                "pipeline's code, configuration or documentation instead."
-            )
         supported, unsupported = unsupported_citations(evidence, trace)
         if unsupported:
             raise PolicyViolation(
                 "the evidence cites files you have not read in this stage: "
                 + ", ".join(unsupported[:10])
                 + "; read them first, or cite what you did inspect"
+            )
+        # The draft under review and earlier bundles may be cited as what
+        # was assessed, but nf-splice's own output never supports a
+        # conclusion about the pipeline on its own.
+        circular = set(own_output_citations(supported))
+        if supported and all(item in circular for item in supported):
+            raise PolicyViolation(
+                "nf-splice's own output (drafts, an earlier splice/ bundle) is not "
+                "evidence of what the pipeline does; cite the pipeline's code, "
+                "configuration or documentation you read"
             )
         if not supported:
             raise PolicyViolation(

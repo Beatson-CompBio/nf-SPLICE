@@ -39,7 +39,7 @@ def identity(tools: ToolInvoker) -> None:
     """Declare the assays the documentation states, citing where it says so."""
     _call(tools, "read_source", path="nextflow.config")
     _call(tools, "set_identity", changes=dict(IDENTITY))
-    _call(tools, "search_assay_catalogue", text="RNA-seq")
+    _call(tools, "list_vocabulary_assays")
     for code, phrase in ASSAYS.items():
         found = _call(tools, "search_source", pattern=re.escape(phrase))
         sources = sorted(
