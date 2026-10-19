@@ -23,6 +23,7 @@ from textual.events import Resize
 from textual.widgets import Button, Checkbox, ContentSwitcher, Input, Static, TextArea
 
 from nf_splice.agents.protocol import AgentProvider
+from nf_splice.agents.providers.readiness import ProviderReadiness
 from nf_splice.domain.audit import ActorKind, ChangeOrigin
 from nf_splice.interfaces.tui.coordinator import (
     AgentCoordinator,
@@ -79,8 +80,12 @@ NARROW = 60
 MIN_HEIGHT = 20
 
 
-class NfSpliceApp(App[None]):
-    """Prepare a SPLICE workflow bundle by hand, with AI help, or both."""
+class NfSpliceApp(App[Path | None]):
+    """Prepare a SPLICE workflow bundle by hand, with AI help, or both.
+
+    ``run()`` returns another working copy to open next (after Welcome
+    prepared a safe copy, or the person chose one made earlier), else None.
+    """
 
     TITLE = "nf-SPLICE"
     SUB_TITLE = "Workflow integration"
@@ -94,6 +99,10 @@ class NfSpliceApp(App[None]):
         Binding("escape", "close_dock", "Close dock", show=False),
         Binding("ctrl+right", "step_continue", "Continue", show=False),
         Binding("ctrl+left", "step_back", "Back", show=False),
+        *(
+            Binding(str(number), f"welcome_option({number})", show=False)
+            for number in range(1, 7)
+        ),
     ]
 
     def __init__(
@@ -135,6 +144,14 @@ class NfSpliceApp(App[None]):
             person=user,
             notify=self._agent_notify,
         )
+        #: Whether AI can be used (None while it is being checked).
+        self.ai_readiness: ProviderReadiness | None = (
+            _offline_readiness(agent_provider) if agent_provider else None
+        )
+        #: Whether the provider came from --provider (kept until AI settings).
+        self._explicit_provider = agent_provider is not None
+        #: Working copies made earlier from this folder.
+        self.known_copies: tuple[str, ...] = ()
         for theme in THEMES:
             self.register_theme(theme)
         self.theme = load_theme_preference() if remember_theme else DEFAULT_THEME
@@ -162,12 +179,14 @@ class NfSpliceApp(App[None]):
         self.query_one("#takeover-bar").display = False
         self.query_one("#too-small").display = False
         self._layout(self.size.width, self.size.height)
+        self._show_ai_controls()
         self.coordinator.attach_latest()
         self.show_page(self.current)
         self.set_status("Reading your drafts…")
         self.refresh_model(first=True)
         self.set_interval(0.4, self._poll_agent)
         self._agent_changed()
+        self.check_ai()
         if self.inspect_only:
             self.set_status("Inspect-only mode: browsing without writing.", "warn")
 
@@ -259,6 +278,10 @@ class NfSpliceApp(App[None]):
                 else self.readiness
             )
         self._apply_model()
+        if first and model.authorised:
+            from nf_splice.services.source import remember_integration
+
+            remember_integration(model.repository)
         if first:
             changed = (
                 self.saved_state is not None
@@ -550,6 +573,10 @@ class NfSpliceApp(App[None]):
         self._update_actionbar()
         self._save_navigation()
         self.call_after_refresh(self._update_dock_context)
+        if page_id == "welcome" and target is None:
+            focus_first = getattr(view, "focus_first_option", None)
+            if focus_first is not None:
+                self.call_after_refresh(focus_first)
         if target is not None and created:
             # A newly mounted page composes later; it focuses on mount.
             view.pending_target = target
@@ -630,6 +657,9 @@ class NfSpliceApp(App[None]):
         bar.query_one("#nav-continue").display = self.current != "publish"
 
     def _save_navigation(self) -> None:
+        if self.inspect_only or not (self.model_ready and self.model.authorised):
+            # Never write into a folder nobody authorised (or while inspecting).
+            return
         try:
             self.navigation.save(
                 self.repository,
@@ -669,6 +699,204 @@ class NfSpliceApp(App[None]):
         else:
             state = ("○ NEEDS REVIEW", "warn")
         self.query_one("#topbar", TopBar).show(name, mode, state, snapshot)
+        self._show_ai_controls()
+
+    # ------------------------------------------------------------ AI readiness
+
+    @property
+    def ai_usable(self) -> bool:
+        """Assisted and Autonomous are offered only for a verified provider."""
+        readiness = self.ai_readiness
+        return (
+            readiness is not None
+            and readiness.usable
+            and self.coordinator.tools_supported()
+        )
+
+    def check_ai(self, *, reconnect: bool = False) -> None:
+        """Work out AI readiness off the event loop (it reads the set-up).
+
+        A verified saved provider is connected so the dock can use it; a
+        provider given with --provider is kept until AI settings change it.
+        """
+        explicit = self.coordinator.provider if self._explicit_provider else None
+        repository = self.repository
+
+        def build() -> tuple[ProviderReadiness, tuple[str, ...], Any]:
+            from nf_splice.agents.providers.readiness import assess
+            from nf_splice.services.source import copies_of
+
+            copies = tuple(str(item["path"]) for item in copies_of(repository))
+            if explicit is not None:
+                return _readiness_of(explicit), copies, None
+            readiness = assess()
+            agent = None
+            if readiness.usable and readiness.provider:
+                from nf_splice.agents.providers import provider_for
+
+                agent = provider_for(readiness.provider, model=readiness.model)
+            return readiness, copies, agent
+
+        def done(result: tuple[ProviderReadiness, tuple[str, ...], Any]) -> None:
+            readiness, copies, agent = result
+            self.ai_readiness = readiness
+            self.known_copies = copies
+            coordinator = self.coordinator
+            if not coordinator.busy and not self._explicit_provider:
+                if agent is not None and (reconnect or coordinator.provider is None):
+                    coordinator.connect(agent)
+                elif agent is None and reconnect and coordinator.provider is not None:
+                    coordinator.connect(None)
+            self._ai_changed()
+
+        self.run_view("AI readiness", build, done)
+
+    def _ai_changed(self) -> None:
+        self._show_ai_controls()
+        view = self.current_page()
+        if view is not None and view.page_id == "welcome" and self.model_ready:
+            view.refresh_page(self.model)
+
+    def _show_ai_controls(self) -> None:
+        """AI actions appear only where they can actually be used (CSS)."""
+        if self.screen_stack:
+            self.screen_stack[0].set_class(not self.ai_usable, "ai-off")
+
+    def ai_settings(self) -> None:
+        from nf_splice.interfaces.tui.provider_setup import ProviderSetupDialog
+
+        if self.coordinator.busy:
+            self.set_status(
+                "The agent is working; pause it before changing the AI provider.",
+                "warn",
+            )
+            return
+
+        def closed(_result: Any) -> None:
+            self._explicit_provider = False
+            self.ai_readiness = None
+            self._ai_changed()
+            self.check_ai(reconnect=True)
+
+        self.push_screen(ProviderSetupDialog(), closed)
+
+    def start_ai(self, tab: str) -> None:
+        """Welcome's Assisted / Autonomous: the same dock and safeguards."""
+        if not self.model.authorised:
+            self.set_status(
+                "Prepare a safe working copy (or authorise this folder) first.", "warn"
+            )
+            return
+        if not self.ai_usable:
+            self.set_status(
+                "AI assistance is not verified yet: open AI provider settings.", "warn"
+            )
+            return
+        self.open_dock(tab)
+
+    # ------------------------------------------------------------ working copy
+
+    def switch_to(self, path: str | Path) -> None:
+        """Close this workspace and open another working copy, on Welcome."""
+        if self.coordinator.busy:
+            self.set_status("Pause the agent before opening another copy.", "warn")
+            return
+        self._save_navigation()
+        self.exit(result=Path(path))
+
+    def prepare_copy(self) -> None:
+        """Make the safe integration copy, then reopen the workspace there."""
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+        from nf_splice.services.source import default_destination
+
+        source = self.repository
+        destination = default_destination(str(source))
+
+        def work() -> None:
+            from nf_splice.services.source import (
+                prepare_integration_copy,
+                remember_integration,
+            )
+
+            try:
+                copy = prepare_integration_copy(str(source))
+            except Exception as error:
+                self.call_from_thread(self._prepare_failed, str(error))
+                return
+            remember_integration(Path(copy.path))
+            self.call_from_thread(self.switch_to, copy.path)
+
+        def confirmed(result: Any) -> None:
+            if result:
+                self.set_status(f"Preparing the working copy {destination}…")
+                self.run_worker(work, thread=True, group="prepare")
+
+        self.push_screen(
+            ConfirmDialog(
+                "Prepare a safe working copy?",
+                f"nf-SPLICE copies {source} to {destination}"
+                + (
+                    " and works on its own local Git branch"
+                    if (source / ".git").exists()
+                    else " and records it in a new local Git repository"
+                )
+                + ". The original folder is not changed. The workspace then "
+                "opens on the copy.",
+                confirm="Prepare the copy",
+            ),
+            confirmed,
+        )
+
+    def _prepare_failed(self, message: str) -> None:
+        from nf_splice.interfaces.tui.modals import HelpDialog
+
+        self.set_status("The working copy was not created; nothing changed.", "bad")
+        self.push_screen(
+            HelpDialog(
+                "The working copy was not created",
+                f"{message}\n\nYou can also prepare it from the command line "
+                "(choosing the folder with --into PATH), which then opens the "
+                f"workspace on the copy: `nf-splice source prepare {self.repository}`",
+            )
+        )
+
+    def authorise_in_place(self) -> None:
+        from nf_splice.interfaces.tui.modals import ConfirmDialog
+
+        def work() -> None:
+            from nf_splice.services.source import (
+                authorise_in_place,
+                remember_integration,
+            )
+
+            authorise_in_place(self.repository)
+            remember_integration(self.repository)
+
+        def confirmed(result: Any) -> None:
+            if not result:
+                return
+
+            def done(_result: Any = None) -> None:
+                self.cache.invalidate()
+                self.refresh_model(
+                    then=lambda: self.set_status(
+                        "This folder is authorised for in-place authoring.", "warn"
+                    )
+                )
+
+            self.run_view("in-place consent", work, done)
+
+        self.push_screen(
+            ConfirmDialog(
+                "Work in the original folder?",
+                f"nf-SPLICE will write splice/, .splice-local/ and a .gitignore rule "
+                f"in {self.repository} itself, rather than in a safe copy. Your "
+                "consent is recorded in .splice-local/integration.json.",
+                confirm="Work in this folder",
+                danger=True,
+            ),
+            confirmed,
+        )
 
     # ------------------------------------------------------------ agent
 
@@ -1002,12 +1230,15 @@ class NfSpliceApp(App[None]):
             "tool-theme": self.action_theme,
             "tool-help": self.action_help,
             "welcome-start": self.start_manually,
-            "welcome-resume": self.resume_work,
-            "welcome-ask": lambda: self.open_dock("ask"),
-            "welcome-assist": lambda: self.open_dock("assist"),
-            "welcome-autonomous": lambda: self.open_dock("autonomous"),
+            "welcome-prepare": self.prepare_copy,
+            "welcome-open-copy": lambda: self.switch_to(self.known_copies[0]),
+            "welcome-in-place": self.authorise_in_place,
             "welcome-inspect": self.inspect,
-            "welcome-theme": self.action_theme,
+            "welcome-setup-ai": self.ai_settings,
+            "welcome-ai-settings": self.ai_settings,
+            "welcome-assisted": lambda: self.start_ai("assist"),
+            "welcome-autonomous": lambda: self.start_ai("autonomous"),
+            "welcome-exit": self.action_quit_safely,
             "overview-browse": self.action_sources,
             "overview-fresh": self.start_fresh,
         }
@@ -1033,6 +1264,14 @@ class NfSpliceApp(App[None]):
             event.stop()
 
     # ------------------------------------------------------------ actions
+
+    def action_welcome_option(self, number: int) -> None:
+        """Welcome's numbered options (text fields keep their digits)."""
+        view = self.current_page()
+        if self.screen is self.screen_stack[0] and view is not None:
+            choose = getattr(view, "action_option", None)
+            if choose is not None:
+                choose(number)
 
     def action_step_continue(self) -> None:
         if self.current == "review" and not self.model.drafts_valid:
@@ -1132,12 +1371,23 @@ class NfSpliceApp(App[None]):
         self.push_screen(QuitDialog(), chosen)
 
     def start_manually(self) -> None:
-        """Create the drafts once (existing drafts are kept), then Overview."""
+        """Create the drafts once (existing drafts are kept), then Overview.
+
+        With drafts already in place it continues at the first step that is
+        not ready yet.
+        """
         if self.model.all_drafts:
-            self.show_page("overview")
+            self.resume_work()
             return
         if self.inspect_only or self.model.read_only:
             self.set_status("Inspect-only mode: drafts are not created.", "warn")
+            return
+        if not self.model.authorised:
+            self.set_status(
+                "This is the original pipeline: prepare a safe working copy first, "
+                "or choose to work in this folder.",
+                "warn",
+            )
             return
         from nf_splice.services.workspace import initialise
 
@@ -1545,3 +1795,29 @@ def support_contact() -> str | None:
 
 
 __all__ = ["LABELS", "AgentSnapshot", "NfSpliceApp"]
+
+
+def _offline_readiness(provider: AgentProvider) -> ProviderReadiness | None:
+    """An offline scripted provider is ready at once; others are checked."""
+    from nf_splice.agents.providers.scripted import ScriptedProvider
+
+    return _readiness_of(provider) if isinstance(provider, ScriptedProvider) else None
+
+
+def _readiness_of(provider: AgentProvider) -> ProviderReadiness:
+    """The readiness of a provider object given with --provider (or a test)."""
+    from nf_splice.agents.providers import canonical
+    from nf_splice.agents.providers.readiness import ReadinessLevel, assess
+    from nf_splice.agents.providers.scripted import ScriptedProvider
+
+    capabilities = provider.capabilities
+    if isinstance(provider, ScriptedProvider):
+        return ProviderReadiness(
+            ReadinessLevel.VERIFIED,
+            capabilities.name,
+            None,
+            inference="remote" if capabilities.remote else "offline (no model)",
+            billing="none",
+            detail="Offline replay of a script: nothing to verify.",
+        )
+    return assess(canonical(capabilities.name), getattr(provider, "model", None))

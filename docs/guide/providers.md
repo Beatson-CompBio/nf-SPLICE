@@ -46,6 +46,15 @@ nf-splice provider test openai --allow-remote-model
 Every command that sends repository context to a remote model needs
 `--allow-remote-model`. A local OpenCode model does not.
 
+A passing test is recorded (in your configuration folder, without any
+secret) for that provider, model, sign-in method and account; a failing one
+clears the record. `provider doctor` reports the resulting readiness:
+*not configured*, *set-up incomplete*, *configured, not yet verified*,
+*verified* or *previously verified, now unavailable*. The workspace offers
+Assisted and Autonomous integration only for a verified provider, and its
+**Set up AI assistance** dialog runs the same steps. `session start` warns
+when its provider has not been verified, but still runs.
+
 ## Claude
 
 Install the extra and use a Claude Platform API key:

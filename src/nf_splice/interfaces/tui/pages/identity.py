@@ -98,16 +98,24 @@ class IdentityPage(PageView):
         ):
             table: DataTable[Any] = DataTable(id="identity-authors", cursor_type="row")
             yield table
-            with Horizontal(classes="row"):
-                yield Input(placeholder="Name", id="author-name")
-                yield Select(
-                    [("Person", "person"), ("Organisation", "organization")],
-                    value="person",
-                    allow_blank=False,
-                    id="author-type",
-                )
-                yield Input(placeholder="Affiliation", id="author-affiliation")
-                yield Input(placeholder="ORCID iD (optional)", id="author-orcid")
+            with Horizontal(classes="author-row"):
+                with Vertical(classes="author-cell"):
+                    yield Label("Name", classes="author-label")
+                    yield Input(placeholder="Full name", id="author-name")
+                with Vertical(classes="author-cell"):
+                    yield Label("Type", classes="author-label")
+                    yield Select(
+                        [("Person", "person"), ("Organisation", "organization")],
+                        value="person",
+                        allow_blank=False,
+                        id="author-type",
+                    )
+                with Vertical(classes="author-cell"):
+                    yield Label("Affiliation", classes="author-label")
+                    yield Input(placeholder="Institute", id="author-affiliation")
+                with Vertical(classes="author-cell"):
+                    yield Label("ORCID iD", classes="author-label")
+                    yield Input(placeholder="Optional", id="author-orcid")
             with Horizontal(classes="row"):
                 yield Button("Add author", id="author-add")
                 yield Button("Remove selected author", id="author-remove")

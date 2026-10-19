@@ -35,7 +35,19 @@ example contains files the catalogue does not classify. See
 ## Machine-readable output
 
 Most commands accept `--json` and then print stable JSON instead of text.
-Use it in scripts rather than parsing the text output.
+Use it in scripts rather than parsing the text output. No command prompts
+or opens the workspace when its output is not a terminal: a bare
+`nf-splice` then prints the help (exit status 2), and `source prepare`
+only prints where the copy is.
+
+## Drafts in a CI checkout
+
+A CI job works on a disposable checkout of the pipeline, so it may author
+in place. Authorise it explicitly; without the consent `init` refuses:
+
+```bash
+nf-splice init --in-place --json
+```
 
 ## Non-interactive publishing
 

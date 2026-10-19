@@ -22,14 +22,37 @@ The copy is created next to the original as `<name>-splice-integration`
 unless you choose `--into`. An existing, non-empty folder is never used.
 `nf-splice source info` shows where a copy came from.
 
+In a terminal, `source prepare` then opens the workspace on the copy, at its
+Welcome screen; `--no-open` (or `--json`, or output that is not a terminal)
+only prints where the copy is. nf-splice remembers the copies you make, in
+your own configuration folder: run `nf-splice` in a copy to resume it, in
+the original pipeline to be offered the copy you made earlier, or anywhere
+else to choose one. The Welcome screen of an original pipeline offers
+**Prepare a safe working copy** as well.
+
 If Git has no identity yet, set one, or pass it for this copy only:
 
 ```bash
 nf-splice source prepare ./my-pipeline --git-name "Ada Lovelace" --git-email ada@example.org
 ```
 
-To work on the original folder itself, which is riskier, use
-`--in-place --yes`.
+## Working in place
+
+nf-splice creates drafts only in a working copy. To work on the original
+folder itself, which is riskier, authorise it explicitly, in any one of
+these ways:
+
+```bash
+nf-splice source prepare ./my-pipeline --in-place --yes
+nf-splice init --in-place
+```
+
+or choose **Work in this folder instead…** on the workspace's Welcome
+screen. The consent is recorded in the folder's private
+`.splice-local/integration.json`. Without it, `nf-splice init`, the
+workspace and `nf-splice session start` refuse to create drafts in a
+pipeline folder and say how to make a copy. A folder that already has
+drafts (made in place by an earlier version) keeps working as before.
 
 ## What lives where
 

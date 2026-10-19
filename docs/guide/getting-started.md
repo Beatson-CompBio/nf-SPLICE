@@ -36,27 +36,50 @@ python -m pip install "git+https://github.com/Beatson-CompBio/nf-SPLICE.git"
 nf-splice --version
 ```
 
-Then open the workspace from your working copy (step 1 below) with
-`nf-splice --user "Your Name" tui`, or follow the commands on this page.
-
 To try a branch before it is merged, add `@<branch>` to the address, for
 example `"git+https://github.com/Beatson-CompBio/nf-SPLICE.git@wip/nf-splice-v0.3.0"`. If Git asks for credentials, sign in
 with your GitHub account; the repository is private.
 
+`nf-splice --help` shows where to start and the everyday commands;
+`nf-splice --help-all` lists every command.
+
 ## 1. Make a safe working copy
 
-nf-splice works on a copy, so your original pipeline is never changed:
+nf-splice works on a copy, so your original pipeline is never changed. From
+the folder that contains your pipeline:
 
 ```bash
-nf-splice source prepare ../my-pipeline
-cd ../my-pipeline-splice-integration
+nf-splice source prepare ./my-pipeline
+```
+
+This creates `my-pipeline-splice-integration` next to the original, on the
+local Git branch `nf-splice/integration-my-pipeline`, and, in a terminal,
+opens the workspace on the copy at its Welcome screen. Welcome shows the
+pipeline, the working copy and its branch, your progress, and whether AI
+assistance is set up:
+
+| AI assistance | Welcome offers |
+| --- | --- |
+| Not configured, incomplete or not yet verified | **Start manual integration**, **Set up AI assistance**, **Exit** |
+| Verified (its connection test passed) | **Manual integration**, **Assisted integration**, **Autonomous integration**, **AI provider settings**, **Exit** |
+
+Press the number beside an option, or Enter on it. To work from the command
+line instead, add `--no-open` and change into the copy:
+
+```bash
+nf-splice source prepare ./my-pipeline --no-open
+cd my-pipeline-splice-integration
 ```
 
 See [Working copy and Git](working-copy.md) for Git URLs and other options.
+To carry on later, run `nf-splice` in the copy: it opens the same workspace
+and offers to resume. Run anywhere else, it lists the working copies you
+have made.
 
 ## 2. Create the drafts
 
-From the root of the working copy:
+Choose **Start manual integration** on Welcome, or from the root of the
+working copy run:
 
 ```bash
 nf-splice init
@@ -77,6 +100,12 @@ exact, documented metadata (nothing scientific is guessed):
 Seeded values are a starting point, not a verdict: unknown values are empty
 and first guesses are marked as such. Nothing outside `.splice-local/` is
 changed, and running `init` again never touches a draft you already have.
+
+`init` refuses to create drafts in a folder that is not a working copy, so
+an original pipeline is never changed by accident. To author in a pipeline
+folder itself (for example a disposable CI checkout), authorise it with
+`nf-splice init --in-place`; the consent is recorded in
+`.splice-local/integration.json`.
 
 ## 3. Edit the files
 

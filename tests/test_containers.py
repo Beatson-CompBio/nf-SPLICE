@@ -530,7 +530,15 @@ def test_init_accepts_an_nf_core_modules_json(tmp_path: Path) -> None:
     )
     result = CliRunner().invoke(
         app,
-        ["--user", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
+        [
+            "--user",
+            "Ada",
+            "init",
+            "--in-place",
+            "--repository",
+            str(tmp_path),
+            "--accept-detected",
+        ],
     )
     assert result.exit_code == 0, result.output
     draft = read_layer(tmp_path, "components").draft

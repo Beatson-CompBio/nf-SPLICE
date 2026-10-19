@@ -31,7 +31,7 @@ def author_with_cli(root: Path) -> None:
         "profiles { local { includeConfig 'conf/local.config' } }\n",
         encoding="utf-8",
     )
-    _ok(root, "init", "--accept-detected", "--contract-version", "1.0.0")
+    _ok(root, "init", "--in-place", "--accept-detected", "--contract-version", "1.0.0")
     _ok(
         root,
         "configure",

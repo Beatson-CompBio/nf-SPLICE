@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.events import Resize
 from textual.widgets import Button, Static
 
@@ -21,48 +23,131 @@ JOURNEY = (
 )
 
 
+#: Every Welcome option: (action, button id). Which appear, and in which
+#: order, depends on the working copy and on AI readiness (:func:`options`).
+OPTION_IDS = {
+    "prepare": "welcome-prepare",
+    "open-copy": "welcome-open-copy",
+    "in-place": "welcome-in-place",
+    "inspect": "welcome-inspect",
+    "manual": "welcome-start",
+    "setup-ai": "welcome-setup-ai",
+    "assisted": "welcome-assisted",
+    "autonomous": "welcome-autonomous",
+    "ai-settings": "welcome-ai-settings",
+    "exit": "welcome-exit",
+}
+#: The authoring steps counted as progress.
+AUTHORING = (
+    "identity",
+    "assays",
+    "parameters",
+    "outputs",
+    "software",
+    "execution",
+    "provenance",
+)
+
+
+def options(authorised: bool, ai_usable: bool, known_copy: bool) -> tuple[str, ...]:
+    """The Welcome choices, in order (numbered from 1 on screen)."""
+    if not authorised:
+        return (
+            ("prepare",)
+            + (("open-copy",) if known_copy else ())
+            + ("in-place", "inspect", "exit")
+        )
+    if ai_usable:
+        return ("manual", "assisted", "autonomous", "ai-settings", "exit")
+    return ("manual", "setup-ai", "exit")
+
+
+def _copy_lines(model: WorkspaceModel, copies: tuple[str, ...]) -> list[str]:
+    record = model.integration or {}
+    lines = [f"Folder: {model.repository}"]
+    if model.branch:
+        lines.append(f"Git branch: {model.branch}")
+    if record.get("in_place"):
+        lines.append(
+            "Working in place, as you authorised: nf-SPLICE writes splice/ and "
+            ".splice-local/ in this folder."
+        )
+    elif record:
+        source = record.get("source") or "unknown"
+        revision = str(record.get("source_revision") or "")[:12]
+        lines.append(
+            f"Safe working copy of {source}"
+            + (f" at {revision}" if revision else "")
+            + ". The original is never changed."
+        )
+    elif model.has_drafts:
+        lines.append(
+            "Drafts already exist in this folder (created in place by an earlier "
+            "version), so the work continues here."
+        )
+    else:
+        lines.append(
+            "This is the original pipeline folder. nf-SPLICE has not changed it, "
+            "and will not unless you choose to work in place."
+        )
+        for path in copies[:3]:
+            lines.append(f"A working copy you made earlier: {path}")
+    return lines
+
+
+def _progress_lines(model: WorkspaceModel, session: str) -> list[str]:
+    if not model.has_drafts:
+        lines = ["No drafts yet."]
+    else:
+        states = model.step_states()
+        ready = sum(
+            1
+            for page_id in AUTHORING
+            if states[page_id] in {StepState.READY, StepState.PUBLISHED}
+        )
+        lines = [
+            f"{ready} of {len(AUTHORING)} steps ready · drafts in "
+            ".splice-local/drafts/",
+            "A bundle is published in splice/."
+            if model.published
+            else "Not published yet.",
+        ]
+    if session:
+        lines.append(session)
+    return lines
+
+
 class WelcomePage(PageView):
     page_id = "welcome"
     help_text = (
         "**Welcome.** nf-SPLICE prepares a SPLICE workflow bundle for this "
-        "Nextflow pipeline. Your work lives in six editable YAML drafts in "
-        "`.splice-local/drafts/`; nothing is published until you choose "
-        "Publish.\n\n**What you decide here:** how to start. Manual work and AI "
-        "work use the same drafts, so you can switch at any time.\n\n"
-        "**Example:** choose *Start manually*, confirm the identity, then ask "
-        "the AI to propose outputs while you keep editing."
+        "Nextflow pipeline. It works on a safe copy of the pipeline (or, if you "
+        "say so, in the folder itself). Your work lives in six editable YAML "
+        "drafts in `.splice-local/drafts/`; nothing is published until you "
+        "choose Publish.\n\n**What you decide here:** how to work. Manual, "
+        "Assisted and Autonomous integration use the same drafts and the same "
+        "validation, so you can switch at any time. Assisted and Autonomous "
+        "appear once an AI provider has passed its connection test.\n\n"
+        "**Keys:** press the number shown beside an option."
     )
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.choices: tuple[str, ...] = ()
 
     def body(self) -> ComposeResult:
         yield Static(BANNER, id="welcome-banner")
-        yield Static("nf-SPLICE · Nextflow Integration Toolkit", id="welcome-compact")
-        yield Static("", id="welcome-summary", classes="lead")
-        with Horizontal(classes="grid"):
-            with Card(title="Work manually"):
-                yield Static(
-                    "Use guided forms and make every scientific decision yourself. "
-                    "Ask AI is available on every page and never changes a file.",
-                    classes="muted",
-                )
-                yield Button("Start manually →", id="welcome-start", variant="primary")
-                yield Button("Resume where I left off", id="welcome-resume")
-            with Card(title="Work with AI"):
-                yield Static(
-                    "Approve AI proposals step by step, or let an agent work within "
-                    "a scope you approve. You can pause, take over a field and "
-                    "resume the same session.",
-                    classes="muted",
-                )
-                with Horizontal(classes="row"):
-                    yield Button("Ask AI", id="welcome-ask")
-                    yield Button("Assist with the first step", id="welcome-assist")
-                yield Button("Start autonomous integration", id="welcome-autonomous")
-        with Horizontal(classes="row"):
-            yield Button("Inspect only (no changes)", id="welcome-inspect")
-            yield Button("Theme", id="welcome-theme")
+        yield Static("nf-SPLICE | Nextflow Integration Toolkit", id="welcome-compact")
+        yield Static("", id="welcome-summary")
+        with Card(title="Working copy", id="welcome-copy-card"):
+            yield Static("", id="welcome-copy")
+            yield Static("", id="welcome-progress", classes="muted")
+        yield Static("", id="welcome-ai", classes="notice")
+        with Vertical(id="welcome-options"):
+            for identifier in OPTION_IDS.values():
+                yield Button("", id=identifier, classes="welcome-option")
         yield Static(
-            "Your original pipeline stays unchanged. Drafts are private until you "
-            "publish; nothing is pushed anywhere.",
+            "Drafts are private until you publish; nothing is pushed anywhere.",
             classes="muted",
         )
 
@@ -77,23 +162,109 @@ class WelcomePage(PageView):
         self.query_one("#welcome-banner").display = wide
         self.query_one("#welcome-compact").display = not wide
 
+    def action_option(self, number: int) -> None:
+        if 1 <= number <= len(self.choices):
+            self.query_one(f"#{OPTION_IDS[self.choices[number - 1]]}", Button).press()
+
+    def focus_first_option(self) -> None:
+        if self.choices:
+            # Without scrolling: the banner stays in view on short terminals.
+            self.query_one(f"#{OPTION_IDS[self.choices[0]]}", Button).focus(
+                scroll_visible=False
+            )
+
     def refresh_page(self, model: WorkspaceModel) -> None:
-        name = model.repository.name
-        if model.has_drafts:
-            text = (
-                f"Repository {name}: your drafts exist. Resume to continue where you "
-                "left off; starting again keeps every existing draft."
-            )
-        else:
-            text = (
-                f"Repository {name}: no drafts yet. Start manually creates six "
-                "editable drafts from exact metadata in this repository."
-            )
-        self.query_one("#welcome-summary", Static).update(plain(text))
-        self.query_one("#welcome-resume").display = model.has_drafts
-        self.query_one("#welcome-start", Button).label = (
-            "Continue manually →" if model.has_drafts else "Start manually →"
+        workspace = self.workspace
+        readiness = workspace.ai_readiness
+        snapshot = workspace.coordinator.snapshot()
+        pipeline = model.pipeline()
+        source = str((model.integration or {}).get("source") or "")
+        name = str(
+            pipeline.get("name")
+            or (Path(source).name if source and "://" not in source else "")
+            or model.repository.name
         )
+        version = str(pipeline.get("version") or "")
+        self.query_one("#welcome-summary", Static).update(
+            plain(f"Pipeline: {name}" + (f" {version}" if version else ""))
+        )
+        self.query_one("#welcome-copy", Static).update(
+            plain("\n".join(_copy_lines(model, workspace.known_copies)))
+        )
+        session = ""
+        if snapshot.session_id and snapshot.mode:
+            stage = snapshot.stage_title or snapshot.stage or "the start"
+            session = (
+                f"Agent session {snapshot.session_id}: {snapshot.mode}, "
+                f"{snapshot.label.lower()}, at {stage}."
+            )
+        self.query_one("#welcome-progress").display = model.authorised
+        self.query_one("#welcome-progress", Static).update(
+            plain("\n".join(_progress_lines(model, session)))
+        )
+        ai = self.query_one("#welcome-ai", Static)
+        if readiness is None:
+            ai_text = "AI assistance: checking…"
+        else:
+            ai_text = f"AI assistance: {readiness.summary()}"
+            if readiness.provider and readiness.billing:
+                ai_text += f"\nBilling: {readiness.billing}"
+            if readiness.usable:
+                ai_text += "\nAssisted and Autonomous integration are available."
+            else:
+                if readiness.provider and readiness.detail:
+                    ai_text += f"\n{readiness.detail}"
+                ai_text += "\nManual integration works fully without AI."
+        ai.set_class(bool(readiness and readiness.usable), "good")
+        ai.update(plain(ai_text))
+        first = not self.choices
+        self.choices = options(
+            model.authorised, workspace.ai_usable, bool(workspace.known_copies)
+        )
+        live = snapshot.session_id is not None and snapshot.state.value not in {
+            "completed",
+            "stopped",
+            "off",
+            "ready",
+        }
+        labels = {
+            "prepare": "Prepare a safe working copy (recommended)",
+            "open-copy": "Open the working copy you made earlier",
+            "in-place": "Work in this folder instead…",
+            "inspect": "Inspect only (no changes)",
+            "manual": (
+                "Continue manual integration"
+                if model.has_drafts
+                else "Start manual integration"
+            ),
+            "setup-ai": (
+                "Set up AI assistance to resume the agent session"
+                if live
+                else "Set up AI assistance"
+            ),
+            "assisted": (
+                "Resume assisted integration"
+                if live and snapshot.mode == "assisted"
+                else "Assisted integration"
+            ),
+            "autonomous": (
+                "Resume autonomous integration"
+                if live and snapshot.mode == "autonomous"
+                else "Autonomous integration"
+            ),
+            "ai-settings": "AI provider settings",
+            "exit": "Exit",
+        }
+        for action, identifier in OPTION_IDS.items():
+            button = self.query_one(f"#{identifier}", Button)
+            if action in self.choices:
+                number = self.choices.index(action) + 1
+                button.label = plain(f"[{number}] {labels[action]}")
+                button.display = True
+            else:
+                button.display = False
+        if first and workspace.current == "welcome":
+            self.call_after_refresh(self.focus_first_option)
 
 
 class OverviewPage(PageView):

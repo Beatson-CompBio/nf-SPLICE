@@ -101,6 +101,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0068 | Author the output catalogue; make route coverage an ingestion-readiness dimension and version analysis output independently | Current | — |
 | ADR-0069 | Infer no science deterministically: import identity from exact keys and let people declare assays | Current | — |
 | ADR-0070 | The container engine is optional profile metadata; authoring a bundle never needs a runtime | Current | — |
+| ADR-0071 | One first-run journey: task-oriented help, a safe working copy, a capability-aware Welcome | Current | — |
 
 ---
 
@@ -3814,6 +3815,8 @@ interface thread.
 - Headless tests drive the same widgets a person uses over real services
   and files; a scripted provider stands in for the model.
 
+> **Note (2026-10-19).** Amended by ADR-0071: Welcome is capability-aware (its options depend on the working copy and on verified AI readiness), the workspace shows AI actions only for a verified provider, and draft creation needs a working copy or recorded in-place consent.
+
 ---
 
 ## ADR-0068: Author the output catalogue; make route coverage an ingestion-readiness dimension and version analysis output independently
@@ -4033,3 +4036,92 @@ engine consumes.
 - The unreleased 0.3.0 execution-profiles schema is relaxed in place rather
   than revised, because no bundle has been published against it; consumers
   of draft bundles on the wip branch regenerate with `nf-splice build`.
+
+## ADR-0071: One first-run journey: task-oriented help, a safe working copy, a capability-aware Welcome
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-19 |
+| Source | Blocking first-run researcher UAT of 0.3.0 (help output, README and guides, `source prepare`, the Welcome page and form rendering) |
+| Scope | CLI help and entry points, source isolation, the workspace's Welcome page, AI provider readiness, form control styling, user documentation |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0062, ADR-0067 (amends the Welcome page and AI availability it describes) |
+| Implementation | `src/nf_splice/interfaces/help.py`, `src/nf_splice/cli.py`, `src/nf_splice/services/source.py`, `src/nf_splice/agents/providers/readiness.py`, `src/nf_splice/interfaces/tui/pages/start.py`, `src/nf_splice/interfaces/tui/app.py`, `src/nf_splice/interfaces/tui/launcher.py`, `src/nf_splice/interfaces/tui/provider_setup.py`, `src/nf_splice/interfaces/tui/tui.tcss`, `README.md`, `docs/guide/getting-started.md` |
+| Tests | `tests/test_first_run.py`, `tests/test_cli.py`, `tests/test_tui.py`, `tests/test_tui_agents.py` |
+
+### Context
+
+A new researcher's first contact with 0.3.0 contradicted itself. Root
+`--help` drew about 25 commands in Rich panels as wide as the terminal,
+architecture first. The README told people to run `init` in the pipeline
+itself, the getting-started guide to prepare a copy first, the workspace
+and AI guides to start elsewhere; the working-copy guide promised the
+original is never changed while `init` changed it. `source prepare` ended by
+asking for another command with a long absolute path. The Welcome page
+offered AI actions whether or not any provider worked. Form controls used
+Textual's `tall` border, whose partial-block glyphs (U+258A and U+258E)
+repeat on every row and, in fonts whose block glyphs do not fill the cell
+height, show as a column of square blocks; a `Select` had two such frames,
+one on itself and one on its `SelectCurrent`.
+
+### Decision
+
+- **Help is organised by task.** Root `--help` names the starting points
+  (`nf-splice`, `nf-splice source prepare PATH`, `nf-splice tui`) and the
+  everyday authoring, validation and AI commands; `--help-all` lists every
+  command by task with each group's subcommands. All help is plain text from
+  Click's formatter, at most 100 columns, wrapped without breaking at hyphens,
+  with no panels and no escape sequences. Command help stays complete.
+- **One lifecycle, several interfaces.** Pipeline, safe working copy,
+  Welcome, a chosen mode, the shared services, review and publish. Drafts
+  are created only where nf-splice is authorised: a copy made by `source
+  prepare`, a folder whose in-place consent is recorded (`source prepare
+  --in-place --yes`, `init --in-place`, or *Work in this folder instead…* on
+  Welcome), or a folder that already has drafts. `init`, the workspace and
+  `session start` otherwise refuse and say how to make a copy.
+- **Interactive hand-off.** In a terminal, `source prepare` opens the
+  workspace on the new copy at Welcome; `--no-open`, `--json` and
+  non-terminal output keep the old behaviour. A bare `nf-splice` in a
+  terminal opens the workspace on the current folder at Welcome, or, outside
+  a pipeline, a chooser of remembered working copies (kept in the person's
+  configuration folder) and of a folder or URL to prepare. Without a
+  terminal it prints the help and exits with status 2; it never prompts.
+  `--help` and `--version` are eager and never open the workspace.
+- **Readiness is verified, never assumed.** AI readiness has five levels
+  (not configured, set-up incomplete, configured but not verified, verified,
+  previously verified but unavailable). Only a passing connection test for
+  the same provider, model, sign-in method and account makes it verified;
+  the record holds no secret and lives in the person's preferences. Welcome
+  offers Assisted and Autonomous integration, and the workspace shows its
+  AI actions, only when verified; otherwise it offers manual integration and
+  a guided set-up over the existing provider services. Remote-model consent
+  for repository context is still asked in the dock; approvals, scopes and
+  validation are unchanged.
+- **Controls are framed with box-drawing lines.** Inputs, text areas,
+  selects (their `SelectCurrent` and overlay), radio sets and dialogs use
+  `round` or `heavy` borders; no vertically repeated partial-block border
+  remains. Labelled fields stack below the wide layout so controls keep a
+  usable width.
+
+### Alternatives rejected
+
+- Keeping Rich help and narrowing it with `rich_help_panel` groups: the
+  panels still stretch to the terminal and colour codes leak into pipes.
+- A second welcome or launcher workspace: the chooser only picks a folder;
+  everything else is the one workspace (ADR-0067).
+- Treating a saved provider or an installed SDK as ready: it is exactly the
+  misleading state the UAT reported.
+- Refusing every command outside a working copy: read-only commands and
+  existing in-place drafts keep working; only creating drafts needs consent.
+
+### Consequences
+
+- `init` in an original pipeline now fails with guidance; CI authorises its
+  disposable checkout with `init --in-place`.
+- The README quick start, the guides, root help and Welcome describe the
+  same journey and are tested together (`tests/test_first_run.py`).
+- A provider must pass `nf-splice provider test` (or the workspace's test)
+  before the workspace offers agent modes; `session start` warns but runs.
+

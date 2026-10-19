@@ -619,7 +619,15 @@ def test_a_generic_fastq_pipeline_gets_no_assay_inferred(tmp_path: Path) -> None
     write_pipeline(tmp_path)
     result = runner.invoke(
         app,
-        ["--user", "Ada", "init", "--repository", str(tmp_path), "--accept-detected"],
+        [
+            "--user",
+            "Ada",
+            "init",
+            "--in-place",
+            "--repository",
+            str(tmp_path),
+            "--accept-detected",
+        ],
     )
     assert result.exit_code == 0, result.output
     assert declared_capabilities(tmp_path) == []

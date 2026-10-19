@@ -64,7 +64,10 @@ def test_every_documented_command_and_option_exists() -> None:
         options = {
             name
             for parameter in command.params
-            for name in getattr(parameter, "opts", [])
+            for name in [
+                *getattr(parameter, "opts", []),
+                *getattr(parameter, "secondary_opts", []),
+            ]
         } | {"--help"}
         for token in remaining:
             if token.startswith("--"):

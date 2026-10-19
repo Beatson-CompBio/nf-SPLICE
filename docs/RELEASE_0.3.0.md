@@ -137,6 +137,10 @@ checks that every ADR exists, every path exists and every test file exists.
 | Integrator overview, `analysis_output.json` and companion-file references | ADR-0024, ADR-0028 | `docs/CONTRACTS.md`, `docs/schemas/README.md`, `docs/schemas/analysis-output.md`, `docs/schemas/companion-files.md` | `tests/test_docs.py` | Current |
 | Reference validated bundle and incomplete draft fixtures | ADR-0061, ADR-0036 | `tests/fixtures/example-0.3.0/`, `tests/fixtures/incomplete-drafts-0.3.0/` | `tests/test_reference_fixtures.py` | Current |
 | CI matrix 3.10-3.14, packaging and hygiene gates | ADR-0040 | `.github/workflows/ci.yml`, `pyproject.toml` | `tests/test_packaging.py` | Current |
+| Task-oriented root help, `--help-all` and plain wrapped command help | ADR-0071 | `src/nf_splice/interfaces/help.py`, `src/nf_splice/cli.py` | `tests/test_first_run.py`, `tests/test_cli.py` | Current |
+| Safe working copy enforced for draft creation; `init --in-place` consent; `source prepare` opens the workspace | ADR-0071 | `src/nf_splice/services/source.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/launcher.py` | `tests/test_first_run.py`, `tests/test_source_git_export.py` | Current |
+| Capability-aware Welcome with verified AI readiness and guided provider set-up | ADR-0071 | `src/nf_splice/agents/providers/readiness.py`, `src/nf_splice/interfaces/tui/pages/start.py`, `src/nf_splice/interfaces/tui/provider_setup.py`, `src/nf_splice/interfaces/tui/app.py` | `tests/test_first_run.py`, `tests/test_tui.py`, `tests/test_tui_agents.py` | Current |
+| Box-drawing control frames and stacked fields on medium terminals | ADR-0071 | `src/nf_splice/interfaces/tui/tui.tcss`, `src/nf_splice/interfaces/tui/pages/identity.py` | `tests/test_first_run.py` | Current |
 
 ## What 0.3.0 provides
 

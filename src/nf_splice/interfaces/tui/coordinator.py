@@ -50,6 +50,7 @@ from nf_splice.agents.stages import Stage, StageStatus, spec
 from nf_splice.domain.audit import Actor, ActorKind
 from nf_splice.interfaces.tui.model import bounded
 from nf_splice.interfaces.tui.navigation import Target, target_for
+from nf_splice.layout import SESSIONS_DIR
 from nf_splice.services.audit import resolve_actor
 
 
@@ -379,6 +380,10 @@ class AgentCoordinator:
             capabilities.cancellation,
         )
 
+    def tools_supported(self) -> bool:
+        """False only when a connected provider cannot call nf-splice tools."""
+        return self.provider is None or not self._capability_problem()
+
     @property
     def consent_needed(self) -> bool:
         view = self._provider_view()
@@ -395,6 +400,10 @@ class AgentCoordinator:
         A cancelled or completed session is never re-opened; an interrupted
         one is shown as paused, and continues only when a person resumes it.
         """
+        if not (self.repository / SESSIONS_DIR).is_dir():
+            # No session was ever started here; opening a folder (an original
+            # pipeline, say) must not create .splice-local/ in it.
+            return None
         try:
             sessions = SessionStore(self.repository).sessions()
         except Exception:

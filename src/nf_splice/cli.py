@@ -24,6 +24,13 @@ from nf_splice.contracts import (
 from nf_splice.domain.audit import ActorKind, ChangeOrigin
 from nf_splice.drafts import DraftConflictError, DraftStoreError
 from nf_splice.inspectors.containers import classify_reference, nextflow_cache_filename
+from nf_splice.interfaces.help import (
+    HELP_ALL_KEY,
+    MAX_WIDTH,
+    TAGLINE,
+    Group,
+    RootGroup,
+)
 from nf_splice.layers import ChangeContext, LayerError, confirm_values
 from nf_splice.layers import components as component_layer
 from nf_splice.layers import execution as execution_layer
@@ -62,76 +69,61 @@ from nf_splice.services.workspace import (
     workspace_status,
 )
 
+#: Plain, wrapped help for every command: no wide panels, no escape codes.
+_HELP_SETTINGS: dict[str, Any] = {"max_content_width": MAX_WIDTH}
+
+
+def _group(help_text: str) -> typer.Typer:
+    """A command group with plain help that shows its commands when bare."""
+    return typer.Typer(
+        cls=Group,
+        help=help_text,
+        no_args_is_help=True,
+        rich_markup_mode=None,
+        context_settings=_HELP_SETTINGS,
+    )
+
+
 app = typer.Typer(
     name="nf-splice",
-    help="Author and maintain a SPLICE workflow bundle from editable drafts.",
+    cls=RootGroup,
+    help=TAGLINE,
     add_completion=False,
-    no_args_is_help=True,
+    invoke_without_command=True,
+    rich_markup_mode=None,
+    context_settings=_HELP_SETTINGS,
 )
-analysis_output_app = typer.Typer(
-    help="Generate or validate the per-job analysis_output.json file.",
-    no_args_is_help=True,
+analysis_output_app = _group(
+    "Generate or validate the per-job analysis_output.json file."
 )
 app.add_typer(analysis_output_app, name="analysis-output")
-schema_app = typer.Typer(
-    help="List, show and validate the five workflow-bundle contract families.",
-    no_args_is_help=True,
+schema_app = _group(
+    "List, show and validate the five workflow-bundle contract families."
 )
 app.add_typer(schema_app, name="schema")
-audit_app = typer.Typer(
-    help="Inspect actor attribution and the private local audit store.",
-    no_args_is_help=True,
-)
+audit_app = _group("Inspect actor attribution and the private local audit store.")
 app.add_typer(audit_app, name="audit")
-draft_app = typer.Typer(
-    help="List, inspect, validate, edit, confirm and promote draft files.",
-    no_args_is_help=True,
-)
+draft_app = _group("List, inspect, validate, edit, confirm and promote draft files.")
 app.add_typer(draft_app, name="draft")
-containers_app = typer.Typer(
-    help="Classify container references and verify downloadable images.",
-    no_args_is_help=True,
-)
+containers_app = _group("Classify container references and verify downloadable images.")
 app.add_typer(containers_app, name="containers")
-session_app = typer.Typer(
-    help="AI-assisted and autonomous integration sessions (agentic AI).",
-    no_args_is_help=True,
-)
+session_app = _group("AI-assisted and autonomous integration sessions (agentic AI).")
 app.add_typer(session_app, name="session")
-skills_app = typer.Typer(
-    help="The nf-splice skills that guide AI agents.",
-    no_args_is_help=True,
-)
+skills_app = _group("The nf-splice skills that guide AI agents.")
 app.add_typer(skills_app, name="skills")
-workspace_app = typer.Typer(
-    help="Check and repair the private .splice-local/ workspace.",
-    no_args_is_help=True,
-)
+workspace_app = _group("Check and repair the private .splice-local/ workspace.")
 app.add_typer(workspace_app, name="workspace")
-source_app = typer.Typer(
-    help="Isolate the pipeline in its own integration working copy.",
-    no_args_is_help=True,
-)
+source_app = _group("Isolate the pipeline in its own integration working copy.")
 app.add_typer(source_app, name="source")
-git_app = typer.Typer(
-    help="Review and commit the bundle locally; push only when you choose.",
-    no_args_is_help=True,
-)
+git_app = _group("Review and commit the bundle locally; push only when you choose.")
 app.add_typer(git_app, name="git")
-preview_app = typer.Typer(
-    help="Show derived, non-authoritative previews of published files.",
-    no_args_is_help=True,
-)
+preview_app = _group("Show derived, non-authoritative previews of published files.")
 app.add_typer(preview_app, name="preview")
-catalogue_app = typer.Typer(
-    help="Browse the SPLICE assay and modality vocabulary (offline snapshot).",
-    no_args_is_help=True,
+catalogue_app = _group(
+    "Browse the SPLICE assay and modality vocabulary (offline snapshot)."
 )
 app.add_typer(catalogue_app, name="catalogue")
-provider_app = typer.Typer(
-    help="Choose, sign in to, diagnose and test AI providers.",
-    no_args_is_help=True,
-)
+provider_app = _group("Choose, sign in to, diagnose and test AI providers.")
 app.add_typer(provider_app, name="provider")
 
 RepositoryOption = Annotated[
@@ -215,20 +207,58 @@ def _call(func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
     return _run(lambda: func(*args, **kwargs))
 
 
+def _require_authorised(repository: Path) -> None:
+    """Drafts are created only in a working copy or with in-place consent."""
+    from nf_splice.services.source import NotIsolatedError, require_authorised
+
+    try:
+        require_authorised(repository)
+    except NotIsolatedError as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+
+
 def _version_callback(value: bool) -> None:
     if value:
         typer.echo(f"nf-splice {__version__}")
         raise typer.Exit
 
 
+def _help_all_callback(context: typer.Context, value: bool) -> None:
+    if value and not context.resilient_parsing:
+        context.meta[HELP_ALL_KEY] = True
+        typer.echo(context.get_help())
+        raise typer.Exit
+
+
+def _interactive_terminal() -> bool:
+    """Whether a person is at a terminal that can show the workspace."""
+    import os
+    import sys
+
+    return (
+        sys.stdin.isatty()
+        and sys.stdout.isatty()
+        and os.environ.get("TERM", "") not in {"", "dumb"}
+    )
+
+
 @app.callback()
 def cli(
+    context: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
         callback=_version_callback,
         is_eager=True,
         help="Show the nf-splice version and exit.",
+    ),
+    help_all: bool = typer.Option(
+        False,
+        "--help-all",
+        callback=_help_all_callback,
+        is_eager=True,
+        help="Show every command, grouped by task, and exit.",
     ),
     user: str | None = typer.Option(
         None,
@@ -238,8 +268,16 @@ def cli(
         envvar="NF_SPLICE_USER",
     ),
 ) -> None:
-    """Author and maintain a SPLICE workflow bundle from editable drafts."""
+    """Prepare, integrate and validate Nextflow pipelines for SPLICE."""
+    del version, help_all  # handled eagerly by their callbacks
     _STATE["user"] = user
+    if context.invoked_subcommand is not None:
+        return
+    if not _interactive_terminal():
+        # Scripts and redirected output get the help, never a prompt.
+        typer.echo(context.get_help())
+        raise typer.Exit(code=2)
+    _start_interactively(Path.cwd())
 
 
 def _value(text: str) -> Any:
@@ -356,9 +394,24 @@ def init_command(
         False,
         help="Explicitly confirm every unanimous detected identity value.",
     ),
+    in_place: bool = typer.Option(
+        False,
+        "--in-place",
+        help="Author in this folder itself rather than a safe copy made by "
+        "`nf-splice source prepare` (records your consent).",
+    ),
     json_output: JsonOption = False,
 ) -> None:
     """Create absent drafts from evidence; existing drafts are never replaced."""
+    if in_place:
+        from nf_splice.services.source import SourceError, authorise_in_place
+
+        try:
+            authorise_in_place(repository)
+        except (SourceError, OSError) as error:
+            typer.echo(str(error), err=True)
+            raise typer.Exit(code=2) from error
+    _require_authorised(repository)
     explicit = {
         key: value
         for key, value in {
@@ -1632,9 +1685,15 @@ def source_prepare_command(
         False, "--in-place", help="Work on the original instead of a copy (risky)."
     ),
     yes: bool = typer.Option(False, "--yes", help="Confirm working in place."),
+    no_open: bool = typer.Option(
+        False,
+        "--no-open",
+        help="Only create the copy; do not open the workspace on it afterwards "
+        "(it opens only in a terminal anyway).",
+    ),
     json_output: JsonOption = False,
 ) -> None:
-    """Create the isolated working copy that nf-splice will change."""
+    """Create the safe working copy that nf-splice will change, then open it."""
     from nf_splice.services.source import SourceError, prepare_integration_copy
 
     if in_place and not yes:
@@ -1673,9 +1732,20 @@ def source_prepare_command(
         )
     for item in copy.skipped[:20]:
         typer.echo(f"not copied: {item}")
+    from nf_splice.services.source import remember_integration
+
+    remember_integration(Path(copy.path))
     typer.echo(
-        "The original pipeline is unchanged. Continue in the copy, for example: "
-        f"nf-splice init --repository {copy.path}"
+        "nf-splice will change this folder only; the original stays as it is."
+        if in_place
+        else "The original pipeline is unchanged; nf-splice works in the copy."
+    )
+    if not no_open and _interactive_terminal():
+        _open_workspace(Path(copy.path), start="welcome")
+        return
+    typer.echo(
+        "Next: run `nf-splice` in that folder to open the workspace, or "
+        "`nf-splice init` there to create the drafts."
     )
 
 
@@ -2604,6 +2674,24 @@ def _make_provider(
         raise typer.BadParameter(str(error)) from error
 
 
+def _warn_unverified(agent: Any, model: str | None) -> None:
+    """Say so when a session starts with a provider whose test has not passed."""
+    from nf_splice.agents.providers import NAMES, canonical
+    from nf_splice.agents.providers.readiness import assess
+
+    name = canonical(agent.capabilities.name)
+    if name not in NAMES or name == "scripted":
+        return
+    readiness = assess(name, model)
+    if not readiness.usable:
+        check = f"`nf-splice provider test {name}`"
+        typer.echo(
+            f"note: {name} is {readiness.label.lower()}; run {check} to check it "
+            "(no repository content is sent).",
+            err=True,
+        )
+
+
 def _open_engine(repository: Path, session: str | None) -> Any:
     from nf_splice.agents import SessionEngine
 
@@ -2888,6 +2976,8 @@ def session_start_command(
     )
     policy.review = review.replace("-", "_")
     agent = _make_provider(provider, script, model=model)
+    _require_authorised(repository)
+    _warn_unverified(agent, model)
     engine = _agent_run(
         lambda: SessionEngine.create(
             repository,
@@ -3486,7 +3576,7 @@ def catalogue_compare_command(
 
 
 def _diagnosis_text(diagnosis: Any) -> str:
-    state = "ready" if diagnosis.ready else "not ready"
+    state = "installed and signed in" if diagnosis.ready else "not ready"
     lines = [
         f"{diagnosis.provider}: {state}",
         f"  auth:      {diagnosis.auth_method}"
@@ -3555,15 +3645,27 @@ def provider_doctor_command(
 ) -> None:
     """Diagnose providers: installed parts, sign-in, routing and billing."""
     from nf_splice.agents.providers import NAMES, diagnose
+    from nf_splice.agents.providers.readiness import assess
 
     names = [_provider_name(name)] if name else list(NAMES)
     found = []
     for item in names:
         found.append(_agent_run(partial(diagnose, item, online=online)))
+    readiness = [assess(item.provider) for item in found]
     if json_output:
-        typer.echo(dumps({"providers": [item.to_json() for item in found]}))
+        documents = []
+        for diagnosis, level in zip(found, readiness, strict=True):
+            document = diagnosis.to_json()
+            document["readiness"] = level.to_json()
+            documents.append(document)
+        typer.echo(dumps({"providers": documents}))
         return
-    typer.echo("\n\n".join(_diagnosis_text(item) for item in found))
+    typer.echo(
+        "\n\n".join(
+            _diagnosis_text(diagnosis) + f"\n  readiness: {level.label}"
+            for diagnosis, level in zip(found, readiness, strict=True)
+        )
+    )
 
 
 @provider_app.command("models")
@@ -3727,10 +3829,21 @@ def provider_test_command(
 
     from nf_splice.agents.protocol import require_consent
     from nf_splice.agents.providers.check import tool_call_check
+    from nf_splice.agents.providers.readiness import (
+        clear_verification,
+        record_verification,
+    )
 
-    provider = _make_provider(_provider_name(name), None, model=model)
+    provider_name = _provider_name(name)
+    provider = _make_provider(provider_name, None, model=model)
     _agent_run(lambda: require_consent(provider, allow_remote_model))
     result = _agent_run(lambda: asyncio.run(tool_call_check(provider, model)))
+    if provider_name != "scripted":
+        # The workspace offers Assisted and Autonomous only after a pass.
+        if result["passed"]:
+            record_verification(provider_name, model)
+        else:
+            clear_verification(provider_name)
     if json_output:
         typer.echo(dumps(result))
     else:
@@ -3752,8 +3865,9 @@ def tui_command(
     provider: str | None = typer.Option(
         None,
         "--provider",
-        help="Make AI available in the workspace (see `nf-splice provider list`); "
-        "without it everything works manually and AI shows as off.",
+        help="The AI provider to use (default: the one saved with "
+        "'nf-splice provider select'). Assisted and Autonomous appear once its "
+        "connection test has passed; manual work never needs one.",
     ),
     script: ScriptOption = None,
     allow_remote_model: AllowRemoteOption = False,
@@ -3762,25 +3876,67 @@ def tui_command(
     ),
 ) -> None:
     """Open the workspace: author by hand, ask AI, approve proposals or delegate."""
+    agent = _make_provider(provider, script) if provider is not None else None
+    _open_workspace(
+        repository,
+        agent=agent,
+        allow_remote_model=allow_remote_model,
+        inspect_only=inspect_only,
+        no_session=no_session,
+    )
+
+
+def _open_workspace(
+    repository: Path,
+    *,
+    agent: Any = None,
+    allow_remote_model: bool = False,
+    inspect_only: bool = False,
+    no_session: bool = False,
+    start: str | None = None,
+) -> None:
+    """Run the workspace; follow it when it opens another working copy.
+
+    Preparing a safe copy from Welcome, or choosing a remembered copy, ends
+    the workspace on one folder and reopens it on the other, on Welcome.
+    """
     from nf_splice.interfaces.tui import (
         NavigationStore,
         NfSpliceApp,
         default_session_directory,
     )
 
-    navigation = NavigationStore(
-        None if no_session else default_session_directory(repository)
-    )
-    agent = _make_provider(provider, script) if provider is not None else None
-    NfSpliceApp(
-        repository,
-        navigation=navigation,
-        user=_STATE["user"],
-        agent_provider=agent,
-        allow_remote_model=allow_remote_model,
-        remember_theme=True,
-        inspect_only=inspect_only,
-    ).run()
+    current: Path | None = repository
+    while current is not None:
+        navigation = NavigationStore(
+            None if no_session else default_session_directory(current)
+        )
+        current = NfSpliceApp(
+            current,
+            navigation=navigation,
+            user=_STATE["user"],
+            agent_provider=agent,
+            allow_remote_model=allow_remote_model,
+            remember_theme=True,
+            inspect_only=inspect_only,
+            start=start,
+        ).run()
+        start = "welcome"
+
+
+def _start_interactively(folder: Path) -> None:
+    """Bare `nf-splice` at a terminal: this folder's workspace, or a chooser."""
+    from nf_splice.services.source import authorised, looks_like_pipeline
+
+    folder = folder.resolve()
+    if authorised(folder) or looks_like_pipeline(folder):
+        _open_workspace(folder, start="welcome")
+        return
+    from nf_splice.interfaces.tui.launcher import LauncherApp
+
+    chosen = LauncherApp(folder).run()
+    if chosen is not None:
+        _open_workspace(chosen, start="welcome")
 
 
 def main() -> None:

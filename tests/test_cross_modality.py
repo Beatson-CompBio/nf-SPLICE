@@ -204,7 +204,7 @@ def test_the_same_journey_authors_and_publishes_any_domain(
     tmp_path: Path, journey: Journey
 ) -> None:
     root = _copy(tmp_path, journey)
-    _run("init", "--repository", str(root))
+    _run("init", "--in-place", "--repository", str(root))
 
     # Exact, declared metadata only; nothing scientific inferred.
     pipeline = _data(root, "bundle")["pipeline"]
@@ -299,7 +299,7 @@ def test_the_same_journey_authors_and_publishes_any_domain(
 def test_an_ambiguous_pipeline_gets_no_assay_and_no_outputs(tmp_path: Path) -> None:
     root = tmp_path / "ambiguous"
     shutil.copytree(FIXTURES / "ambiguous-reads-0.3.0" / "repository", root)
-    _run("init", "--repository", str(root))
+    _run("init", "--in-place", "--repository", str(root))
     pipeline = _data(root, "bundle")["pipeline"]
     assert pipeline["assay_capabilities"] == []
     # The description is the declared metadata key, never the README prose.
@@ -320,7 +320,7 @@ async def test_every_workspace_page_opens_for_any_domain(
     tmp_path: Path, journey: Journey
 ) -> None:
     root = _copy(tmp_path, journey)
-    _run("init", "--repository", str(root))
+    _run("init", "--in-place", "--repository", str(root))
     workspace = NfSpliceApp(root, user="Ada", start="overview")
     async with workspace.run_test(size=(100, 32)) as pilot:
         await settle(workspace, pilot)

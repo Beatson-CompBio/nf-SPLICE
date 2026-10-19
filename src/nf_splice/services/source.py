@@ -399,3 +399,125 @@ def prepare_integration_copy(
         copy.branch = work_branch
         copy.source_revision = None
     return _record(copy)
+
+
+# ------------------------------------------------------------ authorisation
+
+
+class NotIsolatedError(SourceError):
+    """The folder is neither an integration copy nor authorised in place."""
+
+
+def has_drafts(root: Path) -> bool:
+    drafts = Path(root) / PRIVATE_DIR / "drafts"
+    return drafts.is_dir() and any(drafts.glob("*.draft.yaml"))
+
+
+def authorised(root: Path) -> bool:
+    """Whether nf-splice may write here: a prepared copy, consent or drafts.
+
+    A folder with drafts was authorised when they were created (earlier
+    releases created them in place), so its work continues.
+    """
+    root = Path(root)
+    return read_record(root) is not None or has_drafts(root)
+
+
+def isolation_guidance(root: Path) -> str:
+    prepare = f"`nf-splice source prepare {root}`"
+    return (
+        f"{root} is not an nf-splice working copy, so nf-splice will not change "
+        f"it. Make a safe copy with {prepare} (recommended), or authorise "
+        "working in this folder itself with `nf-splice init --in-place`."
+    )
+
+
+def require_authorised(root: Path) -> None:
+    """Refuse to create drafts in an original pipeline nobody authorised."""
+    if not authorised(root):
+        raise NotIsolatedError(isolation_guidance(Path(root)))
+
+
+def authorise_in_place(root: Path) -> IntegrationCopy | None:
+    """Record explicit consent to author in this folder (kept if present)."""
+    if read_record(root) is not None:
+        return None
+    return prepare_integration_copy(str(root), in_place=True)
+
+
+def looks_like_pipeline(root: Path) -> bool:
+    root = Path(root)
+    return (root / "main.nf").is_file() or (root / "nextflow.config").is_file()
+
+
+# ------------------------------------------------------------ recent copies
+
+_RECENT = "integrations.json"
+_RECENT_LIMIT = 12
+
+
+def _recent_paths() -> list[str]:
+    from nf_splice import credentials
+
+    try:
+        stored = credentials.read_secret(_RECENT) or {}
+    except (OSError, ValueError):
+        return []
+    paths = stored.get("recent")
+    return [str(item) for item in paths] if isinstance(paths, list) else []
+
+
+def remember_integration(root: Path) -> None:
+    """Remember a working copy for the start screen (your config folder only)."""
+    from nf_splice import credentials
+
+    path = str(Path(root).resolve())
+    if read_record(Path(path)) is None:
+        return
+    paths = [path] + [item for item in _recent_paths() if item != path]
+    try:
+        credentials.write_secret(_RECENT, {"recent": paths[:_RECENT_LIMIT]})
+    except OSError:
+        return
+
+
+def recent_integrations(limit: int = 8) -> list[dict[str, Any]]:
+    """Working copies opened before that still exist, most recent first."""
+    found = []
+    for path in _recent_paths():
+        root = Path(path)
+        try:
+            record = read_record(root) if root.is_dir() else None
+        except (OSError, ValueError):
+            record = None
+        if record is None:
+            continue
+        found.append({**record, "path": path, "has_drafts": has_drafts(root)})
+        if len(found) == limit:
+            break
+    return found
+
+
+def copies_of(source: Path) -> list[dict[str, Any]]:
+    """Remembered working copies made from this original folder."""
+    origin = str(Path(source).resolve())
+    return [
+        item
+        for item in recent_integrations(_RECENT_LIMIT)
+        if not item.get("in_place") and item.get("source") == origin
+    ]
+
+
+def current_branch(root: Path) -> str | None:
+    """The checked-out branch of a working copy (``None`` without Git).
+
+    Read from ``.git/HEAD`` so the workspace can show it on every refresh
+    without starting Git.
+    """
+    head = Path(root) / ".git" / "HEAD"
+    try:
+        text = head.read_text(encoding="utf-8").strip() if head.is_file() else ""
+    except (OSError, UnicodeError):
+        return None
+    prefix = "ref: refs/heads/"
+    return text[len(prefix) :] if text.startswith(prefix) else None

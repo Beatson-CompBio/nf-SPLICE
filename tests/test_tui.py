@@ -30,6 +30,7 @@ from nf_splice.interfaces.tui.modals import (
 )
 from nf_splice.interfaces.tui.navigation import PAGE_IDS, StepState, Target
 from nf_splice.layers.base import LAYERS, read_layer
+from nf_splice.services.source import authorise_in_place
 from tui_helpers import page_text, press, press_named, screenshot, settle
 
 pytestmark = pytest.mark.asyncio
@@ -62,6 +63,8 @@ def _pipeline(tmp_path: Path) -> Path:
         "    description = 'Reference pipeline.'\n}\n",
         encoding="utf-8",
     )
+    # A working copy authorised for in-place authoring (ADR-0071).
+    authorise_in_place(root)
     return root
 
 
@@ -95,7 +98,8 @@ async def test_start_manually_creates_six_drafts_once_then_overview(
         app.show_page("welcome")
         await settle(app, pilot)
         await press(app, pilot, "#welcome-start")
-        assert app.current == "overview"
+        # Continuing opens the first step not ready yet; drafts are kept.
+        assert app.current not in {"welcome", "overview"}
         assert _drafts(root) == before  # starting again preserves every draft
 
 

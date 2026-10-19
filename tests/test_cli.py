@@ -32,7 +32,7 @@ def test_version_option() -> None:
 
 
 def test_help_lists_every_command_group() -> None:
-    result = runner.invoke(app, ["--help"])
+    result = runner.invoke(app, ["--help-all"])
     assert result.exit_code == 0
     for command in (
         "inspect",
@@ -51,7 +51,7 @@ def test_help_lists_every_command_group() -> None:
         "tui",
     ):
         assert command in result.output
-    listing = result.output.split("Commands", 1)[-1]
+    listing = result.output.split("Working copy and workspace", 1)[-1]
     assert "migrate-state" not in listing  # 0.1.0 state relocation is gone
     assert "migrate" in listing and "workspace" in listing
     for group, commands in (

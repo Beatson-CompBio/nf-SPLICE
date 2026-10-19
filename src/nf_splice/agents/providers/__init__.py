@@ -108,8 +108,10 @@ def select(name: str, model: str | None = None) -> None:
         )
     saved = credentials.preferences()
     saved["provider"] = name
-    if model is not None:
+    if model:
         saved[f"{name}_model"] = model
+    elif model == "":  # an explicit blank: back to the provider's default
+        saved.pop(f"{name}_model", None)
     credentials.save_preferences(saved)
 
 

@@ -95,7 +95,7 @@ unclassified or ambiguous files. Use `--json` in CI.
 The pipeline aligns with STAR or HISAT2, can quantify with Salmon and can
 skip QC. You have results from one STAR run with QC.
 
-1. Create the drafts and list the routes:
+1. In the working copy, create the drafts and list the routes:
 
    ```bash
    nf-splice init
@@ -130,7 +130,7 @@ skip QC. You have results from one STAR run with QC.
 
 ## Tutorial: no example results
 
-You can integrate a pipeline without any results:
+You can integrate a pipeline without any results. In the working copy:
 
 ```bash
 nf-splice init

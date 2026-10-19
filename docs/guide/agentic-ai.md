@@ -12,7 +12,7 @@ you would use yourself. You choose how much control to keep.
 | Who drives | You | The agent, stage by stage | The agent, unattended |
 | Changes | You make them | The agent proposes; you approve | The agent makes routine decisions within the scope you approved |
 | AI | Optional *Ask AI* questions, read-only | A conversation: approve, object, ask, reply | None needed during the run; a full report at the end |
-| Start with | `nf-splice tui` or the [command line](getting-started.md) | `nf-splice session start --mode assisted` | `nf-splice session start --mode autonomous` |
+| Start with | **Start manual integration** on Welcome, or the [command line](getting-started.md) | **Assisted integration** on Welcome, or `nf-splice session start --mode assisted` | **Autonomous integration** on Welcome, or `nf-splice session start --mode autonomous` |
 | Guide | [Ask AI in manual mode](ask-ai.md) | [AI-assisted sessions](assisted-sessions.md) | [Autonomous integration](autonomous.md) |
 
 All three write the same draft files and pass the same validation. You can
@@ -20,7 +20,14 @@ switch at any time, for example finishing an autonomous run's open questions
 in an assisted session, or pausing a session to edit a draft yourself.
 
 nf-splice works completely without AI. Nothing AI-related is loaded until
-you ask for it.
+you ask for it. Every mode works in a safe working copy made by
+`nf-splice source prepare` (see [Working copy and Git](working-copy.md)).
+
+The workspace's Welcome screen offers Assisted and Autonomous integration
+only when your provider is *verified*: selected, installed, signed in, and
+its connection test (`nf-splice provider test`, or **Set up AI
+assistance**) has passed for the same model, sign-in and account. See
+[AI readiness](workspace.md#ai-readiness).
 
 ## Install
 

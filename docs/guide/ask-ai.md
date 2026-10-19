@@ -31,7 +31,8 @@ nf-splice ask "What does this mean?" --error "missing_assay_classification: no a
 nf-splice tui --provider claude
 ```
 
-Choose **Ask AI about this screen** on any page, or press **Ctrl+A**, type a
+Ask appears once the provider's connection test has passed (see
+[AI readiness](workspace.md#ai-readiness)). Choose **Ask AI about this screen** on any page, or press **Ctrl+A**, type a
 question (or **Use example**) and choose **Ask AI**. The answer knows which
 page you are on and what is selected. A remote provider asks for your
 consent in the dock first.
@@ -40,7 +41,8 @@ consent in the dock first.
 
 You will review a pipeline yourself and ask AI two questions on the way.
 
-1. Create the drafts and open the workspace:
+1. In your working copy (see [Getting started](getting-started.md)),
+   create the drafts and open the workspace:
 
    ```bash
    nf-splice init

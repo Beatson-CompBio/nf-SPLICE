@@ -70,31 +70,61 @@ Claude, OpenAI (including your ChatGPT Plus or Pro plan), Codex and OpenCode
 
 ## Quick start
 
-From the root of your pipeline repository, `init` writes six editable drafts
-filled from exact metadata in the repository. Edit them in any editor (or
-the workspace) and build:
+From the folder that contains your pipeline (here `my-pipeline`):
 
 ```bash
+nf-splice source prepare ./my-pipeline
+```
+
+This makes a safe working copy, `my-pipeline-splice-integration`, next to
+the original, on its own local Git branch `nf-splice/integration-my-pipeline`,
+and opens the workspace on it. Your original pipeline is never changed. On
+the Welcome screen choose **Start manual integration**, or **Set up AI
+assistance** to add Assisted and Autonomous integration. Leave with Ctrl+Q;
+to carry on later, run `nf-splice` in the copy (or anywhere: it lists your
+working copies).
+
+`nf-splice --help` lists the everyday commands; `nf-splice --help-all`
+lists every command.
+
+### From the command line
+
+The same lifecycle without the workspace, for editors, scripts and CI:
+
+```bash
+nf-splice source prepare ./my-pipeline --no-open
+cd my-pipeline-splice-integration
 nf-splice init
-code .splice-local/drafts/          # or: nf-splice tui
-nf-splice draft validate outputs
+code .splice-local/drafts/          # edit the six drafts in any editor
+nf-splice status
 nf-splice build all && nf-splice validate
 ```
 
-`build` publishes the bundle; `validate` (and every other command) then says
-whether it is ready for SPLICE ingestion, and why not.
+`init` writes six editable drafts from exact metadata in the repository.
+`build` publishes the bundle in `splice/`; `validate` (and every other
+command) then says whether it is ready for SPLICE ingestion, and why not.
+nf-splice creates drafts only in a working copy made by `source prepare`;
+to work in a pipeline folder itself (for example a disposable CI checkout),
+authorise it explicitly with `nf-splice init --in-place`.
 
-or let an agent investigate the pipeline and propose each stage's revision
-for your approval:
+### With AI
+
+Set up a provider once and run its connection test (it sends no repository
+content):
 
 ```bash
-nf-splice --user "Your Name" session start --mode assisted --provider claude --allow-remote-model
+nf-splice provider select claude
+nf-splice provider auth claude --api-key
+nf-splice provider test claude --allow-remote-model
 ```
 
-or let it do the whole integration unattended and report back:
+Once the test has passed, the Welcome screen offers **Assisted
+integration** (the agent proposes each stage; you approve) and
+**Autonomous integration** (the agent works within a scope you approve).
+From the command line, inside the working copy:
 
 ```bash
-nf-splice --user "Your Name" session start --mode autonomous --provider claude --allow-remote-model --example-output ../results
+nf-splice --user "Your Name" session start --mode assisted --allow-remote-model
 ```
 
 Follow the [Getting started guide](docs/guide/getting-started.md) for the

@@ -13,6 +13,7 @@ Global options go before the command name, for example
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--version` |  |  | Show the nf-splice version and exit. |
+| `--help-all` |  |  | Show every command, grouped by task, and exit. |
 | `--user` | `<str>` |  | Your public name, recorded with the changes you make and the sessions you approve (never an e-mail address). |
 
 ## Commands
@@ -80,7 +81,7 @@ Global options go before the command name, for example
 | [`nf-splice skills export`](#nf-splice-skills-export) | Copy the skills where an external coding agent discovers them. |
 | [`nf-splice workspace check`](#nf-splice-workspace-check) | Report problems with the private workspace and published folder (read-only). |
 | [`nf-splice workspace untrack`](#nf-splice-workspace-untrack) | Stop Git tracking .splice-local/ (files kept; history not rewritten). |
-| [`nf-splice source prepare`](#nf-splice-source-prepare) | Create the isolated working copy that nf-splice will change. |
+| [`nf-splice source prepare`](#nf-splice-source-prepare) | Create the safe working copy that nf-splice will change, then open it. |
 | [`nf-splice source info`](#nf-splice-source-info) | Show where this integration copy came from (read-only). |
 | [`nf-splice git status`](#nf-splice-git-status) | Changes to the bundle and other files (read-only). |
 | [`nf-splice git diff`](#nf-splice-git-diff) | Diff of splice/ and .gitignore against the last commit (read-only). |
@@ -146,6 +147,7 @@ nf-splice init [OPTIONS]
 | `--licence` | `<str>` |  | Licence identifier. |
 | `--contract-version` | `<str>` |  | Reviewed analysis-output schema version (X.Y.Z). |
 | `--accept-detected` |  |  | Explicitly confirm every unanimous detected identity value. |
+| `--in-place` |  |  | Author in this folder itself rather than a safe copy made by `nf-splice source prepare` (records your consent). |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice configure
@@ -320,7 +322,7 @@ nf-splice tui [OPTIONS]
 | --- | --- | --- | --- |
 | `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
 | `--no-session` |  |  | Do not read or write where you left off (navigation state only). |
-| `--provider` | `<str>` |  | Make AI available in the workspace (see `nf-splice provider list`); without it everything works manually and AI shows as off. |
+| `--provider` | `<str>` |  | The AI provider to use (default: the one saved with 'nf-splice provider select'). Assisted and Autonomous appear once its connection test has passed; manual work never needs one. |
 | `--script` | `<path>` |  | JSON turn script for the offline scripted provider. |
 | `--allow-remote-model` |  |  | Consent to sending repository context to a remote model. |
 | `--inspect-only` |  |  | Browse without writing any file. |
@@ -1078,7 +1080,7 @@ nf-splice workspace untrack [OPTIONS]
 
 ### nf-splice source prepare
 
-Create the isolated working copy that nf-splice will change.
+Create the safe working copy that nf-splice will change, then open it.
 
 ```text
 nf-splice source prepare [OPTIONS] SOURCE
@@ -1099,6 +1101,7 @@ nf-splice source prepare [OPTIONS] SOURCE
 | `--no-git` |  |  | Plain folder copy without a local Git repository. |
 | `--in-place` |  |  | Work on the original instead of a copy (risky). |
 | `--yes` |  |  | Confirm working in place. |
+| `--no-open` |  |  | Only create the copy; do not open the workspace on it afterwards (it opens only in a terminal anyway). |
 | `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice source info

@@ -197,8 +197,15 @@ class WorkspaceModel:
     published: bool
     read_only: bool
     error: str | None = None
+    #: The working copy's current Git branch, when it has one.
+    branch: str | None = None
 
     # ------------------------------------------------------------ queries
+
+    @property
+    def authorised(self) -> bool:
+        """A prepared working copy, consent to work in place, or drafts."""
+        return self.integration is not None or self.has_drafts
 
     @property
     def has_drafts(self) -> bool:
@@ -803,7 +810,7 @@ def build_model(
     repository: str | Path, cache: ModelCache | None = None
 ) -> WorkspaceModel:
     """Read and validate the drafts once (call from a worker)."""
-    from nf_splice.services.source import read_record
+    from nf_splice.services.source import current_branch, read_record
 
     root = Path(repository).resolve()
     cache = cache or ModelCache()
@@ -853,6 +860,7 @@ def build_model(
         profiles=_profile_rows(execution, layers["execution-profiles"].issues),
         published=(root / PUBLISHED_DIR / "bundle.json").is_file(),
         read_only=not os.access(root, os.W_OK),
+        branch=current_branch(root),
     )
 
 

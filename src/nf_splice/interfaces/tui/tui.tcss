@@ -30,8 +30,8 @@ Screen {
 .chip-bad { color: $error; border: round $error; }
 .chip-info { color: $accent; border: round $splice-border; }
 TopBar Button { height: 3; min-width: 6; margin-right: 1; }
-.agent-status { color: $accent; border: tall $accent; background: $surface; }
-.agent-status.attention { color: $warning; border: tall $warning; }
+.agent-status { color: $accent; border: round $accent; background: $surface; }
+.agent-status.attention { color: $warning; border: round $warning; }
 
 /* ---------------------------------------------------------- body */
 
@@ -56,7 +56,7 @@ TopBar Button { height: 3; min-width: 6; margin-right: 1; }
 }
 .rail-item:hover { background: $splice-selected; color: $foreground; }
 .rail-item:focus { background: $splice-selected; color: $foreground; text-style: bold; }
-.rail-item.current { background: $splice-selected; color: $foreground; text-style: bold; border-left: outer $accent; }
+.rail-item.current { background: $splice-selected; color: $foreground; text-style: bold; border-left: heavy $accent; }
 .rail-item.state-ready, .rail-item.state-published { color: $success; }
 .rail-item.state-needs_review { color: $warning; }
 .rail-item.state-blocked { color: $error; }
@@ -72,6 +72,24 @@ TopBar Button { height: 3; min-width: 6; margin-right: 1; }
 .page-ai { height: auto; margin-top: 1; }
 .page-tag { width: auto; max-width: 40; }
 .ai-context { color: $accent; }
+/* Welcome: the banner is the heading; the options are a numbered menu. */
+#page-welcome .page-top { display: none; }
+#welcome-summary { text-style: bold; height: auto; margin: 1 0; }
+#welcome-options { height: auto; margin: 0 0 1 0; }
+.welcome-option {
+    width: auto;
+    min-width: 46;
+    height: 1;
+    border: none;
+    padding: 0 1;
+    margin: 0;
+    background: $surface;
+    color: $foreground;
+    content-align: left middle;
+    text-align: left;
+}
+.welcome-option:hover { background: $splice-selected; }
+.welcome-option:focus { background: $accent; color: $background; text-style: bold; }
 .lead { color: $splice-muted; height: auto; margin-bottom: 1; }
 .muted { color: $splice-muted; height: auto; }
 .good-text { color: $success; }
@@ -90,9 +108,9 @@ TopBar Button { height: 3; min-width: 6; margin-right: 1; }
 .placeholder-icon { color: $accent; text-align: center; width: 100%; }
 .placeholder-title { text-style: bold; text-align: center; width: 100%; }
 .placeholder Button { margin: 1 0; }
-.notice { height: auto; padding: 0 1; border-left: outer $accent; margin: 1 0; }
-.notice.good { border-left: outer $success; }
-.notice.warn { border-left: outer $warning; color: $warning; }
+.notice { height: auto; padding: 0 1; border-left: heavy $accent; margin: 1 0; }
+.notice.good { border-left: heavy $success; }
+.notice.warn { border-left: heavy $warning; color: $warning; }
 .detail {
     height: auto;
     max-height: 8;
@@ -105,6 +123,21 @@ TopBar Button { height: 3; min-width: 6; margin-right: 1; }
 .row { height: auto; }
 .row Input { width: 1fr; }
 .row Select { width: 30; }
+.row > Input, .row > Select { margin-right: 1; }
+/* Authors: four labelled cells; two per row below the wide layout. */
+.author-row {
+    layout: grid;
+    grid-size: 4;
+    grid-columns: 1fr 22 1fr 1fr;
+    grid-gutter: 0 1;
+    grid-rows: auto;
+    height: auto;
+    margin-top: 1;
+}
+.author-cell { height: auto; }
+.author-label { color: $foreground; text-style: bold; padding-left: 1; }
+.author-cell Input, .author-cell Select { width: 100%; margin-right: 0; }
+Screen.medium .author-row, Screen.narrow .author-row { grid-size: 2; grid-columns: 1fr 1fr; }
 .grid { height: auto; }
 .grid > .card { width: 1fr; margin-right: 1; }
 .stats { height: auto; margin-bottom: 1; }
@@ -124,15 +157,28 @@ Button.compact { height: 3; min-width: 6; }
 .toolbar Button { padding: 0 1; }
 #step-position { min-width: 4; }
 Button:focus { text-style: bold reverse; }
-Input, Select, TextArea { border: tall $splice-control; }
-Input:focus, Select:focus, TextArea:focus { border: tall $accent; }
+/* Form controls draw their frame with box-drawing lines (round), never the
+   partial-block "tall" border: its U+258A/U+258E glyphs repeat on every row
+   and show as a column of square blocks wherever the font's block glyphs do
+   not fill the cell height. A Select's frame belongs to its SelectCurrent
+   (and its overlay), so the Select itself has none: otherwise two frames
+   nest. */
+Input, TextArea, Select > SelectCurrent { border: round $splice-control; }
+Input, Select > SelectCurrent { padding: 0 1; }
+Input:focus, TextArea:focus, Select:focus > SelectCurrent { border: round $accent; }
+Input.-invalid { border: round $error 60%; }
+Input.-invalid:focus { border: round $error; }
+Select { border: none; }
+Select > SelectOverlay { border: round $splice-control; }
+Select > SelectOverlay:focus { border: round $accent; }
 TextArea { height: 5; }
 .short-text { height: 4; }
 DataTable { height: auto; max-height: 18; }
 Tree { height: auto; max-height: 22; background: $surface; }
 Collapsible { background: $surface; border: round $splice-border; margin-bottom: 1; }
 Checkbox, RadioButton { background: $surface; }
-RadioSet { height: auto; background: $surface; border: tall $splice-control; }
+RadioSet { height: auto; background: $surface; border: round $splice-control; }
+RadioSet:focus { border: round $accent; }
 .field-row { height: auto; }
 .field-label { color: $foreground; text-style: bold; height: auto; margin-top: 1; }
 .field-label.wide { width: 22; margin-top: 1; }
@@ -180,13 +226,13 @@ RadioSet { height: auto; background: $surface; border: tall $splice-control; }
 #dock {
     width: 56;
     background: $splice-sidebar;
-    border-left: thick $accent;
+    border-left: heavy $accent;
 }
 #dock-header { height: auto; background: $splice-header; padding: 0 1; border-bottom: solid $splice-border; }
 #dock-title { width: 1fr; text-style: bold; padding-top: 1; }
 #dock-tabs { height: 3; }
 .dock-tab { width: 1fr; }
-.dock-tab.active { background: $splice-selected; border: tall $accent; text-style: bold; }
+.dock-tab.active { background: $splice-selected; border: round $accent; text-style: bold; }
 #dock-body { height: 1fr; padding: 0 1; }
 #dock-footer { height: auto; padding: 0 1; border-top: solid $splice-border; background: $splice-header; }
 #dock TextArea { height: 4; }
@@ -195,12 +241,19 @@ RadioSet { height: auto; background: $surface; border: tall $splice-control; }
 Screen.medium #rail { width: 22; }
 Screen.medium #subtitle, Screen.medium #pipeline-name { display: none; }
 Screen.medium .page-top, Screen.narrow .page-top { layout: vertical; }
+/* Labelled fields stack (label, control, source) so controls keep their width. */
+Screen.medium .field-row, Screen.narrow .field-row { layout: vertical; }
+Screen.medium .field-label.wide, Screen.narrow .field-label.wide { width: 100%; }
+Screen.medium .source-chip, Screen.narrow .source-chip { width: 100%; padding: 0 0 0 1; }
 Screen.medium .page-tag, Screen.narrow .page-tag { margin-top: 1; }
 Screen.medium .review-row, Screen.narrow .review-row { layout: vertical; }
 Screen.medium .review-actions, Screen.narrow .review-actions { padding-left: 0; }
 Screen.medium .review-group, Screen.narrow .review-group,
 Screen.medium .review-detail, Screen.narrow .review-detail { width: 100%; }
 Screen.medium #top-assist, Screen.medium #top-autonomous { display: none; }
+/* Without a verified AI provider, AI actions are not offered at all. */
+Screen.ai-off #top-ask, Screen.ai-off #top-assist, Screen.ai-off #top-autonomous,
+Screen.ai-off .ai-context { display: none; }
 /* Narrow terminals: the rail becomes a short menu; the dock overlays. */
 Screen.narrow #rail { width: 16; }
 Screen.narrow #subtitle, Screen.narrow #pipeline-name, Screen.narrow #mode-chip { display: none; }
@@ -228,7 +281,7 @@ ModalScreen { align: center middle; background: $background 70%; }
     height: auto;
     max-height: 90%;
     background: $background;
-    border: thick $accent;
+    border: heavy $accent;
     padding: 1 2;
 }
 .dialog-wide { width: 110; height: 90%; }
