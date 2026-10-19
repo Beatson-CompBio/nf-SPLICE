@@ -282,3 +282,10 @@ The canonical skills are in `skills/`; packaged copies in
 (`src/nf_splice/agents/prompts.py`). `nf-splice skills export --dest DIR`
 writes them where an external coding agent discovers skills, for example
 `.claude/skills` for Claude Code.
+
+External coding agents do not use this engine. `nf-splice skills install`
+puts the `nf-splice-integration` skill in an integration copy for Codex,
+Claude Code or OpenCode, which then author the drafts with their own tools
+and use the CLI to validate and publish (ADR-0072,
+[External coding agents](guide/coding-agents.md)). The embedded engine's
+prompts never load that skill.

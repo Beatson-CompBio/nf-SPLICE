@@ -148,6 +148,7 @@ After changing a skill in `skills/`, copy it to
 
 | Skill | Use it for |
 | --- | --- |
+| [`skills/nf-splice-integration/SKILL.md`](skills/nf-splice-integration/SKILL.md) | External coding agents (Codex, Claude Code, OpenCode): the whole integration through the CLI and direct draft edits |
 | [`skills/nf-splice-authoring/SKILL.md`](skills/nf-splice-authoring/SKILL.md) | File-first authoring of every layer, in every mode |
 | [`skills/nf-splice-agent-operations/SKILL.md`](skills/nf-splice-agent-operations/SKILL.md) | Investigation, revisions, approvals, reviews, blockers, reasoning effort |
 | [`skills/nf-splice-assay-capabilities/SKILL.md`](skills/nf-splice-assay-capabilities/SKILL.md) | Identity evidence, free-text intake and assay capabilities |
@@ -159,9 +160,11 @@ After changing a skill in `skills/`, copy it to
 | [`skills/nf-splice-validation/SKILL.md`](skills/nf-splice-validation/SKILL.md) | Validation, readiness dimensions, recovery and optional checks |
 
 nf-splice's embedded agents receive the relevant skills in every turn.
-External coding agents can load them from `skills/`, or after
-`nf-splice skills export --dest <directory>` from wherever their tool
-discovers skills.
+External coding agents use `nf-splice-integration`, installed in an
+integration copy with `nf-splice skills install --agent codex|claude|opencode|all`
+(`src/nf_splice/services/agent_skills.py`, ADR-0072); it drives the CLI and
+edits drafts directly, never the session engine. The other skills can be
+loaded from `skills/`, or after `nf-splice skills export --dest <directory>`.
 
 ## Definition of done
 

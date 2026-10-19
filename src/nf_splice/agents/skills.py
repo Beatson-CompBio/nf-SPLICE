@@ -6,7 +6,9 @@ The canonical skills live in the repository's ``skills/`` directory, one
 fails if the two drift apart. The session engine puts the relevant skills
 into each provider turn's system prompt, so every provider, not only one
 vendor's, follows the same procedures. ``nf-splice skills export`` copies them
-to a directory an external coding agent discovers.
+to a directory an external coding agent discovers, and
+``nf-splice skills install`` puts ``nf-splice-integration``, the one skill an
+external coding agent needs, where Codex, Claude Code and OpenCode find it.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ NAMES = (
     "nf-splice-components-images",
     "nf-splice-execution-config",
     "nf-splice-input-access",
+    "nf-splice-integration",
     "nf-splice-output-discovery",
     "nf-splice-provenance",
     "nf-splice-validation",

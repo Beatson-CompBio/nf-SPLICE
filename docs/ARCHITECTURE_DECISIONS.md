@@ -102,6 +102,7 @@ platform-contract change, or Current ADR that triggered the new decision.
 | ADR-0069 | Infer no science deterministically: import identity from exact keys and let people declare assays | Current | — |
 | ADR-0070 | The container engine is optional profile metadata; authoring a bundle never needs a runtime | Current | — |
 | ADR-0071 | One first-run journey: task-oriented help, a safe working copy, a capability-aware Welcome | Current | — |
+| ADR-0072 | External coding agents integrate through one installed skill, direct draft edits and the CLI | Current | — |
 
 ---
 
@@ -4125,3 +4126,77 @@ one on itself and one on its `SelectCurrent`.
 - A provider must pass `nf-splice provider test` (or the workspace's test)
   before the workspace offers agent modes; `session start` warns but runs.
 
+## ADR-0072: External coding agents integrate through one installed skill, direct draft edits and the CLI
+
+| Metadata | Value |
+|---|---|
+| Status | Current |
+| Date | 2026-10-19 |
+| Source | 0.3.0 request for native Codex, Claude Code and OpenCode support |
+| Scope | The `nf-splice-integration` skill, `nf-splice skills install`, Git exclusion of installed skills, pipeline archives |
+| Supersedes | — |
+| Superseded by | — |
+| Related | ADR-0057 (drafts are the source of truth), ADR-0062, ADR-0071 (authorised working copies) |
+| Implementation | `skills/nf-splice-integration/SKILL.md`, `src/nf_splice/agents/skills/nf-splice-integration/SKILL.md`, `src/nf_splice/agents/skills.py`, `src/nf_splice/services/agent_skills.py`, `src/nf_splice/services/export.py`, `src/nf_splice/cli.py`, `docs/guide/coding-agents.md`, `README.md` |
+| Tests | `tests/test_external_agents.py`, `tests/test_skills.py` |
+
+### Context
+
+Researchers already work with coding agents that have their own tools,
+reasoning and conversation, and can read a pipeline repository better than
+any fixed procedure. nf-splice's embedded sessions route a model through
+typed operations, approvals and a stage machine; asking an external agent to
+start such a session would nest one agent inside another and require a
+second provider configuration. The drafts are designed for people and AI to
+edit (ADR-0057), and the CLI already validates and publishes them.
+
+### Decision
+
+- **One skill for external agents.** `nf-splice-integration` tells Codex,
+  Claude Code or OpenCode to check it is in an authorised integration copy,
+  run `nf-splice init`, investigate the whole repository, author the six YAML
+  drafts and `.draft.config` files directly with full authority over them,
+  iterate with `nf-splice draft validate`, `status` and `plan`, publish with
+  `build all` and report `nf-splice validate`. It treats the person's
+  conversation as authoritative context, asks only about unresolved
+  scientific or policy decisions, never edits `splice/`, and never starts
+  `nf-splice session start`, `ask` or the workspace. The specialised skills
+  remain optional references (`nf-splice skills show`). The embedded
+  engine's prompts do not load this skill.
+- **`nf-splice skills install --agent codex|claude|opencode|all`** copies
+  the packaged skill to each agent's project discovery folder, verified
+  against their documentation on 2026-10-19: `.agents/skills/` (Codex),
+  `.claude/skills/` (Claude Code), `.opencode/skills/` (OpenCode). It refuses
+  a folder nf-splice is not authorised to change (`require_authorised`) and
+  never writes through a symbolic link. Repeating it is idempotent: an
+  identical file is left alone, a copy nf-splice wrote earlier (its sha256 is
+  recorded in `.splice-local/agent-skills.json`) is updated, and any other
+  content is kept. It writes no root `AGENTS.md` or `CLAUDE.md`.
+- **Installed skills stay local.** Each managed folder is added once to the
+  repository's `info/exclude`, resolved with `git rev-parse --git-path`, so
+  a worktree uses the common Git directory; `.gitignore` and unrelated agent
+  files are untouched. Pipeline archives omit the managed folders even in a
+  copy without Git, and `splice/` never contains them.
+
+### Alternatives rejected
+
+- Having the external agent start an nf-splice session: a nested agent, a
+  second provider set-up and approval prompts for ordinary edits.
+- Exposing the typed operations to external agents (for example over MCP):
+  more machinery than the files and the CLI need, and a second authoring
+  surface to keep consistent.
+- Writing root `AGENTS.md` or `CLAUDE.md` files, or `.gitignore` rules: every
+  agent already discovers project skills, and those files belong to the
+  pipeline's authors.
+- Testing with simulated agents: it would prove nothing about real models;
+  the tests cover the installer and the CLI workflow an agent runs, and
+  authoring quality is judged in researcher UAT.
+
+### Consequences
+
+- `nf-splice skills list` and `skills export` include the tenth skill.
+- OpenCode also reads `.claude/skills/` and `.agents/skills/`, so with
+  `--agent all` it sees identical copies of the same skill.
+- External agents author without nf-splice's approvals, review records or
+  session audit trail; validation, publication safeguards and readiness are
+  unchanged, and a person reviews the result as with manual authoring.

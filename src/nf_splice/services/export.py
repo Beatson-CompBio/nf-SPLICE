@@ -38,6 +38,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from nf_splice.layout import PRIVATE_DIR, PUBLISHED_DIR, is_git_work_tree
+from nf_splice.services.agent_skills import MANAGED_FOLDERS
 from nf_splice.services.lifecycle import plan_promotion, validate_bundle
 
 EXPORTS_DIR = f"{PRIVATE_DIR}/exports"
@@ -194,8 +195,10 @@ def _pipeline_members(root: Path) -> tuple[list[tuple[str, Path]], list[str]]:
         parts = PurePosixPath(relative).parts
         if not path.exists():
             continue
-        if any(part in _EXCLUDED_DIRECTORIES for part in parts[:-1]) or _excluded_name(
-            parts[-1]
+        if (
+            any(part in _EXCLUDED_DIRECTORIES for part in parts[:-1])
+            or _excluded_name(parts[-1])
+            or any(relative.startswith(f"{folder}/") for folder in MANAGED_FOLDERS)
         ):
             excluded.append(relative)
             continue

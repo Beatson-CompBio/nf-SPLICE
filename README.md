@@ -127,6 +127,26 @@ From the command line, inside the working copy:
 nf-splice --user "Your Name" session start --mode assisted --allow-remote-model
 ```
 
+### With your coding agent
+
+Codex, Claude Code and OpenCode can do the integration with the ordinary
+commands; nf-splice needs no AI provider set-up for this. Install the
+nf-splice skill into the working copy, then start your agent there:
+
+```bash
+nf-splice source prepare ./my-pipeline --no-open
+nf-splice skills install --agent all --repository ./my-pipeline-splice-integration
+cd my-pipeline-splice-integration
+codex        # or: claude, or: opencode
+```
+
+and say: *Use nf-SPLICE to build the SPLICE integration for this pipeline.*
+The agent reads the repository, edits the YAML drafts directly, and
+validates and publishes with `nf-splice draft validate`, `nf-splice build
+all` and `nf-splice validate`; only nf-splice writes `splice/`. The skill
+folders are excluded from Git through `.git/info/exclude` and never enter
+the bundle or an archive. See [External coding agents](docs/guide/coding-agents.md).
+
 Follow the [Getting started guide](docs/guide/getting-started.md) for the
 full walkthrough.
 
@@ -136,6 +156,7 @@ full walkthrough.
 | --- | --- |
 | [User guide](docs/USAGE.md) | Everything you need to publish and maintain a bundle |
 | [Agentic AI](docs/guide/agentic-ai.md) | Ask AI, AI-assisted sessions and autonomous integration |
+| [External coding agents](docs/guide/coding-agents.md) | Integrate with Codex, Claude Code or OpenCode and the nf-splice skill |
 | [Command reference](docs/reference/cli.md) | Every command and option |
 | [Assay capabilities](docs/guide/assays.md) | Declare which assays a pipeline processes, classified by the SPLICE modality vocabulary |
 | [Building on SPLICE bundles](docs/CONTRACTS.md) | File formats for platform and tool developers |

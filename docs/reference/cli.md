@@ -79,6 +79,7 @@ Global options go before the command name, for example
 | [`nf-splice skills list`](#nf-splice-skills-list) | List the packaged skills. |
 | [`nf-splice skills show`](#nf-splice-skills-show) | Print one skill's SKILL.md. |
 | [`nf-splice skills export`](#nf-splice-skills-export) | Copy the skills where an external coding agent discovers them. |
+| [`nf-splice skills install`](#nf-splice-skills-install) | Install the integration skill for Codex, Claude Code or OpenCode. |
 | [`nf-splice workspace check`](#nf-splice-workspace-check) | Report problems with the private workspace and published folder (read-only). |
 | [`nf-splice workspace untrack`](#nf-splice-workspace-untrack) | Stop Git tracking .splice-local/ (files kept; history not rewritten). |
 | [`nf-splice source prepare`](#nf-splice-source-prepare) | Create the safe working copy that nf-splice will change, then open it. |
@@ -1051,6 +1052,20 @@ nf-splice skills export [OPTIONS]
 | Option | Value | Default | Description |
 | --- | --- | --- | --- |
 | `--dest` | `<directory>` |  | Directory to write <skill>/SKILL.md into, for example .claude/skills for Claude Code. |
+
+### nf-splice skills install
+
+Install the integration skill for Codex, Claude Code or OpenCode.
+
+```text
+nf-splice skills install [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+| --- | --- | --- | --- |
+| `--agent` | `<str>` |  | codex, claude, opencode or all. |
+| `--repository`, `-r` | `<directory>` | `.` | Pipeline repository root. |
+| `--json` |  |  | Emit stable JSON. |
 
 ### nf-splice workspace check
 

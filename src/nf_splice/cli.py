@@ -3319,6 +3319,55 @@ def skills_export_command(
         typer.echo(f"wrote: {path}")
 
 
+@skills_app.command("install")
+def skills_install_command(
+    agent: Annotated[
+        str,
+        typer.Option("--agent", help="codex, claude, opencode or all."),
+    ],
+    repository: RepositoryOption = Path("."),
+    json_output: JsonOption = False,
+) -> None:
+    """Install the integration skill for Codex, Claude Code or OpenCode."""
+    import subprocess
+
+    from nf_splice.layout import WorkspaceLayoutError
+    from nf_splice.services import agent_skills
+    from nf_splice.services.source import SourceError
+
+    agents = list(agent_skills.AGENTS) if agent == "all" else [agent]
+    try:
+        installation = agent_skills.install(repository, agents)
+    except (
+        agent_skills.SkillInstallError,
+        SourceError,
+        WorkspaceLayoutError,
+        subprocess.CalledProcessError,
+        OSError,
+    ) as error:
+        typer.echo(str(error), err=True)
+        raise typer.Exit(code=2) from error
+    if json_output:
+        typer.echo(dumps(installation.to_json()))
+        return
+    typer.echo(f"Integration copy: {installation.repository}")
+    for item in installation.skills:
+        typer.echo(f"{item.action}: {item.path} ({item.agent})")
+        if item.action == "kept":
+            typer.echo(
+                "  this file was changed after nf-splice wrote it, so it was kept; "
+                "delete it and run this command again to reinstall",
+            )
+    if installation.exclude_file:
+        typer.echo(
+            f"Git ignores the installed skills through {installation.exclude_file}."
+        )
+    typer.echo(
+        f"Next: cd {installation.repository}, start your coding agent there and "
+        "say: Use nf-SPLICE to build the SPLICE integration for this pipeline."
+    )
+
+
 # ---------------------------------------------------------------- catalogue
 
 

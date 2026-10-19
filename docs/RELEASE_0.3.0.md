@@ -141,6 +141,7 @@ checks that every ADR exists, every path exists and every test file exists.
 | Safe working copy enforced for draft creation; `init --in-place` consent; `source prepare` opens the workspace | ADR-0071 | `src/nf_splice/services/source.py`, `src/nf_splice/cli.py`, `src/nf_splice/interfaces/tui/launcher.py` | `tests/test_first_run.py`, `tests/test_source_git_export.py` | Current |
 | Capability-aware Welcome with verified AI readiness and guided provider set-up | ADR-0071 | `src/nf_splice/agents/providers/readiness.py`, `src/nf_splice/interfaces/tui/pages/start.py`, `src/nf_splice/interfaces/tui/provider_setup.py`, `src/nf_splice/interfaces/tui/app.py` | `tests/test_first_run.py`, `tests/test_tui.py`, `tests/test_tui_agents.py` | Current |
 | Box-drawing control frames and stacked fields on medium terminals | ADR-0071 | `src/nf_splice/interfaces/tui/tui.tcss`, `src/nf_splice/interfaces/tui/pages/identity.py` | `tests/test_first_run.py` | Current |
+| External coding agents (Codex, Claude Code, OpenCode): `nf-splice-integration` skill, `skills install`, Git exclusion via `info/exclude` | ADR-0072 | `skills/nf-splice-integration/SKILL.md`, `src/nf_splice/services/agent_skills.py`, `src/nf_splice/services/export.py`, `src/nf_splice/cli.py`, `docs/guide/coding-agents.md` | `tests/test_external_agents.py`, `tests/test_skills.py` | Current |
 
 ## What 0.3.0 provides
 
