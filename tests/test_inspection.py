@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from nf_splice.domain import EvidenceKind, PathClassification, TreeState
 from nf_splice.inspectors import inspect_repository, inspect_splice_tree
+
+EXAMPLE = Path(__file__).parent / "fixtures" / "example-0.3.0" / "repository" / "splice"
 
 
 def _snapshot(root: Path) -> dict[str, bytes | None]:
@@ -29,80 +32,19 @@ def test_absent_and_empty_splice_trees_are_distinct(tmp_path: Path) -> None:
 
 
 def test_recognized_tree_uses_the_approved_bundle_shape(tmp_path: Path) -> None:
-    splice = tmp_path / "splice"
-    configs = splice / "configs"
-    configs.mkdir(parents=True)
-    (configs / "local.config").write_text("process.executor = 'local'\n")
-    _write_json(
-        splice / "inputs.schema.json",
-        {"$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object"},
-    )
-    (splice / "outputs.yaml").write_text(
-        "schema_version: '1.0'\npipeline: {}\noutputs: []\n"
-    )
-    _write_json(
-        splice / "outputs.schema.json",
-        {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "type": "object",
-            "properties": {},
-        },
-    )
-    _write_json(
-        splice / "ro-crate-metadata.json",
-        {"@context": "https://w3id.org/ro/crate/1.1/context", "@graph": []},
-    )
-    _write_json(
-        splice / "components.json",
-        {
-            "schema_version": "1.0",
-            "pipeline": {},
-            "containers": [],
-            "components": [],
-        },
-    )
-    _write_json(
-        splice / "execution-profiles.json",
-        {
-            "schema_version": "1.0",
-            "profiles": [
-                {
-                    "id": "profile-local-6c6f63616c",
-                    "name": "Local",
-                    "description": "Local execution.",
-                    "type": "development",
-                    "engine": "nextflow",
-                    "executor": "local",
-                    "container_engine": "singularity",
-                    "config": "configs/local.config",
-                }
-            ],
-        },
-    )
-    _write_json(
-        splice / "bundle.json",
-        {
-            "bundle_format": "splice-pipeline-bundle",
-            "schema_version": "1.0",
-            "pipeline": {},
-            "files": {
-                "inputs_schema": "inputs.schema.json",
-                "outputs_catalogue": "outputs.yaml",
-                "outputs_schema": "outputs.schema.json",
-                "ro_crate": "ro-crate-metadata.json",
-                "components": "components.json",
-                "execution_profiles": "execution-profiles.json",
-            },
-        },
+    shutil.copytree(
+        EXAMPLE, tmp_path / "splice", ignore=shutil.ignore_patterns("drafts")
     )
 
     result = inspect_splice_tree(tmp_path)
 
-    assert result.state is TreeState.RECOGNIZED
-    assert {item.path for item in result.paths} == {
+    assert result.state is TreeState.RECOGNIZED, [
+        (item.path, item.detail) for item in result.paths
+    ]
+    published = {
+        "README.md",
         "bundle.json",
         "components.json",
-        "configs",
         "configs/local.config",
         "execution-profiles.json",
         "inputs.schema.json",
@@ -110,15 +52,13 @@ def test_recognized_tree_uses_the_approved_bundle_shape(tmp_path: Path) -> None:
         "outputs.yaml",
         "ro-crate-metadata.json",
     }
+    assert {item.path for item in result.paths} == {
+        *published,
+        "configs",
+        "nf-splice.lock.json",
+    }
     assert {collision.path for collision in result.collisions} == {
-        "splice/bundle.json",
-        "splice/components.json",
-        "splice/configs/local.config",
-        "splice/execution-profiles.json",
-        "splice/inputs.schema.json",
-        "splice/outputs.schema.json",
-        "splice/outputs.yaml",
-        "splice/ro-crate-metadata.json",
+        f"splice/{path}" for path in published
     }
 
 
@@ -311,3 +251,33 @@ def test_inspection_never_changes_an_existing_tree(tmp_path: Path) -> None:
     inspect_repository(tmp_path)
 
     assert _snapshot(tmp_path) == before
+
+
+def test_identity_reads_triple_quoted_manifest_and_never_the_readme(
+    tmp_path: Path,
+) -> None:
+    """A Groovy '''...''' description is read; README prose never is (ADR-0069)."""
+    from nf_splice.inspectors.identity import inspect_pipeline_identity
+
+    (tmp_path / "nextflow.config").write_text(
+        "manifest {\n"
+        "    name        = 'org/pipe'\n"
+        "    description = '''\n"
+        "    First line.\n"
+        "    Second line.\n"
+        "    '''.trim()\n"
+        "    version     = '1.2.3'\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "README.md").write_text(
+        "<table><tr><td>\n<h1>My <b>Pipeline</b></h1>\n</td></tr></table>\n\n"
+        "# Introduction\n",
+        encoding="utf-8",
+    )
+    values = {
+        item.field: item.value for item in inspect_pipeline_identity(tmp_path).values
+    }
+    assert values["description"] == "First line. Second line."
+    assert values["version"] == "1.2.3" and values["name"] == "org/pipe"
+    assert "title" not in values

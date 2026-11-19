@@ -1,0 +1,9 @@
+# nf-SPLICE execution profiles draft (authoritative, editable).
+# Fields left null are unresolved; detected values need confirmation.
+x-splice-draft:
+  layer: execution-profiles
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+default_profile: null
+profiles: []

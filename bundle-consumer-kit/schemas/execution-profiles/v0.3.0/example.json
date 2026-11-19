@@ -1,0 +1,35 @@
+{
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/execution-profiles",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "example-pipeline",
+    "name": "example-pipeline",
+    "version": "1.2.3",
+    "engine": "nextflow"
+  },
+  "default_profile": "profile-slurm-736c75726d",
+  "profiles": [
+    {
+      "id": "profile-slurm-736c75726d",
+      "name": "Slurm",
+      "description": "SPLICE Slurm production execution.",
+      "type": "production",
+      "engine": "nextflow",
+      "executor": "slurm",
+      "container_engine": "singularity",
+      "config": "configs/profile-slurm-736c75726d.config",
+      "default": true,
+      "config_strategy": "authored",
+      "site_parameters": [
+        {
+          "name": "queue",
+          "description": "Operator-managed Slurm partition."
+        }
+      ]
+    }
+  ]
+}

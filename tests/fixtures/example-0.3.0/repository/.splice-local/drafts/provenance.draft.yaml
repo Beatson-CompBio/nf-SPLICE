@@ -1,0 +1,60 @@
+x-splice-draft:
+  layer: provenance
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+source: null
+crate:
+  '@context': https://w3id.org/ro/crate/1.1/context
+  '@graph':
+    - '@id': ro-crate-metadata.json
+      '@type': CreativeWork
+      about:
+        '@id': ./
+      conformsTo:
+        - '@id': https://w3id.org/ro/crate/1.1
+        - '@id': https://w3id.org/workflowhub/workflow-ro-crate/1.0
+    - '@id': ./
+      '@type': Dataset
+      mainEntity:
+        '@id': main.nf
+      hasPart:
+        - '@id': main.nf
+      name: rnaquant
+      version: 1.2.0
+      description: Quantifies RNA-seq reads.
+      license: MIT
+      datePublished: "2026-10-15T10:00:00Z"
+    - '@id': main.nf
+      '@type':
+        - File
+        - SoftwareSourceCode
+        - ComputationalWorkflow
+      programmingLanguage:
+        '@id': "#nextflow"
+      name: rnaquant
+      version: 1.2.0
+      url: https://github.com/org/rnaquant
+    - '@id': "#nextflow"
+      '@type': ComputerLanguage
+      name: Nextflow
+      url: https://www.nextflow.io/
+    - '@id': "#nf-splice"
+      '@type': SoftwareApplication
+      name: nf-splice
+      version: 0.3.0
+      url: https://github.com/Beatson-CompBio/nf-SPLICE
+    - '@id': "#nf-splice-generation"
+      '@type': CreateAction
+      name: nf-splice generation of the SPLICE integration RO-Crate
+      instrument:
+        '@id': "#nf-splice"
+      endTime: "2026-10-15T10:00:00Z"
+      result:
+        '@id': ro-crate-metadata.json
+      agent:
+        '@id': "#reviewer-Ada"
+    - '@id': "#reviewer-Ada"
+      '@type': Person
+      name: Ada
+origin: generated

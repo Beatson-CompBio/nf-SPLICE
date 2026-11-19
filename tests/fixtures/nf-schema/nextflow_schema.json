@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/org/rnaquant/master/nextflow_schema.json",
+  "title": "org/rnaquant pipeline parameters",
+  "description": "Quantify RNA-seq reads.",
+  "type": "object",
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "fa_icon": "fas fa-terminal",
+      "description": "Define where the pipeline should find input data and save output data.",
+      "required": [
+        "input",
+        "outdir"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "schema": "assets/schema_input.json",
+          "mimetype": "text/csv",
+          "pattern": "^\\S+\\.csv$",
+          "description": "Path to comma-separated file containing information about the samples.",
+          "help_text": "You will need to create a design file.",
+          "fa_icon": "fas fa-file-csv",
+          "errorMessage": "File path must end in .csv"
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "The output directory.",
+          "fa_icon": "fas fa-folder-open"
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address for completion summary.",
+          "pattern": "^([a-zA-Z0-9_\\-\\.]+)@([a-zA-Z0-9_\\-\\.]+)\\.([a-zA-Z]{2,5})$"
+        }
+      }
+    },
+    "reference_genome_options": {
+      "title": "Reference genome options",
+      "type": "object",
+      "properties": {
+        "genome": {
+          "type": "string",
+          "description": "Reference genome.",
+          "enum": [
+            "GRCh38",
+            "GRCm39"
+          ],
+          "default": "GRCh38"
+        },
+        "igenomes_base": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "directory-path",
+          "description": "iGenomes base.",
+          "default": null,
+          "hidden": true
+        }
+      }
+    },
+    "analysis": {
+      "title": "Analysis",
+      "type": "object",
+      "properties": {
+        "min_mapped_reads": {
+          "type": "number",
+          "description": "Minimum mapped reads %.",
+          "default": 5,
+          "minimum": 0,
+          "maximum": 100,
+          "multipleOf": 0.5
+        },
+        "skip_qc": {
+          "type": "boolean",
+          "description": "Skip QC.",
+          "default": false
+        },
+        "extra_args": {
+          "type": "string",
+          "description": "Extra args.",
+          "minLength": 1,
+          "maxLength": 200,
+          "deprecated": true
+        },
+        "aligners": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "star",
+              "hisat2"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true,
+          "default": [
+            "star"
+          ],
+          "description": "Aligners."
+        },
+        "thresholds": {
+          "type": "object",
+          "description": "Nested thresholds.",
+          "properties": {
+            "low": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "high": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "low"
+          ],
+          "additionalProperties": false
+        },
+        "max_cpus": {
+          "type": "integer",
+          "description": "Maximum CPUs.",
+          "default": 16,
+          "hidden": true,
+          "x-custom-ui": {
+            "slider": true
+          }
+        }
+      },
+      "dependentRequired": {
+        "thresholds": [
+          "min_mapped_reads"
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output_options"
+    },
+    {
+      "$ref": "#/$defs/reference_genome_options"
+    },
+    {
+      "$ref": "#/$defs/analysis"
+    }
+  ],
+  "properties": {
+    "trace_report_suffix": {
+      "type": "string",
+      "description": "Suffix.",
+      "hidden": true
+    }
+  },
+  "if": {
+    "properties": {
+      "skip_qc": {
+        "const": true
+      }
+    }
+  },
+  "then": {
+    "properties": {
+      "extra_args": {
+        "const": "--skip"
+      }
+    }
+  }
+}

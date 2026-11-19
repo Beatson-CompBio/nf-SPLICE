@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$defs": {
+    "input_output": {
+      "title": "Input and output",
+      "type": "object",
+      "required": [
+        "input",
+        "outdir"
+      ],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "description": "Samplesheet of paired-end reads."
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "description": "Results directory."
+        }
+      }
+    },
+    "routes": {
+      "title": "Routes",
+      "type": "object",
+      "properties": {
+        "aligner": {
+          "type": "string",
+          "enum": [
+            "star",
+            "hisat2"
+          ],
+          "default": "star",
+          "description": "Read aligner."
+        },
+        "skip_qc": {
+          "type": "boolean",
+          "default": false,
+          "description": "Skip read quality control."
+        },
+        "run_salmon": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also quantify with Salmon."
+        },
+        "publish_dir_mode": {
+          "type": "string",
+          "default": "copy",
+          "description": "How results are published."
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "$ref": "#/$defs/input_output"
+    },
+    {
+      "$ref": "#/$defs/routes"
+    }
+  ]
+}

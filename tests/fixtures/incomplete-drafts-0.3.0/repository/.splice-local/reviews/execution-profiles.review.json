@@ -1,0 +1,31 @@
+{
+  "candidates": {
+    "profile:local": {
+      "status": "pending",
+      "candidate": {
+        "id": "profile:local",
+        "name": "Local",
+        "source_profile": "local",
+        "config_sources": [
+          "conf/local.config"
+        ],
+        "executors": [
+          "local"
+        ],
+        "container_engines": [
+          "singularity"
+        ],
+        "unresolved_fields": [
+          "review",
+          "config_source"
+        ]
+      },
+      "evidence": [
+        "conf/local.config",
+        "nextflow.config"
+      ]
+    }
+  },
+  "format": "0.3.0",
+  "layer": "execution-profiles"
+}

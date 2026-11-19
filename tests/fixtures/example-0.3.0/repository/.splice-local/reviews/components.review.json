@@ -1,0 +1,180 @@
+{
+  "candidates": {
+    "component:modules__local__tool": {
+      "status": "accepted",
+      "candidate": {
+        "id": "component:modules__local__tool",
+        "name": "tool",
+        "path": "modules/local/tool",
+        "namespace": "local",
+        "tool_name": "tool",
+        "versions": [
+          "1.0"
+        ],
+        "conda_packages": [],
+        "sources": [
+          {
+            "raw": "quay.io/example/tool:1.0",
+            "runtime": "any",
+            "kind": "oci_registry",
+            "location": "modules/local/tool/main.nf:2",
+            "confidence": 0.9
+          }
+        ],
+        "evidence": [
+          "modules.json",
+          "modules/local/tool/main.nf:2",
+          "modules/local/tool/meta.yml"
+        ]
+      }
+    }
+  },
+  "confirmed": {
+    "/components/0": {
+      "sha256": "7645fdd5e91dbfbbebbd5aadbabaef790508c6a72809e85f917834807a55e06a",
+      "event": "event:afc17bb218a81910"
+    },
+    "/containers/0": {
+      "sha256": "d772c4cd23d8b2b37853c73475ae6ea837eba91b758d9f6216067389d038ef23",
+      "event": "event:afc17bb218a81910"
+    },
+    "/require_downloadable_images": {
+      "sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa",
+      "event": "event:0cff2e8e1c374154"
+    }
+  },
+  "events": [
+    {
+      "id": "event:afc17bb218a81910",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "components",
+      "action": "accept_component",
+      "pointers": [
+        "/components/0",
+        "/containers/0"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "1c51cf02f3e4289ae0f185902dbdc21be0eeafe4f2e36be8eb6ff2e29a92839a",
+      "after_sha256": "88371a6189d83768ae3247d7b43a2048c81a311b44fbc3a49d5872189215f4cb",
+      "source_revision": null
+    },
+    {
+      "id": "event:0cff2e8e1c374154",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "components",
+      "action": "set_image_policy",
+      "pointers": [
+        "/require_downloadable_images"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "88371a6189d83768ae3247d7b43a2048c81a311b44fbc3a49d5872189215f4cb",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    },
+    {
+      "id": "event:4c84b85121b89ad7",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    },
+    {
+      "id": "event:6649692fb5334502",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    },
+    {
+      "id": "event:d6b4c2cb12a431a1",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    },
+    {
+      "id": "event:74d5948f6e1ea37c",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "components",
+      "action": "promote",
+      "pointers": [
+        "components.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "after_sha256": "3109e1b644d82ec96c07e9c2b2366553250eb199ee0b33e629df392769933b07",
+      "source_revision": null
+    }
+  ],
+  "format": "0.3.0",
+  "layer": "components",
+  "promoted": {
+    "components.json": "517e77ba8bb5f9c43b7c7e5aa7c1b19d36a9a7243cc01f421fb375f3b9e7a978"
+  }
+}

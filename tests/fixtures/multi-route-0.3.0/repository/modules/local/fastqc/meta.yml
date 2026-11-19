@@ -1,0 +1,9 @@
+name: fastqc
+description: Read quality control.
+output:
+  - html:
+      description: FastQC report per sample.
+      pattern: "*_fastqc.html"
+  - zip:
+      description: FastQC archive per sample.
+      pattern: "*_fastqc.zip"

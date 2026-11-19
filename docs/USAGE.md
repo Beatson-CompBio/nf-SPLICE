@@ -1,219 +1,71 @@
-# nf-SPLICE authoring and operation guide
+# nf-splice user guide
 
-This guide is for a pipeline developer preparing and maintaining the static
-SPLICE integration harness stored in the pipeline repository's `splice/`
-directory.
+nf-splice prepares a Nextflow pipeline for the SPLICE platform. It reads your
+repository, helps you review what it finds, and publishes a validated SPLICE
+workflow bundle in `splice/`. Do the work yourself, or let the built-in
+agentic AI do it with you or for you.
 
-## Environment and source prerequisites
+New to nf-splice? Start with **[Getting started](guide/getting-started.md)**.
 
-nf-SPLICE supports Python 3.10–3.14 and can be installed beside nf-core tooling:
+## Start here
 
-```bash
-python -m pip install .
-python -m pip check
-nf-splice --version
-nf-core --version
-```
+| Page | What you will learn |
+| --- | --- |
+| [Getting started](guide/getting-started.md) | Install nf-splice and publish your first bundle |
+| [Core concepts](guide/concepts.md) | Layers, seeded drafts, review, readiness, and job/sample/run |
 
-Run commands from the Nextflow pipeline root, or pass `--repository PATH`.
-Before provenance review, generate the developer-owned root RO-Crate with
-nf-core:
+## Review the bundle, layer by layer
 
-```bash
-nf-core pipelines rocrate .
-```
-
-Every execution profile also needs one developer-owned, repository-local
-`.config` source outside `splice/`. nf-SPLICE validates and copies these source
-files byte-for-byte. It never invents, merges, or normalises their contents.
-
-## New integration tutorial
-
-Start with read-only inspection, then initialise explicit pipeline identity:
-
-```bash
-nf-splice inspect
-nf-splice init \
-  --name my-pipeline \
-  --pipeline-version 1.0.0 \
-  --repository-url https://github.com/my-org/my-pipeline
-nf-splice status
-```
-
-Review all required layers. The exact decisions depend on detected evidence;
-these examples show the non-interactive forms:
-
-```bash
-nf-splice configure inputs \
-  --set threshold=user-configurable
-
-nf-splice configure outputs \
-  --contract-version 1.0.0 \
-  --export-unresolved unresolved-outputs.json
-
-nf-splice configure components --accept-detected
-
-nf-splice configure execution-profiles \
-  --set profile:local.type=development \
-  --set profile:local.description="Supported local execution" \
-  --set profile:local.executor=local \
-  --set profile:local.container_engine=singularity \
-  --set profile:local.config_source=conf/local.config
-
-nf-splice configure provenance \
-  --set provenance.include=true
-```
-
-Use an exported decision file or additional `--set` values to resolve every
-output candidate. Detection is evidence, not acceptance: an unresolved or
-conflicting decision blocks a complete build.
-
-Preview and build only after review:
-
-```bash
-nf-splice plan all
-nf-splice build all --check --non-interactive
-nf-splice build all --non-interactive
-nf-splice validate
-git add splice/
-```
-
-`plan` and `--check` are read-only. `--non-interactive` never selects a
-candidate or fills a missing value. The first complete build writes all managed
-files only after a whole-target preflight. A repeated build reports no changes
-and leaves every byte unchanged.
-
-## Existing `splice/` reconciliation
-
-`nf-splice inspect` classifies each existing path as recognised, malformed, or
-unknown before generation. Unknown siblings are preserved. Unknown content at
-a managed target, malformed recognised content, symlinks, and non-file targets
-are never overwritten.
-
-If a recognised generated file differs from current reviewed state, inspect
-the `plan` or `build --check` diff and then explicitly allow that recognised
-replacement:
-
-```bash
-nf-splice build all --check
-nf-splice build all --replace-existing
-```
-
-There is no broad force option. `--replace-existing` does not bypass malformed
-or unknown-content protection.
-
-Preview state created by an older nf-SPLICE layout before reconciling it:
-
-```bash
-nf-splice migrate-state
-nf-splice migrate-state --apply
-```
-
-Migration validates both locations, writes the canonical
-`splice/nf-splice.yaml` atomically, and preserves the root legacy source.
-
-## CLI reference
-
-| Command | Purpose | Writes |
+| Layer | Page | You decide |
 | --- | --- | --- |
-| `inspect` | Inventory repository evidence and `splice/` safety state | No |
-| `status` | Report authoring and layer readiness | No |
-| `init` | Create reviewed pipeline identity | Yes |
-| `migrate-state` | Preview or explicitly apply legacy state reconciliation | Only with `--apply` |
-| `configure LAYER` | Discover evidence and record explicit decisions | Yes |
-| `plan [all\|bundle]` | Report blockers and deterministic file diffs | No |
-| `build LAYER --check` | Preview one reviewed layer | No |
-| `build LAYER` | Materialise one reviewed layer | Yes |
-| `build all` | Materialise the complete reviewed integration | Yes |
-| `build bundle` | Refresh bundle metadata after all layer files are current | Yes |
-| `validate` | Check readiness, sources, references, hashes, and generated bytes | No |
-| `tui` | Open the shared terminal authoring workspace | On explicit actions |
-| `analysis-output generate` | Create one completed run's runtime inventory | Yes, at the selected runtime destination |
-| `analysis-output validate` | Validate an existing runtime inventory | No |
+| Identity | [Identity](guide/identity.md) | Name, version, description, authors |
+| Assay capabilities | [Assay capabilities](guide/assays.md) | Which assays the pipeline can process, by modality |
+| Inputs | [Inputs](guide/inputs.md) | Who may change each parameter |
+| Outputs | [Outputs](guide/outputs.md) | What the pipeline produces and who owns it |
+| Components | [Components](guide/components.md) | Modules and container images |
+| Execution profiles | [Execution profiles](guide/execution-profiles.md) | How the pipeline runs, and the default |
+| Provenance | [Provenance](guide/provenance.md) | The RO-Crate, and attribution |
 
-Use `--json` with `plan`, `build`, and `validate` for stable automation output.
-Build JSON includes `target`, ordered `changes`, `wrote`, `check`, and
-`non_interactive`. Validation JSON includes `valid`, `checked_files`, and
-ordered `issues`.
+## Publish and run
 
-## TUI walkthrough
+| Page | Covers |
+| --- | --- |
+| [Publishing and updating](guide/publishing.md) | Publishing, new releases, hand edits, recovery |
+| [Working copy and Git](guide/working-copy.md) | The safe integration copy, `.splice-local/`, local commits and pushing |
+| [Export a ZIP archive](guide/export.md) | A verified archive of the bundle or the whole pipeline |
+| [Job outputs](guide/job-outputs.md) | The `analysis_output.json` of each completed job |
+| [Output routes and evidence](guide/output-coverage.md) | Alternative routes, example results and `nf-splice assess` |
 
-Open the terminal workspace with `nf-splice tui`. Select a layer in the left
-column, inspect its evidence, and use the vocabulary-backed forms to save each
-review. The execution-profile form asks for the platform registration values;
-the tool assigns the stable unique ID. The provenance form only offers the
-repository-root RO-Crate.
+## Ways of working
 
-The **Complete integration** controls call the same application services as the
-CLI:
+| Page | Covers |
+| --- | --- |
+| [Agentic AI](guide/agentic-ai.md) | The three ways to work, permissions, providers and privacy |
+| [AI providers and accounts](guide/providers.md) | Claude, OpenAI, Codex and OpenCode: sign-in, local or remote, billing, limits |
+| [Ask AI in manual mode](guide/ask-ai.md) | Doing it yourself, with read-only answers to your questions |
+| [AI-assisted sessions](guide/assisted-sessions.md) | The agent proposes each stage; you approve, object or ask |
+| [Autonomous integration](guide/autonomous.md) | The agent integrates the pipeline within a scope you approve |
+| [External coding agents](guide/coding-agents.md) | Codex, Claude Code or OpenCode build the integration with the nf-splice skill |
+| [The workspace](guide/workspace.md) | Authoring by hand, with Ask AI, Assist or autonomy, in the terminal |
+| [Automation and CI](guide/automation.md) | Checks, JSON output and reproducible review in CI |
 
-1. **Plan all** displays blockers or ordered file effects without writes.
-2. **Build all** runs the same preflight and deterministic renderers.
-3. **Validate** reports complete managed-file validation.
+## Tutorials
 
-Equivalent CLI and TUI decisions produce the same canonical state and bundle.
+| Tutorial | Page |
+| --- | --- |
+| Manual integration with Ask AI | [Ask AI in manual mode](guide/ask-ai.md#tutorial-manual-integration-with-ask-ai) |
+| Assisted integration with disagreement and repair | [AI-assisted sessions](guide/assisted-sessions.md#tutorial-disagreement-and-repair) |
+| Unattended integration and its report | [Autonomous integration](guide/autonomous.md#tutorial-an-unattended-integration) |
+| A blocker, resolved in an assisted session | [Autonomous integration](guide/autonomous.md#tutorial-a-blocker-resolved-in-an-assisted-session) |
+| Several Nextflow routes, one example run | [Output routes and evidence](guide/output-coverage.md#tutorial-several-routes-one-example) |
+| No example results | [Output routes and evidence](guide/output-coverage.md#tutorial-no-example-results) |
+| Optional nf-core checks | [Output routes and evidence](guide/output-coverage.md#tutorial-optional-nf-core-checks) |
 
-## Authoring, source, and generated-file contracts
+## Reference
 
-| Path | Owner | Contract |
-| --- | --- | --- |
-| `splice/nf-splice.yaml` | nf-SPLICE authoring | Canonical reviewed decisions; not generated bundle provenance |
-| `ro-crate-metadata.json` | Developer/nf-core | Required root source; unchanged by nf-SPLICE |
-| selected `*.config` | Developer | One reviewed source per selected profile; unchanged by nf-SPLICE |
-| `splice/bundle.json` | Generated | Stable platform entry point with valid relative cross-file references |
-| `splice/README.md` | Generated | Bundle inventory and ownership explanation |
-| `splice/nf-splice.lock.json` | Generated | Generator version, Git revision, selected evidence, source hashes, and every other managed-file hash; never hashes itself |
-| `splice/inputs.schema.json` | Generated | Reviewed user-configurable input projection |
-| `splice/outputs.yaml` | Generated | Reviewed static output catalogue |
-| `splice/outputs.schema.json` | Generated | Contract for per-run `analysis_output.json` |
-| `splice/components.json` | Generated | Reviewed software/container inventory |
-| `splice/execution-profiles.json` | Generated | Platform registrations with tool-assigned unique IDs |
-| `splice/configs/*.config` | Copied | Byte-identical selected developer config |
-| `splice/ro-crate-metadata.json` | Copied | Byte-identical root RO-Crate |
-
-Do not hand-edit generated or copied materialisations. Change the reviewed
-decision or developer-owned source, preview the diff, and rebuild.
-
-## Per-run `analysis_output.json`
-
-Runtime output inventory is separate from static pipeline authoring. After a
-completed run, provide exactly one publish directory, native output index, or
-output-tree listing:
-
-```bash
-nf-splice analysis-output generate \
-  --publish-directory results \
-  --sample-metadata samplesheet.csv \
-  --run-metadata run-metadata.json \
-  --output-directory results
-
-nf-splice analysis-output validate results/analysis_output.json
-```
-
-The runtime generator classifies produced paths using the reviewed static
-output catalogue and validates the result against
-`splice/outputs.schema.json`. It does not mutate static authoring or bundle
-files.
-
-## Troubleshooting and recovery
-
-- **Root RO-Crate is missing:** run `nf-core pipelines rocrate .` in the
-  pipeline root, inspect the resulting file, then retry provenance review.
-- **A profile has no source config:** create or select the correct
-  repository-local `.config` file and explicitly set `config_source`; do not
-  ask nf-SPLICE to synthesise it.
-- **A layer remains unresolved:** run `nf-splice status`, export unresolved
-  candidates from the relevant `configure` command, and record an explicit
-  accept/reject or field decision.
-- **A recognised file differs:** run `nf-splice plan all` or
-  `nf-splice build all --check`, review the diff, then use
-  `--replace-existing` if the target is genuinely generated by nf-SPLICE.
-- **A managed path is malformed or unknown:** move it only after determining
-  its ownership, or repair it through its owning source. nf-SPLICE will not
-  overwrite it.
-- **Validation reports drift:** restore the reviewed source if it changed by
-  mistake, or rebuild from the intended source and canonical decisions. Do not
-  patch the lock hash manually.
-- **A build was interrupted:** rerun `plan` and `validate`. File replacement is
-  atomic and temporary `.nf-splice.tmp` files are cleaned by the writer; the
-  desired-state plan identifies any remaining drift.
+| Page | Covers |
+| --- | --- |
+| [Command reference](reference/cli.md) | Every command and option |
+| [Troubleshooting](guide/troubleshooting.md) | Messages, codes and what to do |
+| [Glossary](GLOSSARY.md) | Precise meanings of bundle, job, sample, run and other terms |
+| [Building on SPLICE bundles](CONTRACTS.md) | File formats, for platform and tool developers |

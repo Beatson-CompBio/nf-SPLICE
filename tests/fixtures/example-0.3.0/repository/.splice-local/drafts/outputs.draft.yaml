@@ -1,0 +1,23 @@
+# nf-SPLICE outputs draft (authoritative, editable).
+# Fields left null are unresolved; detected values need confirmation.
+x-splice-draft:
+  layer: outputs
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+contract:
+  schema_version: 1.0.0
+categories: {}
+outputs:
+  - key: report
+    title: Report
+    description: Job report.
+    category: job_report
+    formats:
+      - html
+    scopes:
+      - job
+    entity_types:
+      - file
+    path_patterns:
+      - ^reports/report\.html$

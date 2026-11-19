@@ -1,0 +1,10 @@
+# nf-SPLICE components draft (authoritative, editable).
+# Fields left null are unresolved; detected values need confirmation.
+x-splice-draft:
+  layer: components
+  status: draft
+  format: 0.3.0
+  note: Editable nf-SPLICE draft; not for ingestion. Validate and promote with nf-splice draft validate/promote.
+require_downloadable_images: null
+containers: []
+components: []

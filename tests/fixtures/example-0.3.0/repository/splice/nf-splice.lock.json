@@ -1,0 +1,62 @@
+{
+  "schema_version": "2.0",
+  "generator": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "repository": {
+    "url": "https://github.com/org/rnaquant",
+    "revision": null
+  },
+  "contracts": {
+    "https://schemas.splice-data.io/workflow-bundle/bundle": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/components": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/inputs": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/outputs": "0.3.0"
+  },
+  "sources": {
+    "conf/local.config": {
+      "sha256": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869",
+      "role": "adopted-config"
+    },
+    "nextflow_schema.json": {
+      "sha256": "7827286805c73c5e4c60ed72a027c9702b16994b26f06b34a92eda82fbffa8d2",
+      "role": "input-schema-evidence"
+    }
+  },
+  "provenance": {
+    "ro_crate_strategy": "generated",
+    "ro_crate_source_sha256": null,
+    "ro_crate_sha256": "1dda905f610fc9a19c2066b1077cbf38ee6b148d33ecd77f1b6a650f2fa222f5"
+  },
+  "managed_files": {
+    "README.md": {
+      "sha256": "3b69850a1431b9b4d14bb0715318424d756f45ec473d51ac3edea0377ca7a252"
+    },
+    "bundle.json": {
+      "sha256": "d0d4b77b6a98114c2f1ebd7fb3401a092f701e901e506af07a5b13ffa93a71c3"
+    },
+    "components.json": {
+      "sha256": "517e77ba8bb5f9c43b7c7e5aa7c1b19d36a9a7243cc01f421fb375f3b9e7a978"
+    },
+    "configs/local.config": {
+      "sha256": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869"
+    },
+    "execution-profiles.json": {
+      "sha256": "5d48db472a0859063fca9e9d74cd88178efb141fcf86402fcd844d1ef08099fc"
+    },
+    "inputs.schema.json": {
+      "sha256": "9c9ee41225e1dc204bc55429e06f65ae6574491b0a33372dee512995d5826c40"
+    },
+    "outputs.schema.json": {
+      "sha256": "acc082c64ea1c6a445e80706eb1880646eb792f002b1a716aeb6b5be89e1dc76"
+    },
+    "outputs.yaml": {
+      "sha256": "4a8e35dc13b8539d0340bd24d1aab838619128ec6d5a8686bf8a9df41f79d4c2"
+    },
+    "ro-crate-metadata.json": {
+      "sha256": "1dda905f610fc9a19c2066b1077cbf38ee6b148d33ecd77f1b6a650f2fa222f5"
+    }
+  }
+}

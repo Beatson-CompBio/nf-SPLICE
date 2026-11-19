@@ -1,0 +1,182 @@
+{
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/components",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "multiroute",
+    "name": "multiroute",
+    "version": "1.0.0",
+    "engine": "nextflow"
+  },
+  "require_downloadable_images": false,
+  "containers": [
+    {
+      "id": "container-05b848a6cd65",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/salmon:1.10.3--h6dccd9a_2",
+      "source_images": {
+        "docker": "quay.io/biocontainers/salmon:1.10.3--h6dccd9a_2"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    },
+    {
+      "id": "container-17bab4477307",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/hisat2:2.2.1--h87f3376_4",
+      "source_images": {
+        "docker": "quay.io/biocontainers/hisat2:2.2.1--h87f3376_4"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    },
+    {
+      "id": "container-4a09cd50e8e8",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/samtools:1.21--h50ea8bc_0",
+      "source_images": {
+        "docker": "quay.io/biocontainers/samtools:1.21--h50ea8bc_0"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    },
+    {
+      "id": "container-4dcb5db9865f",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/star:2.7.11b--h43eeafb_0",
+      "source_images": {
+        "docker": "quay.io/biocontainers/star:2.7.11b--h43eeafb_0"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    },
+    {
+      "id": "container-76f8ff5bdce4",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/multiqc:1.25.1--pyhdfd78af_0",
+      "source_images": {
+        "docker": "quay.io/biocontainers/multiqc:1.25.1--pyhdfd78af_0"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    },
+    {
+      "id": "container-898fb4cbcb54",
+      "type": "docker",
+      "uri": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
+      "source_images": {
+        "docker": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"
+      },
+      "resolution": {
+        "status": "resolved"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "modules__local__fastqc",
+      "type": "workflow_module",
+      "name": "fastqc",
+      "path": "modules/local/fastqc",
+      "namespace": "local",
+      "tool": {
+        "name": "fastqc",
+        "version": "0.12.1"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/fastqc/main.nf:2",
+        "modules/local/fastqc/meta.yml"
+      ],
+      "container_id": "container-898fb4cbcb54"
+    },
+    {
+      "id": "modules__local__hisat2",
+      "type": "workflow_module",
+      "name": "hisat2",
+      "path": "modules/local/hisat2",
+      "namespace": "local",
+      "tool": {
+        "name": "hisat2",
+        "version": "2.2.1"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/hisat2/main.nf:2"
+      ],
+      "container_id": "container-17bab4477307"
+    },
+    {
+      "id": "modules__local__multiqc",
+      "type": "workflow_module",
+      "name": "multiqc",
+      "path": "modules/local/multiqc",
+      "namespace": "local",
+      "tool": {
+        "name": "multiqc",
+        "version": "1.25.1"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/multiqc/main.nf:2"
+      ],
+      "container_id": "container-76f8ff5bdce4"
+    },
+    {
+      "id": "modules__local__salmon",
+      "type": "workflow_module",
+      "name": "salmon",
+      "path": "modules/local/salmon",
+      "namespace": "local",
+      "tool": {
+        "name": "salmon",
+        "version": "1.10.3"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/salmon/main.nf:2"
+      ],
+      "container_id": "container-05b848a6cd65"
+    },
+    {
+      "id": "modules__local__samtools_sort",
+      "type": "workflow_module",
+      "name": "samtools_sort",
+      "path": "modules/local/samtools_sort",
+      "namespace": "local",
+      "tool": {
+        "name": "samtools",
+        "version": "1.21"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/samtools_sort/main.nf:2"
+      ],
+      "container_id": "container-4a09cd50e8e8"
+    },
+    {
+      "id": "modules__local__star",
+      "type": "workflow_module",
+      "name": "star",
+      "path": "modules/local/star",
+      "namespace": "local",
+      "tool": {
+        "name": "star",
+        "version": "2.7.11"
+      },
+      "evidence": [
+        "modules.json",
+        "modules/local/star/main.nf:2"
+      ],
+      "container_id": "container-4dcb5db9865f"
+    }
+  ]
+}

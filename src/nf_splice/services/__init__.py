@@ -1,171 +1,92 @@
-"""Public application-service API."""
+"""Public application-service API (file-first).
 
-from nf_splice.services.application import (
-    ApplicationService,
-    AuthoringState,
-    AuthoringSummary,
-    EvidenceCount,
-    LayerSummary,
-    Operation,
-    UnavailableOperation,
-    WorkspaceSnapshot,
-)
-from nf_splice.services.authoring import (
-    AuthoringOperationError,
-    DiscoveryResult,
-    IdentityResolutionError,
-    OutputReviewError,
-    accept_output,
-    apply_output_decision_file,
-    discover_outputs,
-    initialise_authoring_document,
-    load_repository_document,
-    merge_outputs,
-    reject_output,
-    save_repository_document,
-    split_output,
-    unresolved_output_candidates,
-)
-from nf_splice.services.components import (
-    ComponentReviewError,
-    accept_unambiguous_components,
-    discover_components,
-    review_component,
-    unresolved_component_candidates,
-)
-from nf_splice.services.execution import (
-    ExecutionBuildResult,
-    ExecutionProfileError,
-    build_execution_profiles,
-    discover_execution_profiles,
-    plan_execution_profiles,
-    reject_execution_profile,
-    review_execution_profile,
-    unresolved_execution_profiles,
-)
-from nf_splice.services.inputs import (
-    InputReviewError,
-    discover_inputs,
-    review_input,
-    unresolved_input_candidates,
-)
-from nf_splice.services.orchestration import (
-    IntegrationBuildError,
-    IntegrationBuildResult,
-    IntegrationChange,
-    IntegrationPlan,
-    IntegrationValidationReport,
-    ValidationIssue,
-    build_integration,
-    plan_document,
-    plan_integration,
-    validate_integration,
-)
-from nf_splice.services.output_contracts import (
-    ChangeKind,
-    OutputContractBuildError,
-    OutputContractBuildResult,
-    OutputContractChange,
-    build_output_contracts,
-    plan_output_contracts,
-)
-from nf_splice.services.provenance import (
-    ProvenanceReviewError,
-    build_provenance,
-    discover_provenance,
-    plan_provenance,
-    review_provenance,
-    unresolved_provenance_candidates,
-)
-from nf_splice.services.state import (
-    MigrationChangeKind,
-    StateMigrationChange,
-    StateMigrationError,
-    StateMigrationResult,
-    apply_state_migration,
-    plan_state_migration,
-)
-from nf_splice.services.static_layers import (
-    StaticChangeKind,
-    StaticLayerBuildError,
-    StaticLayerBuildResult,
-    StaticLayerChange,
-    build_static_layer,
-    plan_static_layer,
-)
+Exports resolve lazily so that low-level modules (for example
+``nf_splice.services.audit``) can be imported by the layer package without
+importing the facade, which itself depends on the layers.
+"""
+
+from __future__ import annotations
+
+import importlib
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nf_splice.services.application import ApplicationService
+    from nf_splice.services.lifecycle import (
+        ArtifactState,
+        ArtifactStatus,
+        BundleIssue,
+        BundleReport,
+        FinalState,
+        LifecycleError,
+        PromotionPlan,
+        PromotionResult,
+        RecoveryResult,
+        list_artifacts,
+        plan_promotion,
+        promote,
+        recover,
+        validate_bundle,
+        validate_layer,
+    )
+    from nf_splice.services.workspace import (
+        InitialisationReport,
+        WorkspaceStatus,
+        initialise,
+        inspect_layer,
+        workspace_status,
+    )
+
+_EXPORTS = {
+    "ApplicationService": "nf_splice.services.application",
+    "ArtifactState": "nf_splice.services.lifecycle",
+    "ArtifactStatus": "nf_splice.services.lifecycle",
+    "BundleIssue": "nf_splice.services.lifecycle",
+    "BundleReport": "nf_splice.services.lifecycle",
+    "FinalState": "nf_splice.services.lifecycle",
+    "InitialisationReport": "nf_splice.services.workspace",
+    "LifecycleError": "nf_splice.services.lifecycle",
+    "PromotionPlan": "nf_splice.services.lifecycle",
+    "PromotionResult": "nf_splice.services.lifecycle",
+    "RecoveryResult": "nf_splice.services.lifecycle",
+    "WorkspaceStatus": "nf_splice.services.workspace",
+    "initialise": "nf_splice.services.workspace",
+    "inspect_layer": "nf_splice.services.workspace",
+    "list_artifacts": "nf_splice.services.lifecycle",
+    "plan_promotion": "nf_splice.services.lifecycle",
+    "promote": "nf_splice.services.lifecycle",
+    "recover": "nf_splice.services.lifecycle",
+    "validate_bundle": "nf_splice.services.lifecycle",
+    "validate_layer": "nf_splice.services.lifecycle",
+    "workspace_status": "nf_splice.services.workspace",
+}
 
 __all__ = [
     "ApplicationService",
-    "AuthoringOperationError",
-    "AuthoringState",
-    "AuthoringSummary",
-    "ChangeKind",
-    "ComponentReviewError",
-    "DiscoveryResult",
-    "EvidenceCount",
-    "ExecutionBuildResult",
-    "ExecutionProfileError",
-    "IdentityResolutionError",
-    "InputReviewError",
-    "IntegrationBuildError",
-    "IntegrationBuildResult",
-    "IntegrationChange",
-    "IntegrationPlan",
-    "IntegrationValidationReport",
-    "LayerSummary",
-    "MigrationChangeKind",
-    "Operation",
-    "OutputContractBuildError",
-    "OutputContractBuildResult",
-    "OutputContractChange",
-    "OutputReviewError",
-    "ProvenanceReviewError",
-    "StateMigrationChange",
-    "StateMigrationError",
-    "StateMigrationResult",
-    "StaticChangeKind",
-    "StaticLayerBuildError",
-    "StaticLayerBuildResult",
-    "StaticLayerChange",
-    "UnavailableOperation",
-    "ValidationIssue",
-    "WorkspaceSnapshot",
-    "accept_output",
-    "accept_unambiguous_components",
-    "apply_output_decision_file",
-    "apply_state_migration",
-    "build_execution_profiles",
-    "build_integration",
-    "build_output_contracts",
-    "build_provenance",
-    "build_static_layer",
-    "discover_components",
-    "discover_execution_profiles",
-    "discover_inputs",
-    "discover_outputs",
-    "discover_provenance",
-    "initialise_authoring_document",
-    "load_repository_document",
-    "merge_outputs",
-    "plan_document",
-    "plan_execution_profiles",
-    "plan_integration",
-    "plan_output_contracts",
-    "plan_provenance",
-    "plan_state_migration",
-    "plan_static_layer",
-    "reject_execution_profile",
-    "reject_output",
-    "review_component",
-    "review_execution_profile",
-    "review_input",
-    "review_provenance",
-    "save_repository_document",
-    "split_output",
-    "unresolved_component_candidates",
-    "unresolved_execution_profiles",
-    "unresolved_input_candidates",
-    "unresolved_output_candidates",
-    "unresolved_provenance_candidates",
-    "validate_integration",
+    "ArtifactState",
+    "ArtifactStatus",
+    "BundleIssue",
+    "BundleReport",
+    "FinalState",
+    "InitialisationReport",
+    "LifecycleError",
+    "PromotionPlan",
+    "PromotionResult",
+    "RecoveryResult",
+    "WorkspaceStatus",
+    "initialise",
+    "inspect_layer",
+    "list_artifacts",
+    "plan_promotion",
+    "promote",
+    "recover",
+    "validate_bundle",
+    "validate_layer",
+    "workspace_status",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    return getattr(importlib.import_module(_EXPORTS[name]), name)

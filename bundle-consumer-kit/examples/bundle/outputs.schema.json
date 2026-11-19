@@ -1,0 +1,733 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/org/multiroute/schema/analysis-output/v1.0.0",
+  "title": "SPLICE multiroute analysis output",
+  "description": "Versioned contract for the one analysis_output.json produced by each completed multiroute 1.0.0 job.",
+  "type": "object",
+  "required": [
+    "analysis_output_schema_version",
+    "schema_id",
+    "pipeline_name",
+    "pipeline_version",
+    "files"
+  ],
+  "anyOf": [
+    {
+      "required": [
+        "job_id_short"
+      ]
+    },
+    {
+      "required": [
+        "job_id_long"
+      ]
+    }
+  ],
+  "properties": {
+    "analysis_output_schema_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "schema_id": {
+      "type": "string",
+      "const": "https://github.com/org/multiroute/schema/analysis-output/v1.0.0"
+    },
+    "pipeline_name": {
+      "type": "string",
+      "const": "multiroute"
+    },
+    "pipeline_version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "repository_url": {
+      "type": "string",
+      "const": "https://github.com/org/multiroute"
+    },
+    "release_url": {
+      "type": "string"
+    },
+    "job_id_short": {
+      "type": "string",
+      "pattern": "^[A-Za-z][0-9]{3}$"
+    },
+    "job_id_long": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "job_metadata": {
+      "type": "object",
+      "description": "Job-wide metadata. Engine-native identifiers are qualified by engine and never denote a platform run.",
+      "properties": {
+        "engine": {
+          "type": "string"
+        },
+        "engine_execution_id": {
+          "type": "string"
+        },
+        "nextflow": {
+          "type": "object",
+          "properties": {
+            "session_id": {
+              "type": "string"
+            },
+            "run_name": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "annotations": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "config_profile": {
+      "type": "string"
+    },
+    "publish_directory": {
+      "type": "string"
+    },
+    "execution_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "files": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/file_record"
+      },
+      "description": "Files and directories produced by one completed job at job, sample or run granularity; absent optional outputs are valid."
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "file_record": {
+      "type": "object",
+      "required": [
+        "path",
+        "category",
+        "output_type",
+        "scope",
+        "entity_type",
+        "format"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^(?!/)(?!.*//)(?!.*(?:^|/)\\.\\.(?:/|$)).+",
+          "description": "Relative path from the completed job's publish directory."
+        },
+        "category": {
+          "oneOf": [
+            {
+              "const": "alignment"
+            },
+            {
+              "const": "alignment_qc"
+            },
+            {
+              "const": "quality_control"
+            },
+            {
+              "const": "quantification"
+            }
+          ]
+        },
+        "output_type": {
+          "oneOf": [
+            {
+              "const": "hisat2_alignment",
+              "title": "HISAT2 alignment",
+              "description": "HISAT2 alignment per sample."
+            },
+            {
+              "const": "star_alignment",
+              "title": "STAR alignment",
+              "description": "Coordinate-sorted STAR alignment per sample."
+            },
+            {
+              "const": "star_log",
+              "title": "STAR log",
+              "description": "STAR alignment summary per sample."
+            },
+            {
+              "const": "fastqc_archive",
+              "title": "FastQC archive",
+              "description": "Read quality data per sample."
+            },
+            {
+              "const": "fastqc_report",
+              "title": "FastQC report",
+              "description": "Read quality report per sample."
+            },
+            {
+              "const": "multiqc_report",
+              "title": "MultiQC report",
+              "description": "Aggregate quality-control report."
+            },
+            {
+              "const": "salmon_quantification",
+              "title": "Salmon quantification",
+              "description": "Transcript quantification per sample."
+            }
+          ]
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "job",
+            "sample",
+            "run"
+          ],
+          "description": "Platform granularity owning the record: job, sample, run."
+        },
+        "entity_type": {
+          "type": "string",
+          "enum": [
+            "file",
+            "directory"
+          ]
+        },
+        "format": {
+          "type": "string"
+        },
+        "sample_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\s]+$",
+          "description": "Sample owning a sample record, or parent of a run record."
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^/\\s]+$",
+          "description": "Platform file-level run identifier of a run record."
+        },
+        "library_id": {
+          "type": "string",
+          "description": "Optional descriptive library label; never an output scope."
+        },
+        "read": {
+          "type": "string"
+        },
+        "aligner": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "checksum": {
+          "type": "string"
+        },
+        "checksum_algorithm": {
+          "type": "string"
+        },
+        "storage_uri": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "job"
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "sample_id"
+                  ]
+                },
+                {
+                  "required": [
+                    "run_id"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "sample"
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "required": [
+              "sample_id"
+            ],
+            "not": {
+              "required": [
+                "run_id"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "run"
+              }
+            },
+            "required": [
+              "scope"
+            ]
+          },
+          "then": {
+            "required": [
+              "run_id",
+              "sample_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "hisat2_alignment"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "alignment"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "bam"
+                ]
+              },
+              "path": {
+                "pattern": "^hisat2/(?:[^/]+)\\.bam$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "star_alignment"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "alignment"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "bam"
+                ]
+              },
+              "path": {
+                "pattern": "^star/(?:[^/]+)\\.Aligned\\.sortedByCoord\\.out\\.bam$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "star_log"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "alignment_qc"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "txt"
+                ]
+              },
+              "path": {
+                "pattern": "^star/(?:[^/]+)\\.Log\\.final\\.out$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "fastqc_archive"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quality_control"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "zip"
+                ]
+              },
+              "path": {
+                "pattern": "^fastqc/(?:[^/]+)_fastqc\\.zip$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "fastqc_report"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quality_control"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "html"
+                ]
+              },
+              "path": {
+                "pattern": "^fastqc/(?:[^/]+)_fastqc\\.html$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "multiqc_report"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quality_control"
+              },
+              "scope": {
+                "enum": [
+                  "job"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "html"
+                ]
+              },
+              "path": {
+                "pattern": "^multiqc/multiqc_report\\.html$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "output_type": {
+                "const": "salmon_quantification"
+              }
+            },
+            "required": [
+              "output_type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "category": {
+                "const": "quantification"
+              },
+              "scope": {
+                "enum": [
+                  "sample"
+                ]
+              },
+              "entity_type": {
+                "enum": [
+                  "file"
+                ]
+              },
+              "format": {
+                "enum": [
+                  "tsv"
+                ]
+              },
+              "path": {
+                "pattern": "^salmon/(?:[^/]+)/quant\\.sf$"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "x-splice-contract": {
+    "id": "https://schemas.splice-data.io/workflow-bundle/outputs",
+    "version": "0.3.0",
+    "generated_by": {
+      "name": "nf-splice",
+      "version": "0.3.0"
+    }
+  },
+  "x-output-catalog": {
+    "catalog_version": "0.3.0",
+    "schema_semantics": "The catalogue defines every reviewed output type; each completed job may contain any produced subset at job, sample or run granularity.",
+    "analysis_output_schema_version": "1.0.0",
+    "pipeline": {
+      "id": "multiroute",
+      "name": "multiroute",
+      "version": "1.0.0",
+      "engine": "nextflow",
+      "repository_url": "https://github.com/org/multiroute"
+    },
+    "scopes": {
+      "job": "Produced once for the whole workflow job and its combined inputs; attached to the job, never to a platform run.",
+      "sample": "Produced for one biological or experimental sample, aggregating its platform runs; records carry sample_id.",
+      "run": "Produced for one platform file-level or acquisition-level run belonging to a sample; records carry run_id and the parent sample_id."
+    },
+    "categories": {
+      "alignment": {},
+      "alignment_qc": {},
+      "quality_control": {},
+      "quantification": {}
+    },
+    "output_types": [
+      {
+        "key": "hisat2_alignment",
+        "title": "HISAT2 alignment",
+        "description": "HISAT2 alignment per sample.",
+        "category": "alignment",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "bam"
+        ],
+        "path_patterns": [
+          "^hisat2/(?P<sample_id>[^/]+)\\.bam$"
+        ]
+      },
+      {
+        "key": "star_alignment",
+        "title": "STAR alignment",
+        "description": "Coordinate-sorted STAR alignment per sample.",
+        "category": "alignment",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "bam"
+        ],
+        "path_patterns": [
+          "^star/(?P<sample_id>[^/]+)\\.Aligned\\.sortedByCoord\\.out\\.bam$"
+        ]
+      },
+      {
+        "key": "star_log",
+        "title": "STAR log",
+        "description": "STAR alignment summary per sample.",
+        "category": "alignment_qc",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "txt"
+        ],
+        "path_patterns": [
+          "^star/(?P<sample_id>[^/]+)\\.Log\\.final\\.out$"
+        ]
+      },
+      {
+        "key": "fastqc_archive",
+        "title": "FastQC archive",
+        "description": "Read quality data per sample.",
+        "category": "quality_control",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "zip"
+        ],
+        "path_patterns": [
+          "^fastqc/(?P<sample_id>[^/]+)_fastqc\\.zip$"
+        ]
+      },
+      {
+        "key": "fastqc_report",
+        "title": "FastQC report",
+        "description": "Read quality report per sample.",
+        "category": "quality_control",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "html"
+        ],
+        "path_patterns": [
+          "^fastqc/(?P<sample_id>[^/]+)_fastqc\\.html$"
+        ]
+      },
+      {
+        "key": "multiqc_report",
+        "title": "MultiQC report",
+        "description": "Aggregate quality-control report.",
+        "category": "quality_control",
+        "scope": [
+          "job"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "html"
+        ],
+        "path_patterns": [
+          "^multiqc/multiqc_report\\.html$"
+        ]
+      },
+      {
+        "key": "salmon_quantification",
+        "title": "Salmon quantification",
+        "description": "Transcript quantification per sample.",
+        "category": "quantification",
+        "scope": [
+          "sample"
+        ],
+        "entity_type": [
+          "file"
+        ],
+        "format": [
+          "tsv"
+        ],
+        "path_patterns": [
+          "^salmon/(?P<sample_id>[^/]+)/quant\\.sf$"
+        ]
+      }
+    ]
+  }
+}

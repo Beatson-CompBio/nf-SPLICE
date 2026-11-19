@@ -1,0 +1,159 @@
+{
+  "bundle_format": "splice-pipeline-bundle",
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/bundle",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "example-pipeline",
+    "name": "example-pipeline",
+    "version": "1.2.3",
+    "engine": "nextflow",
+    "title": "Example pipeline",
+    "description": "Example RNA-seq quantification workflow.",
+    "repository_url": "https://github.com/org/example-pipeline",
+    "project_url": "https://org.example.org/example-pipeline",
+    "release_url": "https://github.com/org/example-pipeline/releases/tag/1.2.3",
+    "authors": [
+      {
+        "name": "Ada Example",
+        "type": "person",
+        "affiliation": "Example Institute",
+        "orcid": "https://orcid.org/0000-0002-1825-0097",
+        "role": "author"
+      },
+      {
+        "name": "Example Institute",
+        "type": "organization",
+        "role": "maintainer"
+      }
+    ],
+    "funders": [
+      {
+        "name": "Example Research Council",
+        "award_id": "ERC-123"
+      }
+    ],
+    "citation": {
+      "doi": "10.5281/zenodo.0000000"
+    },
+    "licence": "MIT",
+    "licence_url": "https://opensource.org/licenses/MIT",
+    "documentation_url": "https://github.com/org/example-pipeline#readme",
+    "engine_version_min": "24.04.0",
+    "keywords": [
+      "rna-seq",
+      "quantification"
+    ],
+    "assay_capabilities": [
+      {
+        "kind": "registered_assay",
+        "registered_code": "polya_rnaseq",
+        "assay": {
+          "entity_id": 232,
+          "entity_type": "ASSAY_METHOD",
+          "label": "poly(A) RNA-seq"
+        },
+        "assay_types": [
+          {
+            "entity_id": 255,
+            "label": "Short-read RNA-seq"
+          }
+        ],
+        "modality_subtypes": [
+          {
+            "entity_id": 39,
+            "label": "Bulk RNA-seq"
+          }
+        ],
+        "modalities": [
+          {
+            "entity_id": 316,
+            "label": "Transcriptomics"
+          }
+        ],
+        "paths": [
+          [
+            232,
+            255,
+            39,
+            316
+          ]
+        ]
+      },
+      {
+        "kind": "registered_assay",
+        "registered_code": "total_rnaseq",
+        "assay": {
+          "entity_id": 312,
+          "entity_type": "ASSAY_METHOD",
+          "label": "Total RNA-seq"
+        },
+        "assay_types": [
+          {
+            "entity_id": 255,
+            "label": "Short-read RNA-seq"
+          }
+        ],
+        "modality_subtypes": [
+          {
+            "entity_id": 39,
+            "label": "Bulk RNA-seq"
+          }
+        ],
+        "modalities": [
+          {
+            "entity_id": 316,
+            "label": "Transcriptomics"
+          }
+        ],
+        "paths": [
+          [
+            312,
+            255,
+            39,
+            316
+          ]
+        ]
+      }
+    ]
+  },
+  "assay_vocabulary": {
+    "name": "SPLICE modality vocabulary",
+    "snapshot": "splice-sprint-2026-10-14",
+    "digest": "sha256:011bdba0b29765d91b70ea5c0bf7912c8f704f14593157a16ff8d69d9f321e93"
+  },
+  "schemas": {
+    "https://schemas.splice-data.io/workflow-bundle/bundle": {
+      "version": "0.3.0",
+      "path": "bundle.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/inputs": {
+      "version": "0.3.0",
+      "path": "inputs.schema.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/outputs": {
+      "version": "0.3.0",
+      "path": "outputs.schema.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/components": {
+      "version": "0.3.0",
+      "path": "components.json"
+    },
+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": {
+      "version": "0.3.0",
+      "path": "execution-profiles.json"
+    }
+  },
+  "files": {
+    "inputs_schema": "inputs.schema.json",
+    "outputs_catalogue": "outputs.yaml",
+    "outputs_schema": "outputs.schema.json",
+    "ro_crate": "ro-crate-metadata.json",
+    "components": "components.json",
+    "execution_profiles": "execution-profiles.json"
+  },
+  "default_execution_profile": "profile-slurm-736c75726d"
+}

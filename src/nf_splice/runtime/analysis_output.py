@@ -1,4 +1,9 @@
-"""Generate and validate one completed run's analysis_output.json."""
+"""Generate and validate the one ``analysis_output.json`` of a completed job.
+
+For 0.3.0 bundles the classification catalogue is read only from
+``outputs.schema.json`` -> ``x-output-catalog``; the same file validates the
+generated document. ``outputs.yaml`` is never consulted.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +19,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from nf_splice.contracts import OUTPUTS_FAMILY, validate_contract_document
 from nf_splice.domain import expand_output_path_pattern
 from nf_splice.validators import (
     AnalysisOutputValidationReport,
@@ -23,16 +29,9 @@ from nf_splice.validators import (
 ANALYSIS_OUTPUT_FILENAME = "analysis_output.json"
 
 _PATH_KEYS = ("path", "target", "publishedPath", "published_path", "file")
-_RUN_FIELDS = (
-    "job_id_short",
-    "job_id_long",
-    "platform_run_id",
-    "workflow_run_id",
-    "nextflow_session_id",
-    "nextflow_run_name",
-    "config_profile",
-    "execution_timestamp",
-)
+#: Top-level job identity and context fields of a 0.3.0 analysis output.
+_JOB_FIELDS = ("job_id_short", "job_id_long", "config_profile", "execution_timestamp")
+_JOB_METADATA_FIELDS = ("engine", "engine_execution_id", "nextflow", "annotations")
 _FORMAT_SUFFIXES = {
     ".html": "html",
     ".json": "json",
@@ -100,18 +99,93 @@ def _load_mapping(path: Path, label: str) -> dict[str, Any]:
     return loaded
 
 
-def _load_contracts(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
-    catalogue_path = root / "splice" / "outputs.yaml"
-    schema_path = root / "splice" / "outputs.schema.json"
-    try:
-        catalogue: object = yaml.safe_load(catalogue_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, yaml.YAMLError) as error:
-        raise AnalysisOutputError(f"cannot load output catalogue: {error}") from error
-    if not isinstance(catalogue, dict) or not isinstance(
-        catalogue.get("outputs"), list
+@dataclass(frozen=True, slots=True)
+class OutputCatalogue:
+    """Runtime view of one published output contract."""
+
+    schema: dict[str, Any]
+    schema_version: str
+    schema_id: str
+    pipeline: dict[str, Any]
+    output_types: tuple[dict[str, Any], ...]
+
+
+_OUTPUT_TYPE_KEYS = (
+    "key",
+    "category",
+    "scope",
+    "entity_type",
+    "format",
+    "path_patterns",
+)
+
+
+def _complete_output_types(value: object) -> tuple[dict[str, Any], ...] | None:
+    if not isinstance(value, list) or not value:
+        return None
+    if not all(
+        isinstance(item, dict) and all(key in item for key in _OUTPUT_TYPE_KEYS)
+        for item in value
     ):
-        raise AnalysisOutputError("output catalogue must contain an outputs list")
-    return catalogue, _load_mapping(schema_path, "output schema")
+        return None
+    for item in value:
+        for pattern in item["path_patterns"]:
+            try:
+                re.compile(expand_output_path_pattern(str(pattern)))
+            except (re.error, ValueError) as error:
+                raise AnalysisOutputError(
+                    f"x-output-catalog output {item['key']!r} has invalid pattern "
+                    f"{pattern!r}: {error}"
+                ) from error
+    return tuple(value)
+
+
+def _const(schema: Mapping[str, Any], name: str) -> Any:
+    properties = schema.get("properties", {})
+    item = properties.get(name, {}) if isinstance(properties, dict) else {}
+    return item.get("const") if isinstance(item, dict) else None
+
+
+def load_output_catalogue(repository_root: str | Path) -> OutputCatalogue:
+    """Load the runtime catalogue from ``outputs.schema.json``.
+
+    The contract must declare ``x-splice-contract`` and be complete and
+    valid; it is never replaced by ``outputs.yaml``.
+    """
+    root = Path(repository_root).resolve()
+    schema = _load_mapping(root / "splice" / "outputs.schema.json", "output schema")
+    if "x-splice-contract" not in schema:
+        raise AnalysisOutputError(
+            "outputs.schema.json is not a SPLICE 0.3.0 output contract "
+            "(x-splice-contract is missing); rebuild the bundle with nf-splice"
+        )
+    report = validate_contract_document(schema, OUTPUTS_FAMILY)
+    if not report.valid:
+        details = "; ".join(
+            f"{item.json_pointer or '/'}: {item.message}" for item in report.issues[:5]
+        )
+        raise AnalysisOutputError(
+            f"outputs.schema.json is not a valid {OUTPUTS_FAMILY} contract; repair "
+            f"and republish it (no YAML fallback is used): {details}"
+        )
+    catalog = schema["x-output-catalog"]
+    output_types = _complete_output_types(catalog["output_types"])
+    if output_types is None:
+        raise AnalysisOutputError("x-output-catalog output_types are incomplete")
+    pipeline = dict(catalog["pipeline"])
+    release_url = None
+    properties = schema.get("properties", {})
+    if isinstance(properties, dict):
+        release_url = properties.get("release_url", {}).get("const")
+    if release_url:
+        pipeline["release_url"] = release_url
+    return OutputCatalogue(
+        schema=schema,
+        schema_version=str(catalog["analysis_output_schema_version"]),
+        schema_id=str(schema["$id"]),
+        pipeline=pipeline,
+        output_types=output_types,
+    )
 
 
 def _safe_relative_path(value: object) -> str:
@@ -234,6 +308,26 @@ def _runtime_entries(
     return _entries_from_tree(source), None
 
 
+def read_output_listing(path: str | Path) -> list[tuple[str, bool]]:
+    """Entries of a saved listing or output index as ``(path, is_directory)``.
+
+    ``.json``, ``.yaml``, ``.yml``, ``.csv`` and ``.tsv`` files are output
+    indexes; anything else is a saved ``ls -R`` or ``tree`` listing. Every
+    path must be safely relative.
+    """
+    source = Path(path)
+    if source.suffix.lower() in {".json", ".yaml", ".yml", ".csv", ".tsv"}:
+        entries = _records_from_index(source)
+    else:
+        entries = _entries_from_tree(source)
+    return [(item.path, item.is_directory) for item in entries]
+
+
+def output_type_order(outputs: tuple[dict[str, Any], ...]) -> list[str]:
+    """Output keys in the order the runtime tries their patterns."""
+    return [str(item["key"]) for item in sorted(outputs, key=_specificity)]
+
+
 def _specificity(output: Mapping[str, Any]) -> tuple[bool, int, str]:
     patterns = [str(item) for item in output.get("path_patterns", [])]
     return (
@@ -255,17 +349,30 @@ def _format_for(path: str, allowed: list[str], is_directory: bool) -> str:
     return allowed[0]
 
 
-def _classify(
-    outputs: list[object], entries: list[_Entry], sample_ids: set[str] | None
-) -> tuple[list[dict[str, object]], tuple[str, ...]]:
+@dataclass(frozen=True, slots=True)
+class SampleIndex:
+    """Known samples and, when supplied, each platform run's parent sample."""
+
+    samples: frozenset[str]
+    run_parents: Mapping[str, str]
+
+
+def _compiled_outputs(
+    outputs: tuple[dict[str, Any], ...],
+) -> list[tuple[re.Pattern[str], Mapping[str, Any]]]:
     compiled: list[tuple[re.Pattern[str], Mapping[str, Any]]] = []
-    typed_outputs = [item for item in outputs if isinstance(item, dict)]
-    for typed_output in sorted(typed_outputs, key=_specificity):
+    for typed_output in sorted(outputs, key=_specificity):
         for pattern in typed_output.get("path_patterns", []):
             compiled.append(
                 (re.compile(expand_output_path_pattern(str(pattern))), typed_output)
             )
+    return compiled
 
+
+def _matches(
+    outputs: tuple[dict[str, Any], ...], entries: list[_Entry]
+) -> tuple[list[tuple[_Entry, re.Match[str], Mapping[str, Any]]], tuple[str, ...]]:
+    compiled = _compiled_outputs(outputs)
     directory_output_prefixes = []
     for entry in entries:
         if not entry.is_directory:
@@ -278,20 +385,22 @@ def _classify(
                 directory_output_prefixes.append(f"{entry.path}/")
                 break
     all_paths = {item.path for item in entries}
-    files = []
+    matched = []
     unclassified = []
     for entry in sorted(entries, key=lambda item: item.path):
         if any(entry.path.startswith(prefix) for prefix in directory_output_prefixes):
             continue
-        match: re.Match[str] | None = None
-        matched_output: Mapping[str, Any] | None = None
         entity = "directory" if entry.is_directory else "file"
-        for pattern, candidate in compiled:
-            found = pattern.match(entry.path)
-            if found and entity in candidate["entity_type"]:
-                match, matched_output = found, candidate
-                break
-        if matched_output is None or match is None:
+        found = next(
+            (
+                (match, candidate)
+                for pattern, candidate in compiled
+                if (match := pattern.match(entry.path))
+                and entity in candidate["entity_type"]
+            ),
+            None,
+        )
+        if found is None:
             is_container = entry.is_directory and any(
                 item != entry.path and item.startswith(f"{entry.path}/")
                 for item in all_paths
@@ -299,62 +408,105 @@ def _classify(
             if not is_container:
                 unclassified.append(entry.path)
             continue
-        scopes = [str(item) for item in matched_output["scope"]]
+        matched.append((entry, found[0], found[1]))
+    return matched, tuple(unclassified)
+
+
+def _base_record(
+    entry: _Entry, matched_output: Mapping[str, Any], scope: str
+) -> dict[str, object]:
+    return {
+        "path": entry.path,
+        "category": matched_output["category"],
+        "output_type": matched_output["key"],
+        "scope": scope,
+        "entity_type": "directory" if entry.is_directory else "file",
+        "format": _format_for(
+            entry.path, list(matched_output["format"]), entry.is_directory
+        ),
+    }
+
+
+def _descriptive_fields(
+    record: dict[str, object],
+    groups: Mapping[str, str | None],
+    output: Mapping[str, Any],
+) -> None:
+    for name in ("read", "aligner"):
+        if groups.get(name):
+            record[name] = groups[name]
+    if groups.get("stage"):
+        record["stage"] = groups["stage"]
+    elif output.get("stage"):
+        record["stage"] = output["stage"]
+    if output.get("labels"):
+        record["labels"] = output["labels"]
+
+
+def _classify(
+    outputs: tuple[dict[str, Any], ...],
+    entries: list[_Entry],
+    index: SampleIndex | None,
+) -> tuple[list[dict[str, object]], tuple[str, ...]]:
+    """Classify job records at job, sample or run granularity (0.3.0)."""
+    matched, unclassified = _matches(outputs, entries)
+    files = []
+    for entry, match, output in matched:
+        scopes = [str(item) for item in output["scope"]]
         groups = match.groupdict()
-        scope = scopes[0]
-        record: dict[str, object] = {
-            "path": entry.path,
-            "category": matched_output["category"],
-            "output_type": matched_output["key"],
-            "scope": scope,
-            "entity_type": entity,
-            "format": _format_for(
-                entry.path, list(matched_output["format"]), entry.is_directory
-            ),
-        }
-        if scope == "sample":
-            sample_id = groups.get("sample_id")
+        run_id = groups.get("run_id")
+        sample_id = groups.get("sample_id")
+        if run_id and "run" in scopes:
+            scope = "run"
+        elif sample_id and "sample" in scopes:
+            scope = "sample"
+        elif "job" in scopes:
+            scope = "job"
+        else:
+            raise AnalysisOutputError(
+                f"output path {entry.path!r} matches {output['key']!r} but captures "
+                f"no identifier for its scopes {scopes}"
+            )
+        record = _base_record(entry, output, scope)
+        if scope == "run":
+            assert run_id is not None
+            parent = index.run_parents.get(run_id) if index is not None else None
+            if sample_id and parent and parent != sample_id:
+                raise AnalysisOutputError(
+                    f"run {run_id!r} at {entry.path!r} belongs to sample {parent!r} "
+                    f"in the sample metadata, not {sample_id!r}"
+                )
+            sample_id = sample_id or parent
             if not sample_id:
                 raise AnalysisOutputError(
-                    f"sample-scoped output {matched_output['key']!r} does not "
-                    "capture sample_id"
+                    f"run-scoped output {entry.path!r} has unresolved parent sample "
+                    f"for run {run_id!r}; capture {{sample}} or supply sample "
+                    "metadata with run_id and sample columns"
                 )
-            if sample_ids is not None and sample_id not in sample_ids:
+            record["run_id"] = run_id
+        if scope in {"run", "sample"}:
+            assert sample_id is not None
+            if index is not None and sample_id not in index.samples:
                 raise AnalysisOutputError(
                     f"output path {entry.path!r} captures unknown sample {sample_id!r}"
                 )
             record["sample_id"] = sample_id
-        if scope == "library":
-            library_id = groups.get("library_id")
-            if not library_id:
-                raise AnalysisOutputError(
-                    f"library-scoped output {matched_output['key']!r} does not "
-                    "capture library_id"
-                )
-            record["library_id"] = library_id
-        if groups.get("read"):
-            record["read"] = groups["read"]
-        if groups.get("aligner"):
-            record["aligner"] = groups["aligner"]
-        if groups.get("stage"):
-            record["stage"] = groups["stage"]
-        elif matched_output.get("stage"):
-            record["stage"] = matched_output["stage"]
-        if matched_output.get("labels"):
-            record["labels"] = matched_output["labels"]
+        if groups.get("library_id"):
+            record["library_id"] = groups["library_id"]
+        _descriptive_fields(record, groups, output)
         files.append(record)
-    return files, tuple(unclassified)
+    return files, unclassified
 
 
-def _read_sample_ids(path: Path | None) -> set[str] | None:
+def _read_sample_index(path: Path | None) -> SampleIndex | None:
     if path is None:
         return None
     with path.open(encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         if not reader.fieldnames:
-            return set()
+            return SampleIndex(frozenset(), {})
         lowered = {item.lower(): item for item in reader.fieldnames}
-        column = next(
+        sample_column = next(
             (
                 lowered[name]
                 for name in ("sample", "sample_id", "sampleid", "id", "name")
@@ -362,11 +514,28 @@ def _read_sample_ids(path: Path | None) -> set[str] | None:
             ),
             reader.fieldnames[0],
         )
-        return {
-            str(row[column]).strip()
-            for row in reader
-            if row.get(column) and str(row[column]).strip()
-        }
+        run_column = next(
+            (lowered[name] for name in ("run_id", "run", "runid") if name in lowered),
+            None,
+        )
+        samples: set[str] = set()
+        parents: dict[str, str] = {}
+        for row in reader:
+            sample = str(row.get(sample_column) or "").strip()
+            if not sample:
+                continue
+            samples.add(sample)
+            if run_column is None:
+                continue
+            run = str(row.get(run_column) or "").strip()
+            if not run:
+                continue
+            if parents.get(run, sample) != sample:
+                raise AnalysisOutputError(
+                    f"sample metadata assigns run {run!r} to more than one sample"
+                )
+            parents[run] = sample
+    return SampleIndex(frozenset(samples), parents)
 
 
 def _checksum(path: Path, algorithm: str) -> str:
@@ -382,40 +551,59 @@ def _checksum(path: Path, algorithm: str) -> str:
     return digest.hexdigest()
 
 
+def _job_document(job_metadata: Mapping[str, Any] | None) -> dict[str, Any]:
+    supplied = dict(job_metadata or {})
+    unknown = sorted(set(supplied) - {*_JOB_FIELDS, "job_metadata"})
+    if unknown:
+        raise AnalysisOutputError(
+            f"unsupported job metadata field(s): {', '.join(unknown)}"
+        )
+    document = {key: supplied[key] for key in _JOB_FIELDS if supplied.get(key)}
+    nested = supplied.get("job_metadata")
+    if nested is not None:
+        if not isinstance(nested, dict):
+            raise AnalysisOutputError("job_metadata must be an object")
+        unknown = sorted(set(nested) - set(_JOB_METADATA_FIELDS))
+        if unknown:
+            raise AnalysisOutputError(
+                f"unsupported job_metadata field(s): {', '.join(unknown)}; put "
+                "free-form values under job_metadata.annotations"
+            )
+        if nested:
+            document["job_metadata"] = {
+                key: nested[key] for key in _JOB_METADATA_FIELDS if key in nested
+            }
+    if not document.get("job_id_short") and not document.get("job_id_long"):
+        raise AnalysisOutputError(
+            "job identity is required: supply job_id_short or job_id_long with "
+            "--job-metadata"
+        )
+    return document
+
+
 def _metadata(
-    catalogue: Mapping[str, Any],
-    schema: Mapping[str, Any],
-    run_metadata: Mapping[str, Any] | None,
+    catalogue: OutputCatalogue,
+    job_metadata: Mapping[str, Any] | None,
     publish_directory: Path | None,
 ) -> dict[str, Any]:
-    pipeline = catalogue["pipeline"]
+    pipeline = catalogue.pipeline
     metadata: dict[str, Any] = {
-        "analysis_output_schema_version": catalogue["schema_version"],
-        "schema_id": schema["$id"],
+        "analysis_output_schema_version": catalogue.schema_version,
+        "schema_id": catalogue.schema_id,
         "pipeline_name": pipeline["name"],
         "pipeline_version": pipeline["version"],
         "repository_url": pipeline["repository_url"],
     }
     if pipeline.get("release_url"):
         metadata["release_url"] = pipeline["release_url"]
+    job = _job_document(job_metadata)
+    for key in ("job_id_short", "job_id_long", "job_metadata", "config_profile"):
+        if key in job:
+            metadata[key] = job[key]
     if publish_directory is not None:
         metadata["publish_directory"] = str(publish_directory)
-    if run_metadata:
-        for key in _RUN_FIELDS:
-            if run_metadata.get(key) is not None:
-                metadata[key] = run_metadata[key]
-        nested = {
-            key: value
-            for key, value in run_metadata.items()
-            if key not in _RUN_FIELDS and key != "run_metadata" and value is not None
-        }
-        supplied_nested = run_metadata.get("run_metadata")
-        if supplied_nested is not None and not isinstance(supplied_nested, dict):
-            raise AnalysisOutputError("run_metadata.run_metadata must be an object")
-        if isinstance(supplied_nested, dict):
-            nested = {**supplied_nested, **nested}
-        if nested:
-            metadata["run_metadata"] = dict(sorted(nested.items()))
+    if "execution_timestamp" in job:
+        metadata["execution_timestamp"] = job["execution_timestamp"]
     return metadata
 
 
@@ -438,15 +626,15 @@ def generate_analysis_output(
     publish_directory: str | Path | None = None,
     native_output_index: str | Path | None = None,
     output_tree: str | Path | None = None,
-    run_metadata: Mapping[str, Any] | None = None,
+    job_metadata: Mapping[str, Any] | None = None,
     sample_metadata: str | Path | None = None,
     checksum_algorithm: str | None = None,
     allow_unclassified: bool = False,
     output_directory: str | Path | None = None,
 ) -> AnalysisOutputResult:
-    """Generate, validate, and optionally write one runtime output inventory."""
+    """Generate, validate, and optionally write one completed job's inventory."""
     root = Path(repository_root).resolve()
-    catalogue, schema = _load_contracts(root)
+    catalogue = load_output_catalogue(root)
     entries, live_publish_directory = _runtime_entries(
         publish_directory=Path(publish_directory).resolve()
         if publish_directory is not None
@@ -456,13 +644,10 @@ def generate_analysis_output(
         else None,
         output_tree=Path(output_tree).resolve() if output_tree is not None else None,
     )
-    files, unclassified = _classify(
-        catalogue["outputs"],
-        entries,
-        _read_sample_ids(Path(sample_metadata).resolve())
-        if sample_metadata is not None
-        else None,
+    index = _read_sample_index(
+        Path(sample_metadata).resolve() if sample_metadata is not None else None
     )
+    files, unclassified = _classify(catalogue.output_types, entries, index)
     if unclassified and not allow_unclassified:
         raise AnalysisOutputError(
             f"{len(unclassified)} produced path(s) are not in the reviewed output "
@@ -479,9 +664,9 @@ def generate_analysis_output(
                 record["size_bytes"] = path.stat().st_size
                 record["checksum"] = _checksum(path, checksum_algorithm)
                 record["checksum_algorithm"] = checksum_algorithm
-    document = _metadata(catalogue, schema, run_metadata, live_publish_directory)
+    document = _metadata(catalogue, job_metadata, live_publish_directory)
     document["files"] = files
-    validation = validate_analysis_output(document, schema)
+    validation = validate_analysis_output(document, catalogue.schema)
     if not validation.valid:
         details = "; ".join(
             f"{item.json_pointer or '/'}: {item.message}" for item in validation.issues
@@ -510,6 +695,6 @@ def load_and_validate_analysis_output(
     repository_root: str | Path, analysis_output: str | Path
 ) -> AnalysisOutputValidationReport:
     """Validate an existing analysis_output.json against the static contract."""
-    _, schema = _load_contracts(Path(repository_root).resolve())
+    catalogue = load_output_catalogue(Path(repository_root).resolve())
     document = _load_mapping(Path(analysis_output).resolve(), "analysis output")
-    return validate_analysis_output(document, schema)
+    return validate_analysis_output(document, catalogue.schema)

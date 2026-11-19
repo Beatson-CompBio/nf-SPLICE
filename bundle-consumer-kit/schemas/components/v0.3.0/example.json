@@ -1,0 +1,69 @@
+{
+  "schema_id": "https://schemas.splice-data.io/workflow-bundle/components",
+  "schema_version": "0.3.0",
+  "generated_by": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "pipeline": {
+    "id": "example-pipeline",
+    "name": "example-pipeline",
+    "version": "1.2.3",
+    "engine": "nextflow"
+  },
+  "require_downloadable_images": true,
+  "containers": [
+    {
+      "id": "container-72b9a77e52e7",
+      "type": "singularity",
+      "uri": "https://images.example.org/quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img",
+      "source_images": {
+        "docker": "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0",
+        "singularity": "https://depot.galaxyproject.org/singularity/fastqc:0.12.1--hdfd78af_0"
+      },
+      "distribution": {
+        "download_uri": "https://images.example.org/quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+        "size_bytes": 123456789,
+        "filename": "quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img",
+        "format": "img",
+        "cache_filename": "quay.io-biocontainers-fastqc-0.12.1--hdfd78af_0.img",
+        "source_runtime": "singularity"
+      },
+      "resolution": {
+        "status": "verified"
+      }
+    }
+  ],
+  "components": [
+    {
+      "id": "modules__nf-core__fastqc",
+      "type": "workflow_module",
+      "name": "fastqc",
+      "path": "modules/nf-core/fastqc",
+      "namespace": "nf-core",
+      "tool": {
+        "name": "fastqc",
+        "version": "0.12.1"
+      },
+      "evidence": [
+        "modules/nf-core/fastqc/main.nf"
+      ],
+      "container_id": "container-72b9a77e52e7"
+    },
+    {
+      "id": "main__nf__WRITE_INDEX",
+      "type": "workflow_process",
+      "name": "WRITE_INDEX",
+      "path": "main.nf",
+      "process": "WRITE_INDEX",
+      "namespace": "local",
+      "tool": {
+        "name": "write_index"
+      },
+      "evidence": [
+        "main.nf:12"
+      ]
+    }
+  ]
+}

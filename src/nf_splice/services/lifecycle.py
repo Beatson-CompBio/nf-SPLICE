@@ -1,0 +1,1156 @@
+"""File-first draft lifecycle: status, promotion, publication and validation.
+
+Readiness always derives from current draft bytes. A single layer may be
+promoted to its final file names while others remain drafts; the whole
+bundle (``bundle.json``, ``README.md`` and the lock) is published only when
+every layer is ready, through a staged, journalled, rollback-safe transaction
+that writes ``nf-splice.lock.json`` and ``bundle.json`` last.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import secrets
+import shutil
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+import yaml  # type: ignore[import-untyped]
+
+from nf_splice.contracts import families, release, validate_contract_document
+from nf_splice.domain import PathClassification
+from nf_splice.domain.identity import PipelineMetadata
+from nf_splice.drafts import DRAFT_MARKER, sha256, text_diff
+from nf_splice.inspectors.splice_tree import inspect_splice_tree
+from nf_splice.layers.base import (
+    LAYERS,
+    ChangeContext,
+    DraftIssue,
+    LayerError,
+    LayerValidation,
+    ReviewState,
+    Severity,
+    layer_spec,
+    load_review_state,
+    read_layer,
+    record_decision,
+)
+from nf_splice.layers.bundle import validate_bundle_draft
+from nf_splice.layers.components import validate_components_draft
+from nf_splice.layers.execution import (
+    ADOPTED,
+    profile_config,
+    validate_execution_draft,
+)
+from nf_splice.layers.inputs import SOURCE as INPUT_SOURCE
+from nf_splice.layers.inputs import validate_inputs_draft
+from nf_splice.layers.outputs import validate_outputs_draft
+from nf_splice.layers.provenance import crate_origin, validate_provenance_draft
+from nf_splice.renderers.bundle_index import BUNDLE_FILES, render_bundle_index
+
+SPLICE = "splice"
+JOURNAL = ".nf-splice-publish.json"
+STAGING = ".nf-splice-staging"
+BACKUP = ".nf-splice-backup"
+WHOLE_BUNDLE_FILES = ("bundle.json", "README.md", "nf-splice.lock.json")
+FORBIDDEN_FINALS = ("outputs.json", "outputs.schema.draft.json", "nf-splice.yaml")
+
+#: Indirection used by failure-injection tests.
+replace_file: Callable[[Path, Path], None] = os.replace
+
+_VALIDATORS: dict[str, Callable[[Path], LayerValidation]] = {
+    "inputs": validate_inputs_draft,
+    "outputs": validate_outputs_draft,
+    "components": validate_components_draft,
+    "execution-profiles": validate_execution_draft,
+    "provenance": validate_provenance_draft,
+}
+
+
+class LifecycleError(ValueError):
+    """Raised when a promotion or publication is blocked or unsafe."""
+
+
+def validate_layer(repository_root: str | Path, layer: str) -> LayerValidation:
+    """Validate one layer (read-only)."""
+    root = Path(repository_root).resolve()
+    name = layer_spec(layer).name
+    if name == "bundle":
+        validation = validate_bundle_draft(root)
+        return LayerValidation(
+            "bundle",
+            validation.issues,
+            {"bundle.json": b""} if validation.ready else {},
+        )
+    return _VALIDATORS[name](root)
+
+
+class FinalState(str, Enum):
+    """Relationship between a final file and its current draft compilation."""
+
+    ABSENT = "absent"
+    CURRENT = "current"
+    OUTDATED = "outdated"
+    DRIFTED = "drifted"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class FinalStatus:
+    """One published file's state."""
+
+    path: str
+    state: FinalState
+
+
+class ArtifactState(str, Enum):
+    """Derived readiness of one draft layer."""
+
+    MISSING = "missing"
+    MALFORMED = "malformed"
+    INCOMPLETE = "incomplete"
+    READY = "ready"
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactStatus:
+    """Status of one layer derived from its draft bytes and final files."""
+
+    layer: str
+    draft: str
+    draft_sha256: str | None
+    state: ArtifactState
+    errors: int
+    warnings: int
+    finals: tuple[FinalStatus, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "layer": self.layer,
+            "draft": self.draft,
+            "draft_sha256": self.draft_sha256,
+            "state": self.state.value,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "finals": [
+                {"path": item.path, "state": item.state.value} for item in self.finals
+            ],
+        }
+
+
+def _final(root: Path, relative: str) -> Path:
+    return root / SPLICE / relative
+
+
+def _recorded_hash(root: Path, layer: str, relative: str) -> str | None:
+    promoted = load_review_state(root, layer).promoted.get(relative)
+    if isinstance(promoted, str):
+        return promoted
+    lock = _final(root, "nf-splice.lock.json")
+    if lock.is_file():
+        try:
+            loaded = json.loads(lock.read_text(encoding="utf-8"))
+            record = loaded.get("managed_files", {}).get(relative, {})
+            value = record.get("sha256") if isinstance(record, dict) else None
+            return value if isinstance(value, str) else None
+        except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+            return None
+    return None
+
+
+def _final_state(
+    root: Path, layer: str, relative: str, desired: bytes | None
+) -> FinalState:
+    path = _final(root, relative)
+    if not path.exists() and not path.is_symlink():
+        return FinalState.ABSENT
+    if path.is_symlink() or not path.is_file():
+        return FinalState.UNKNOWN
+    current = sha256(path.read_bytes())
+    recorded = _recorded_hash(root, layer, relative)
+    if desired is not None and current == sha256(desired):
+        return FinalState.CURRENT
+    if recorded is not None and current != recorded:
+        return FinalState.DRIFTED
+    if recorded is None:
+        classification = {
+            item.path: item.classification for item in inspect_splice_tree(root).paths
+        }.get(relative)
+        if classification is PathClassification.RECOGNIZED:
+            return FinalState.OUTDATED
+        return FinalState.UNKNOWN
+    if desired is None:
+        # Nothing to compare against (the whole-bundle render is blocked or
+        # was not asked for): the file matches the lock, and whether a fresh
+        # compilation would differ is not established here.
+        return FinalState.UNKNOWN
+    return FinalState.OUTDATED
+
+
+def _layer_finals(spec_name: str, validation: LayerValidation, root: Path) -> list[str]:
+    if spec_name == "execution-profiles":
+        existing = sorted(
+            f"configs/{item.name}"
+            for item in (root / SPLICE / "configs").glob("*.config")
+            if item.is_file()
+        )
+        return sorted({"execution-profiles.json", *validation.files, *existing})
+    return list(layer_spec(spec_name).finals)
+
+
+def _bundle_payloads(root: Path) -> dict[str, bytes]:
+    """Best-effort whole-bundle compilation for status reporting (read-only).
+
+    The bundle layer renders from every draft at once, which per-layer
+    validation cannot reproduce; status needs the same bytes the build would
+    write to say "current" the way plan does. An interrupted or blocked
+    publication simply yields no comparison, and files fall back to their
+    lock-relative state.
+    """
+    try:
+        return dict(plan_promotion(root).payloads)
+    except (LifecycleError, ValueError, KeyError, OSError):
+        return {}
+
+
+def list_artifacts(repository_root: str | Path) -> tuple[ArtifactStatus, ...]:
+    """Return every layer's derived status (read-only)."""
+    root = Path(repository_root).resolve()
+    compiled = _bundle_payloads(root)
+    statuses = []
+    for spec in LAYERS:
+        state = read_layer(root, spec.name)
+        validation = validate_layer(root, spec.name)
+        if not state.file.exists:
+            derived = ArtifactState.MISSING
+        elif state.draft is None:
+            derived = ArtifactState.MALFORMED
+        elif validation.errors:
+            derived = ArtifactState.INCOMPLETE
+        else:
+            derived = ArtifactState.READY
+        finals = tuple(
+            FinalStatus(
+                relative,
+                _final_state(
+                    root,
+                    spec.name,
+                    relative,
+                    compiled.get(relative)
+                    if spec.name == "bundle"
+                    else validation.files.get(relative),
+                ),
+            )
+            for relative in _layer_finals(spec.name, validation, root)
+        )
+        statuses.append(
+            ArtifactStatus(
+                spec.name,
+                spec.draft,
+                state.file.sha256,
+                derived,
+                len(validation.errors),
+                len(validation.issues) - len(validation.errors),
+                finals,
+            )
+        )
+    return tuple(statuses)
+
+
+@dataclass(frozen=True, slots=True)
+class FileChange:
+    """One planned final-file write."""
+
+    path: str
+    kind: str
+    diff: str
+    state: FinalState
+
+
+@dataclass(frozen=True, slots=True)
+class PromotionPlan:
+    """Read-only plan for promoting one layer or publishing the bundle."""
+
+    target: str
+    changes: tuple[FileChange, ...]
+    blockers: tuple[DraftIssue, ...]
+    payloads: Mapping[str, bytes] = field(default_factory=dict, repr=False)
+
+    @property
+    def ready(self) -> bool:
+        return not self.blockers
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "target": self.target,
+            "ready": self.ready,
+            "blockers": [item.to_json() for item in self.blockers],
+            "changes": [
+                {
+                    "path": item.path,
+                    "kind": item.kind,
+                    "state": item.state.value,
+                    "diff": item.diff,
+                }
+                for item in self.changes
+            ],
+        }
+
+
+def _changes(
+    root: Path, layer_of: Mapping[str, str], payloads: Mapping[str, bytes]
+) -> tuple[FileChange, ...]:
+    changes = []
+    for relative in sorted(payloads):
+        desired = payloads[relative]
+        path = _final(root, relative)
+        current = path.read_bytes() if path.is_file() and not path.is_symlink() else b""
+        state = _final_state(root, layer_of[relative], relative, desired)
+        kind = (
+            "unchanged"
+            if path.is_file() and current == desired
+            else "update"
+            if path.exists() or path.is_symlink()
+            else "create"
+        )
+        diff = (
+            ""
+            if kind == "unchanged"
+            else text_diff(
+                f"splice/{relative}",
+                current.decode("utf-8", errors="replace"),
+                desired.decode("utf-8", errors="replace"),
+            )
+        )
+        changes.append(FileChange(relative, kind, diff, state))
+    return tuple(changes)
+
+
+def _sources(root: Path) -> dict[str, dict[str, str]]:
+    sources: dict[str, dict[str, str]] = {}
+    schema = root / INPUT_SOURCE
+    if schema.is_file():
+        sources[INPUT_SOURCE] = {
+            "sha256": sha256(schema.read_bytes()),
+            "role": "input-schema-evidence",
+        }
+    crate = root / "ro-crate-metadata.json"
+    provenance = read_layer(root, "provenance")
+    source = None
+    if provenance.draft is not None and isinstance(provenance.draft.data, dict):
+        source = provenance.draft.data.get("source")
+    if crate.is_file() and isinstance(source, dict) and source.get("sha256"):
+        sources["ro-crate-metadata.json"] = {
+            "sha256": sha256(crate.read_bytes()),
+            "role": f"ro-crate-source:{crate_origin(root) or 'adopted'}",
+        }
+    execution = read_layer(root, "execution-profiles")
+    if execution.draft is not None and isinstance(execution.draft.data, dict):
+        for profile in execution.draft.data.get("profiles") or []:
+            if not isinstance(profile, dict):
+                continue
+            strategy, path, _problem = profile_config(root, profile)
+            if strategy == ADOPTED and path is not None and (root / path).is_file():
+                sources[path] = {
+                    "sha256": sha256((root / path).read_bytes()),
+                    "role": "adopted-config",
+                }
+    return sources
+
+
+def _revision(root: Path) -> str | None:
+    """The commit of this repository, never of one that merely contains it.
+
+    ``git rev-parse`` walks upwards: a workspace nested inside an unrelated
+    checkout (an evaluation folder, a monorepo) would otherwise record the
+    outer repository's HEAD as the pipeline's revision. The revision is only
+    reported when the discovered repository is the workspace itself.
+    """
+    try:
+        toplevel = subprocess.run(
+            ("git", "-C", str(root), "rev-parse", "--show-toplevel"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if (
+            toplevel.returncode != 0
+            or not toplevel.stdout.strip()
+            or Path(toplevel.stdout.strip()).resolve() != root.resolve()
+        ):
+            return None
+        result = subprocess.run(
+            ("git", "-C", str(root), "rev-parse", "HEAD"),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
+
+
+def verification_records(
+    root: Path, components: bytes | None
+) -> dict[str, dict[str, Any]]:
+    """The lock's record of every verified image distribution being published.
+
+    Each entry states the checksum, address and size nf-splice verified, a
+    digest of the container's source images, and whether the verification
+    was a fresh download (``fresh``) or carried over from an earlier bundle
+    (``historical``). Deterministic: no times are recorded.
+    """
+    from nf_splice.layers.base import load_review_state
+    from nf_splice.layers.components import sources_digest
+
+    if components is None:
+        return {}
+    verified = load_review_state(root, "components").section("verified")
+    records: dict[str, dict[str, Any]] = {}
+    for container in json.loads(components).get("containers") or []:
+        distribution = container.get("distribution")
+        evidence = verified.get(container.get("id"))
+        if not isinstance(distribution, dict) or not isinstance(evidence, dict):
+            continue
+        if evidence.get("sha256") != distribution.get("sha256"):
+            continue
+        records[str(container["id"])] = {
+            "sha256": distribution["sha256"],
+            "download_uri": distribution["download_uri"],
+            "size_bytes": distribution.get("size_bytes"),
+            "source_images_sha256": sources_digest(container["source_images"]),
+            "verification": str(evidence.get("basis") or "fresh"),
+        }
+    return records
+
+
+def _whole_bundle(
+    root: Path,
+) -> tuple[dict[str, bytes], dict[str, str], list[DraftIssue]]:
+    payloads: dict[str, bytes] = {}
+    layer_of: dict[str, str] = {}
+    blockers: list[DraftIssue] = []
+    identity = validate_bundle_draft(root)
+    blockers.extend(item for item in identity.issues if item.severity is Severity.ERROR)
+    for name, validator in _VALIDATORS.items():
+        validation = validator(root)
+        blockers.extend(validation.errors)
+        for relative, payload in validation.files.items():
+            payloads[relative] = payload
+            layer_of[relative] = name
+    if blockers or identity.metadata is None:
+        return payloads, layer_of, blockers
+    profiles = json.loads(payloads["execution-profiles.json"])
+    strategy = crate_origin(root)
+    crate_source = _sources(root).get("ro-crate-metadata.json")
+    rendered = render_bundle_index(
+        identity.metadata,
+        identity.maintainers,
+        profiles.get("default_profile"),
+        generated_files=payloads,
+        sources=_sources(root),
+        provenance={
+            "ro_crate_strategy": strategy,
+            "ro_crate_source_sha256": crate_source["sha256"] if crate_source else None,
+            "ro_crate_sha256": sha256(payloads["ro-crate-metadata.json"]),
+        },
+        repository_revision=_revision(root),
+        distributions=verification_records(root, payloads.get("components.json")),
+    )
+    payloads["bundle.json"] = rendered.bundle
+    payloads["README.md"] = rendered.readme
+    payloads["nf-splice.lock.json"] = _stable_lock(root, rendered.lock)
+    for relative in WHOLE_BUNDLE_FILES:
+        layer_of[relative] = "bundle"
+    return payloads, layer_of, blockers
+
+
+def _stable_lock(root: Path, proposed: bytes) -> bytes:
+    """Keep the existing lock when only the informational revision differs."""
+    path = _final(root, "nf-splice.lock.json")
+    if not path.is_file():
+        return proposed
+    try:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return proposed
+    desired = json.loads(proposed)
+    if isinstance(existing, dict):
+        comparable = dict(existing)
+        comparable["repository"] = desired["repository"]
+        if comparable == desired:
+            return path.read_bytes()
+    return proposed
+
+
+def plan_promotion(
+    repository_root: str | Path, layer: str | None = None
+) -> PromotionPlan:
+    """Plan promoting one layer, or publishing the whole bundle (read-only)."""
+    root = Path(repository_root).resolve()
+    _require_no_journal(root)
+    if layer is None or layer_spec(layer).name == "bundle":
+        payloads, layer_of, blockers = _whole_bundle(root)
+        target = "bundle"
+    else:
+        name = layer_spec(layer).name
+        validation = _VALIDATORS[name](root)
+        payloads = dict(validation.files)
+        layer_of = dict.fromkeys(payloads, name)
+        blockers = list(validation.errors)
+        target = name
+    if blockers:
+        return PromotionPlan(target, (), tuple(blockers))
+    changes = _changes(root, layer_of, payloads)
+    if target in {"bundle", "execution-profiles"}:
+        changes = (*changes, *_obsolete_configs(root, payloads))
+    return PromotionPlan(target, changes, (), payloads)
+
+
+def _obsolete_configs(root: Path, payloads: Mapping[str, bytes]) -> list[FileChange]:
+    """Published profile configs nf-splice made earlier that nothing uses now.
+
+    Only files the previous lock lists as managed are removed, so a file a
+    person placed in ``splice/configs/`` by hand is never deleted.
+    """
+    lock = _final(root, "nf-splice.lock.json")
+    try:
+        managed = json.loads(lock.read_text(encoding="utf-8")).get("managed_files", {})
+    except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+        return []
+    found = []
+    for relative in sorted(managed):
+        path = _final(root, relative)
+        if (
+            relative.startswith("configs/")
+            and relative not in payloads
+            and path.is_file()
+            and not path.is_symlink()
+        ):
+            current = path.read_bytes()
+            recorded = (
+                managed[relative].get("sha256")
+                if isinstance(managed[relative], dict)
+                else None
+            )
+            state = (
+                FinalState.OUTDATED
+                if recorded is None or recorded == sha256(current)
+                else FinalState.DRIFTED
+            )
+            found.append(
+                FileChange(
+                    relative,
+                    "remove",
+                    text_diff(
+                        f"splice/{relative}",
+                        current.decode("utf-8", errors="replace"),
+                        "",
+                    ),
+                    state,
+                )
+            )
+    return found
+
+
+def _require_no_journal(root: Path) -> None:
+    if _final(root, JOURNAL).exists():
+        raise LifecycleError(
+            "an interrupted publication was detected; run `nf-splice draft recover`"
+        )
+
+
+def _check_targets(
+    root: Path,
+    plan: PromotionPlan,
+    *,
+    replace_existing: bool,
+    overwrite_edited: Sequence[str],
+) -> None:
+    # Accept paths as error messages print them (splice/<file>) or bare.
+    allowed = {item.removeprefix(f"{SPLICE}/") for item in overwrite_edited}
+    splice = root / SPLICE
+    if splice.exists() and (splice.is_symlink() or not splice.is_dir()):
+        raise LifecycleError("repository-root splice path must be a regular directory")
+    for change in plan.changes:
+        if change.kind == "unchanged":
+            continue
+        path = _final(root, change.path)
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise LifecycleError(f"refusing to replace non-regular {path}")
+        if change.state is FinalState.UNKNOWN and path.exists():
+            raise LifecycleError(
+                f"refusing to replace unrecognised content at splice/{change.path}"
+            )
+        if change.state is FinalState.DRIFTED and change.path not in allowed:
+            raise LifecycleError(
+                f"splice/{change.path} was edited after it was published; reconcile "
+                "the edit into the draft or pass --overwrite-edited explicitly"
+            )
+        if change.kind in {"update", "remove"} and not replace_existing:
+            raise LifecycleError(
+                "review the displayed diff, then pass --replace-existing to update "
+                "published files"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class PromotionResult:
+    """Outcome of an applied promotion or publication."""
+
+    plan: PromotionPlan
+    wrote: tuple[str, ...]
+
+
+def _write_transaction(
+    root: Path, writes: Mapping[str, bytes], removals: Sequence[str] = ()
+) -> None:
+    """Stage, back up and atomically replace (or remove) files; roll back on failure."""
+    splice = root / SPLICE
+    splice.mkdir(exist_ok=True)
+    token = secrets.token_hex(6)
+    staging = splice / STAGING / token
+    backup = splice / BACKUP / token
+    journal = _final(root, JOURNAL)
+    order = sorted(
+        writes,
+        key=lambda item: (
+            item == "bundle.json",
+            item == "nf-splice.lock.json",
+            item,
+        ),
+    )
+    staging.mkdir(parents=True)
+    backup.mkdir(parents=True)
+    replaced: list[str] = []
+    try:
+        for relative in order:
+            target = staging / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as handle:
+                handle.write(writes[relative])
+                handle.flush()
+                os.fsync(handle.fileno())
+            if sha256(target.read_bytes()) != sha256(writes[relative]):
+                raise LifecycleError(f"staged copy of {relative} failed verification")
+        existing = [
+            item for item in [*order, *removals] if _final(root, item).is_file()
+        ]
+        for relative in existing:
+            (backup / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_final(root, relative), backup / relative)
+        journal.write_text(
+            json.dumps(
+                {
+                    "token": token,
+                    "files": [*order, *removals],
+                    "existing": existing,
+                },
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        for relative in order:
+            final = _final(root, relative)
+            final.parent.mkdir(parents=True, exist_ok=True)
+            replace_file(staging / relative, final)
+            replaced.append(relative)
+        for relative in removals:
+            _final(root, relative).unlink(missing_ok=True)
+            replaced.append(relative)
+    except BaseException:
+        _restore(
+            root,
+            token,
+            replaced,
+            existing_names={
+                item for item in [*order, *removals] if (backup / item).is_file()
+            },
+        )
+        raise
+    else:
+        journal.unlink(missing_ok=True)
+        _cleanup(splice, token)
+
+
+def _restore(
+    root: Path, token: str, replaced: Sequence[str], *, existing_names: set[str]
+) -> None:
+    splice = root / SPLICE
+    backup = splice / BACKUP / token
+    for relative in replaced:
+        final = _final(root, relative)
+        if relative in existing_names:
+            os.replace(backup / relative, final)
+        else:
+            final.unlink(missing_ok=True)
+    _final(root, JOURNAL).unlink(missing_ok=True)
+    _cleanup(splice, token)
+
+
+def _cleanup(splice: Path, token: str) -> None:
+    for name in (STAGING, BACKUP):
+        shutil.rmtree(splice / name / token, ignore_errors=True)
+        parent = splice / name
+        if parent.is_dir() and not any(parent.iterdir()):
+            parent.rmdir()
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryResult:
+    """Outcome of recovering an interrupted publication."""
+
+    recovered: bool
+    restored: tuple[str, ...]
+
+
+def recover(repository_root: str | Path) -> RecoveryResult:
+    """Restore the previous coherent release after an interrupted publication."""
+    root = Path(repository_root).resolve()
+    journal_path = _final(root, JOURNAL)
+    if not journal_path.is_file():
+        return RecoveryResult(False, ())
+    journal = json.loads(journal_path.read_text(encoding="utf-8"))
+    token = str(journal["token"])
+    backup = root / SPLICE / BACKUP / token
+    restored = []
+    for relative in journal["files"]:
+        final = _final(root, relative)
+        if relative in journal["existing"] and (backup / relative).is_file():
+            os.replace(backup / relative, final)
+            restored.append(relative)
+        elif relative not in journal["existing"]:
+            final.unlink(missing_ok=True)
+            restored.append(relative)
+    journal_path.unlink()
+    _cleanup(root / SPLICE, token)
+    return RecoveryResult(True, tuple(restored))
+
+
+def _record_promoted(
+    root: Path,
+    written: Mapping[str, bytes],
+    layer_of: Mapping[str, str],
+    context: ChangeContext,
+) -> None:
+    by_layer: dict[str, dict[str, str]] = {}
+    for relative, payload in written.items():
+        by_layer.setdefault(layer_of[relative], {})[relative] = sha256(payload)
+    for layer, hashes in sorted(by_layer.items()):
+
+        def mutate(state: ReviewState, hashes: dict[str, str] = hashes) -> None:
+            state.promoted.update(hashes)
+
+        record_decision(root, layer, "promote", context, tuple(sorted(hashes)), mutate)
+
+
+def promote(
+    repository_root: str | Path,
+    layer: str | None,
+    context: ChangeContext,
+    *,
+    replace_existing: bool = False,
+    overwrite_edited: Sequence[str] = (),
+) -> PromotionResult:
+    """Promote one ready layer, or publish the whole ready bundle."""
+    root = Path(repository_root).resolve()
+    if not context.approved:
+        raise LifecycleError("promotion requires explicit approval")
+    plan = plan_promotion(root, layer)
+    if not plan.ready:
+        raise LifecycleError(
+            "blocked: "
+            + "; ".join(
+                f"{item.layer}{item.pointer}: {item.message}" for item in plan.blockers
+            )
+        )
+    _check_targets(
+        root, plan, replace_existing=replace_existing, overwrite_edited=overwrite_edited
+    )
+    writes = {
+        item.path: plan.payloads[item.path]
+        for item in plan.changes
+        if item.kind in {"create", "update"}
+    }
+    removals = [item.path for item in plan.changes if item.kind == "remove"]
+    if writes or removals:
+        _write_transaction(root, writes, removals)
+    layer_of = (
+        {path: _layer_for_final(path) for path in plan.payloads}
+        if plan.target == "bundle"
+        else dict.fromkeys(plan.payloads, plan.target)
+    )
+    if writes or any(
+        _recorded_hash(root, layer_of[path], path) != sha256(payload)
+        for path, payload in plan.payloads.items()
+    ):
+        _record_promoted(root, plan.payloads, layer_of, context)
+    return PromotionResult(plan, tuple(sorted([*writes, *removals])))
+
+
+def _layer_for_final(relative: str) -> str:
+    if relative in WHOLE_BUNDLE_FILES:
+        return "bundle"
+    if relative.startswith("configs/"):
+        return "execution-profiles"
+    for spec in LAYERS:
+        if relative in spec.finals:
+            return spec.name
+    raise LayerError(f"no layer owns {relative}")
+
+
+@dataclass(frozen=True, slots=True)
+class BundleIssue:
+    """One whole-bundle validation finding."""
+
+    path: str
+    rule: str
+    message: str
+    severity: Severity = Severity.ERROR
+
+    def to_json(self) -> dict[str, str]:
+        return {
+            "path": self.path,
+            "rule": self.rule,
+            "message": self.message,
+            "severity": self.severity.value,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BundleReport:
+    """Contract, identity, classification and publication checks of a bundle.
+
+    Ingestion readiness needs more (runtime parameters, deployment and
+    provenance): see :func:`nf_splice.services.readiness.lifecycle`.
+    """
+
+    issues: tuple[BundleIssue, ...]
+    checked_files: int
+
+    @property
+    def valid(self) -> bool:
+        """No blocking structural or classification issue (not readiness)."""
+        return not any(item.severity is Severity.ERROR for item in self.issues)
+
+    @property
+    def structurally_valid(self) -> bool:
+        """Contracts, identity, file index and lock are valid."""
+        return not any(
+            item.severity is Severity.ERROR and item.rule not in CLASSIFICATION_RULES
+            for item in self.issues
+        )
+
+    @property
+    def classified(self) -> bool:
+        """At least one verified assay capability, and no classification error."""
+        return not any(
+            item.severity is Severity.ERROR and item.rule in CLASSIFICATION_RULES
+            for item in self.issues
+        )
+
+    def levels(self) -> dict[str, bool]:
+        return {
+            "structurally_valid": self.structurally_valid,
+            "scientifically_classified": self.classified,
+        }
+
+
+#: Validation rules about scientific classification, not structure.
+CLASSIFICATION_RULES = frozenset(
+    {"missing_assay_classification", "assay_capability", "legacy_modality"}
+)
+
+
+def _load_json(path: Path, issues: list[BundleIssue], relative: str) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        issues.append(BundleIssue(relative, "json", str(error)))
+        return None
+
+
+def _capability_issues(bundle: Mapping[str, Any]) -> list[BundleIssue]:
+    """Published assay capabilities must be exactly what the vocabulary says.
+
+    Each capability is resolved again from its registered code or entity id
+    and must equal the published classification, so a hand edit or an
+    invented label, type, path or accession cannot pass. A bundle built from
+    another vocabulary snapshot is reported as unverifiable, not as wrong.
+    """
+    from nf_splice.catalogue import CatalogueError, default_catalogue
+
+    where = "splice/bundle.json"
+    pipeline = bundle.get("pipeline")
+    if not isinstance(pipeline, dict):
+        return []
+    found: list[BundleIssue] = []
+    if "modality" in pipeline:
+        found.append(
+            BundleIssue(
+                where,
+                "legacy_modality",
+                "pipeline.modality (free text) was replaced by typed "
+                "assay_capabilities and is not converted automatically; declare "
+                "the supported assays with "
+                "`nf-splice configure bundle --add-assay CODE` and rebuild",
+            )
+        )
+    capabilities = pipeline.get("assay_capabilities")
+    if not isinstance(capabilities, list) or not capabilities:
+        found.append(
+            BundleIssue(
+                where,
+                "missing_assay_classification",
+                "the bundle declares no assay capability, so it is not ready for "
+                "SPLICE ingestion; declare the assays it can process with "
+                "`nf-splice configure identity --add-assay CODE` "
+                "(`nf-splice catalogue assays` lists them) and rebuild",
+            )
+        )
+        return found
+    catalogue = default_catalogue()
+    vocabulary = bundle.get("assay_vocabulary")
+    if (
+        not isinstance(vocabulary, dict)
+        or vocabulary.get("digest") != catalogue.provenance.digest
+    ):
+        snapshot = (
+            (vocabulary or {}).get("snapshot") if isinstance(vocabulary, dict) else None
+        )
+        found.append(
+            BundleIssue(
+                where,
+                "unverified_vocabulary",
+                "assay capabilities were classified with vocabulary snapshot "
+                f"{snapshot!r}; this nf-splice has "
+                f"{catalogue.provenance.snapshot_id!r} and cannot verify them",
+                Severity.WARNING,
+            )
+        )
+        return found
+    for index, published in enumerate(capabilities):
+        if not isinstance(published, dict):
+            continue
+        reference = (
+            {"registered_code": published["registered_code"]}
+            if "registered_code" in published
+            else {"entity_id": (published.get("assay") or {}).get("entity_id")}
+        )
+        try:
+            expected = catalogue.resolve_reference(reference).to_json()
+        except CatalogueError as error:
+            found.append(
+                BundleIssue(where, "assay_capability", f"entry {index + 1}: {error}")
+            )
+            continue
+        if expected != published:
+            found.append(
+                BundleIssue(
+                    where,
+                    "assay_capability",
+                    f"entry {index + 1} differs from the vocabulary classification "
+                    "of its assay; rebuild the bundle",
+                )
+            )
+    return found
+
+
+def validate_bundle(repository_root: str | Path) -> BundleReport:
+    """Validate published files, cross-file identity and the lock (read-only)."""
+    root = Path(repository_root).resolve()
+    splice = root / SPLICE
+    issues: list[BundleIssue] = []
+    if _final(root, JOURNAL).exists():
+        issues.append(
+            BundleIssue(JOURNAL, "interrupted", "run nf-splice draft recover")
+        )
+    bundle_path = splice / "bundle.json"
+    if not bundle_path.is_file():
+        return BundleReport(
+            (BundleIssue("splice/bundle.json", "missing", "bundle is not published"),),
+            0,
+        )
+    bundle = _load_json(bundle_path, issues, "splice/bundle.json")
+    if not isinstance(bundle, dict):
+        return BundleReport(tuple(issues), 0)
+    report = validate_contract_document(bundle, filename="bundle.json")
+    issues.extend(
+        BundleIssue(
+            "splice/bundle.json",
+            "contract",
+            f"{item.json_pointer or '/'}: {item.message}",
+        )
+        for item in report.issues
+    )
+    expected_schemas = {
+        item.id: {"version": dict(release().contracts)[item.id], "path": item.path}
+        for item in families()
+    }
+    if bundle.get("schemas") != expected_schemas:
+        issues.append(
+            BundleIssue(
+                "splice/bundle.json", "schemas", "schemas map differs from registry"
+            )
+        )
+    pipeline = bundle.get("pipeline") or {}
+    issues.extend(_capability_issues(bundle))
+    reference = {key: pipeline.get(key) for key in ("id", "name", "version", "engine")}
+    checked = 1
+    files = bundle.get("files") or {}
+    if files != BUNDLE_FILES:
+        issues.append(
+            BundleIssue("splice/bundle.json", "files", "unexpected bundle file index")
+        )
+    for name in FORBIDDEN_FINALS:
+        if (splice / name).exists():
+            issues.append(
+                BundleIssue(
+                    f"splice/{name}",
+                    "forbidden_artefact",
+                    f"{name} is not part of a 0.3.0 bundle",
+                )
+            )
+    for item in families():
+        if item.path == "bundle.json":
+            continue
+        path = splice / item.path
+        if not path.is_file():
+            issues.append(
+                BundleIssue(f"splice/{item.path}", "missing", "not published")
+            )
+            continue
+        checked += 1
+        document = _load_json(path, issues, f"splice/{item.path}")
+        if document is None:
+            continue
+        result = validate_contract_document(document, item.id)
+        issues.extend(
+            BundleIssue(
+                f"splice/{item.path}",
+                "contract",
+                f"{entry.json_pointer or '/'}: {entry.message}",
+            )
+            for entry in result.issues
+        )
+        envelope = (
+            document.get("x-splice-pipeline")
+            if item.key == "inputs"
+            else (document.get("x-output-catalog") or {}).get("pipeline")
+            if item.key == "outputs"
+            else document.get("pipeline")
+        )
+        if (
+            isinstance(envelope, dict)
+            and {key: envelope.get(key) for key in reference} != reference
+        ):
+            issues.append(
+                BundleIssue(
+                    f"splice/{item.path}",
+                    "identity_mismatch",
+                    "pipeline identity differs from bundle.json",
+                )
+            )
+        if DRAFT_MARKER in json.dumps(document):
+            issues.append(
+                BundleIssue(f"splice/{item.path}", "draft_marker", "draft marker")
+            )
+    catalogue_path = splice / "outputs.yaml"
+    schema_path = splice / "outputs.schema.json"
+    if catalogue_path.is_file() and schema_path.is_file():
+        try:
+            catalogue = yaml.safe_load(catalogue_path.read_text(encoding="utf-8"))
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            if catalogue.get("outputs") != schema["x-output-catalog"]["output_types"]:
+                issues.append(
+                    BundleIssue(
+                        "splice/outputs.yaml",
+                        "projection",
+                        "differs from x-output-catalog",
+                    )
+                )
+        except (
+            yaml.YAMLError,
+            KeyError,
+            AttributeError,
+            json.JSONDecodeError,
+        ) as error:
+            issues.append(BundleIssue("splice/outputs.yaml", "projection", str(error)))
+        checked += 1
+    lock = (
+        _load_json(splice / "nf-splice.lock.json", issues, "splice/nf-splice.lock.json")
+        if (splice / "nf-splice.lock.json").is_file()
+        else None
+    )
+    if lock is None:
+        issues.append(
+            BundleIssue("splice/nf-splice.lock.json", "missing", "lock is missing")
+        )
+    else:
+        managed = lock.get("managed_files", {})
+        if "nf-splice.lock.json" in managed:
+            issues.append(
+                BundleIssue(
+                    "splice/nf-splice.lock.json", "self_hash", "lock hashes itself"
+                )
+            )
+        for relative, record in sorted(managed.items()):
+            path = splice / relative
+            if not path.is_file() or path.is_symlink():
+                issues.append(
+                    BundleIssue(f"splice/{relative}", "missing", "managed file missing")
+                )
+            elif sha256(path.read_bytes()) != record.get("sha256"):
+                issues.append(
+                    BundleIssue(
+                        f"splice/{relative}", "drift", "differs from the lock hash"
+                    )
+                )
+        expected_managed = {*BUNDLE_FILES.values(), "bundle.json", "README.md"}
+        if not expected_managed <= set(managed):
+            issues.append(
+                BundleIssue(
+                    "splice/nf-splice.lock.json",
+                    "inventory",
+                    "lock inventory incomplete",
+                )
+            )
+        for relative, record in sorted((lock.get("sources") or {}).items()):
+            path = root / relative
+            if path.is_file() and sha256(path.read_bytes()) != record.get("sha256"):
+                issues.append(
+                    BundleIssue(
+                        relative,
+                        "stale_source",
+                        "source changed since publication",
+                        Severity.WARNING,
+                    )
+                )
+    for name, validator in _VALIDATORS.items():
+        validation = validator(root)
+        for relative, payload in validation.files.items():
+            path = splice / relative
+            if path.is_file() and path.read_bytes() != payload:
+                issues.append(
+                    BundleIssue(
+                        f"splice/{relative}",
+                        "unpromoted_draft",
+                        f"{name} draft has changes not yet promoted",
+                        Severity.WARNING,
+                    )
+                )
+    return BundleReport(tuple(issues), checked)
+
+
+def bundle_identity(repository_root: str | Path) -> PipelineMetadata | None:
+    """Reviewed identity, when ready."""
+    validation = validate_bundle_draft(repository_root)
+    return validation.metadata if validation.ready else None

@@ -1,0 +1,256 @@
+"""File-first operations shared by every interface (CLI, TUI, agents, CI).
+
+This module is the single application boundary over per-layer drafts,
+promotion, publication and container operations. Interfaces call
+these functions instead of duplicating business rules (ADR-0014).
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+import shutil
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from nf_splice.domain import EvidenceKind, RepositoryInspection
+from nf_splice.drafts import PatchOp
+from nf_splice.inspectors import inspect_repository
+from nf_splice.layers import ChangeContext, confirm_values
+from nf_splice.layers.base import (
+    LAYERS,
+    EditResult,
+    LayerValidation,
+    edit_draft,
+    layer_spec,
+    read_layer,
+)
+from nf_splice.layers.bundle import (
+    SeedResult,
+    seed_bundle_draft,
+    unreviewed_detected_values,
+)
+from nf_splice.layers.components import discover_components
+from nf_splice.layers.execution import discover_execution
+from nf_splice.layers.inputs import SOURCE as INPUT_SOURCE
+from nf_splice.layers.inputs import import_inputs
+from nf_splice.layers.outputs import discover_outputs
+from nf_splice.layers.provenance import seed_provenance
+from nf_splice.layout import DRAFTS_DIR, PRIVATE_DIR, REVIEWS_DIR
+from nf_splice.services.lifecycle import (
+    JOURNAL,
+    ArtifactStatus,
+    list_artifacts,
+    validate_layer,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceCount:
+    """Count of detected evidence for one kind."""
+
+    kind: EvidenceKind
+    count: int
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceStatus:
+    """Read-only status shared by CLI and TUI presentation."""
+
+    inspection: RepositoryInspection
+    evidence_counts: tuple[EvidenceCount, ...]
+    artifacts: tuple[ArtifactStatus, ...]
+    warnings: tuple[str, ...]
+
+    @property
+    def ready(self) -> bool:
+        return all(item.state.value == "ready" for item in self.artifacts)
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "repository": self.inspection.root,
+            "revision": self.inspection.repository_revision,
+            "splice_tree": self.inspection.splice_tree.state.value,
+            "evidence": {item.kind.value: item.count for item in self.evidence_counts},
+            "artifacts": [item.to_json() for item in self.artifacts],
+            "warnings": list(self.warnings),
+            "ready": self.ready,
+        }
+
+
+def workspace_status(repository_root: str | Path) -> WorkspaceStatus:
+    """Inspect evidence and derive every layer's state from draft bytes."""
+    inspection = inspect_repository(repository_root)
+    root = Path(inspection.root)
+    counts = tuple(
+        EvidenceCount(kind, count)
+        for kind, count in sorted(
+            Counter(item.kind for item in inspection.evidence).items(),
+            key=lambda item: item[0].value,
+        )
+    )
+    warnings = []
+    tree = inspection.splice_tree
+    if tree.state.value == "absent":
+        warnings.append("No repository-root splice/ integration exists yet.")
+    unknown = [
+        item.path for item in tree.paths if item.classification.value == "unknown"
+    ]
+    if unknown:
+        warnings.append(f"{len(unknown)} unknown splice/ path(s) will be preserved.")
+    if (root / "splice" / JOURNAL).exists():
+        warnings.append(
+            "An interrupted publication was found; run nf-splice draft recover."
+        )
+    return WorkspaceStatus(inspection, counts, list_artifacts(root), tuple(warnings))
+
+
+@dataclass(frozen=True, slots=True)
+class InitialisationReport:
+    """Drafts created (never overwritten) by initialisation."""
+
+    created: tuple[str, ...]
+    preserved: tuple[str, ...]
+    identity: SeedResult
+    confirmed: tuple[str, ...]
+    notes: tuple[str, ...]
+
+
+def initialise(
+    repository_root: str | Path,
+    context: ChangeContext,
+    *,
+    identity: Mapping[str, Any] | None = None,
+    accept_detected: bool = False,
+    contract_version: str | None = None,
+) -> InitialisationReport:
+    """Seed every applicable draft from evidence; existing drafts are kept."""
+    root = Path(repository_root).resolve()
+    before = {spec.name for spec in LAYERS if (root / spec.draft).exists()}
+    notes: list[str] = []
+    seeded = seed_bundle_draft(root, explicit=identity)
+    confirmed: tuple[str, ...] = ()
+    if accept_detected:
+        pending = list(unreviewed_detected_values(root))
+        if pending:
+            confirm_values(root, "bundle", pending, context)
+            confirmed = tuple(pending)
+    if not (root / INPUT_SOURCE).is_file():
+        notes.append(
+            f"{INPUT_SOURCE} not found: the inputs draft is an empty contract to "
+            "complete by hand"
+        )
+    import_inputs(root)
+    outputs = discover_outputs(root, schema_version=contract_version)
+    notes.extend(outputs.notes)
+    if not (root / "modules.json").is_file():
+        notes.append(
+            "modules.json not found: components were seeded from modules/ on disk"
+        )
+    discover_components(root)
+    if not (root / "nextflow.config").is_file():
+        notes.append(
+            "nextflow.config not found: execution profiles start from a default "
+            "scaffold"
+        )
+    discover_execution(root)
+    notes.extend(seed_provenance(root))
+    after = {spec.name for spec in LAYERS if (root / spec.draft).exists()}
+    return InitialisationReport(
+        created=tuple(sorted(after - before)),
+        preserved=tuple(sorted(before)),
+        identity=seeded,
+        confirmed=confirmed,
+        notes=tuple(notes),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class FreshStart:
+    """Where the earlier drafts were backed up, and what was recreated."""
+
+    backup: str
+    report: InitialisationReport
+
+
+def start_fresh(repository_root: str | Path, context: ChangeContext) -> FreshStart:
+    """Back up every draft, config and review record, then initialise again.
+
+    For drafts made by an earlier version that seeded guessed entries: the
+    old files are copied to ``.splice-local/backups/drafts-<time>/`` first,
+    and only then removed and recreated from exact metadata. ``splice/`` is
+    never touched. The caller must have the person's explicit confirmation.
+    """
+    root = Path(repository_root).resolve()
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup = root / PRIVATE_DIR / "backups" / f"drafts-{stamp}"
+    backup.mkdir(parents=True, exist_ok=False)
+    for relative in (DRAFTS_DIR, REVIEWS_DIR):
+        source = root / relative
+        if source.is_dir():
+            shutil.copytree(source, backup / Path(relative).name, symlinks=True)
+    for relative in (DRAFTS_DIR, REVIEWS_DIR):
+        source = root / relative
+        if source.is_dir():
+            shutil.rmtree(source)
+    report = initialise(root, context)
+    return FreshStart(backup.relative_to(root).as_posix(), report)
+
+
+def plan_patch(
+    repository_root: str | Path,
+    layer: str,
+    operations: Sequence[Mapping[str, Any]],
+    context: ChangeContext,
+) -> EditResult:
+    """Plan a raw JSON-pointer patch to a layer draft (no write)."""
+    return edit_draft(
+        Path(repository_root).resolve(),
+        layer,
+        [PatchOp.from_json(item) for item in operations],
+        context,
+        action="patch",
+        write=False,
+    )
+
+
+def apply_patch(
+    repository_root: str | Path,
+    layer: str,
+    operations: Sequence[Mapping[str, Any]],
+    context: ChangeContext,
+) -> EditResult:
+    """Apply an approved raw patch with three-way conflict detection."""
+    return edit_draft(
+        Path(repository_root).resolve(),
+        layer,
+        [PatchOp.from_json(item) for item in operations],
+        context,
+        action="patch",
+    )
+
+
+def inspect_layer(repository_root: str | Path, layer: str) -> dict[str, Any]:
+    """Read-only per-field issues and file facts for one layer draft."""
+    root = Path(repository_root).resolve()
+    spec = layer_spec(layer)
+    state = read_layer(root, spec.name)
+    validation: LayerValidation = validate_layer(root, spec.name)
+    return {
+        "layer": spec.name,
+        "draft": spec.draft,
+        "exists": state.file.exists,
+        "sha256": state.file.sha256,
+        "parse_error": str(state.error) if state.error else None,
+        "ready": not validation.errors and state.draft is not None,
+        "issues": [item.to_json() for item in validation.issues],
+        "finals": list(spec.finals),
+    }
+
+
+def dumps(document: Any) -> str:
+    """Stable JSON for machine-readable interface output."""
+    return json.dumps(document, indent=2, ensure_ascii=False, default=str)

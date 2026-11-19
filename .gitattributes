@@ -1,0 +1,4 @@
+# Frozen fixtures are byte-exact test inputs: never normalise line endings.
+# The example configs deliberately use CRLF to prove byte-identical copying.
+tests/fixtures/** -text
+tests/fixtures/**/*.config -whitespace

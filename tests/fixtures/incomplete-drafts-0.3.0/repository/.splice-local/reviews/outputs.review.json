@@ -1,0 +1,92 @@
+{
+  "candidates": {
+    "output:08cff62b5636703d": {
+      "status": "pending",
+      "candidate": {
+        "id": "output:08cff62b5636703d",
+        "suggested_key": "report",
+        "path_pattern": "^reports/report\\.html$",
+        "source_locations": [
+          "main.nf:4"
+        ],
+        "processes": [
+          "REPORT"
+        ],
+        "suggested_title": "Report",
+        "suggested_description": null,
+        "suggested_format": "html",
+        "likely_scope": null,
+        "likely_entity_type": "file",
+        "confidence": 0.85,
+        "conditional": false,
+        "unresolved_fields": [
+          "key",
+          "title",
+          "description",
+          "category",
+          "scopes"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "output-evidence:89dbbd0ac71b90f2",
+          "provenance": {
+            "source": "process_output",
+            "location": "main.nf:4",
+            "repository_revision": null
+          },
+          "observed_value": {
+            "suggested_key": "report",
+            "path_pattern": "^reports/report\\.html$"
+          },
+          "confidence": 0.85
+        }
+      ]
+    },
+    "output:4043299e9097a563": {
+      "status": "pending",
+      "candidate": {
+        "id": "output:4043299e9097a563",
+        "suggested_key": "reports",
+        "path_pattern": "^reports/.+$",
+        "source_locations": [
+          "main.nf:2"
+        ],
+        "processes": [
+          "REPORT"
+        ],
+        "suggested_title": "Reports",
+        "suggested_description": null,
+        "suggested_format": "directory",
+        "likely_scope": null,
+        "likely_entity_type": "directory",
+        "confidence": 0.65,
+        "conditional": false,
+        "unresolved_fields": [
+          "key",
+          "title",
+          "description",
+          "category",
+          "scopes"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "output-evidence:97baf371680f85ab",
+          "provenance": {
+            "source": "publishDir",
+            "location": "main.nf:2",
+            "repository_revision": null
+          },
+          "observed_value": {
+            "suggested_key": "reports",
+            "path_pattern": "^reports/.+$"
+          },
+          "confidence": 0.65
+        }
+      ]
+    }
+  },
+  "format": "0.3.0",
+  "layer": "outputs"
+}

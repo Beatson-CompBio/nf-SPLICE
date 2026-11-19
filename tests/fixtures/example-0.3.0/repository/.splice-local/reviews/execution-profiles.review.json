@@ -1,0 +1,178 @@
+{
+  "candidates": {
+    "profile:local": {
+      "status": "accepted",
+      "candidate": {
+        "id": "profile:local",
+        "name": "Local",
+        "source_profile": "local",
+        "config_sources": [
+          "conf/local.config"
+        ],
+        "executors": [
+          "local"
+        ],
+        "container_engines": [
+          "singularity"
+        ],
+        "unresolved_fields": [
+          "review",
+          "config_source"
+        ]
+      },
+      "evidence": [
+        "conf/local.config",
+        "nextflow.config"
+      ]
+    }
+  },
+  "confirmed": {
+    "/profiles/0": {
+      "sha256": "ef4c21357b0eafe4978d5b376a8e982684e3a3596836bb23d8949ba8564fc9b5",
+      "event": "event:402b0339c575ca28"
+    },
+    "/default_profile": {
+      "sha256": "26bfc9f726e82ea512890361bf54820df1586409ce7aaab8de9229e1e5fdfb84",
+      "event": "event:719f0fdf8a33cf9a"
+    }
+  },
+  "events": [
+    {
+      "id": "event:402b0339c575ca28",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "execution-profiles",
+      "action": "review_profile",
+      "pointers": [
+        "/profiles/0"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "8ccf99c82a74df2dac2c9a2c1dc9ad4de61d34b48f44e9ca34c8fadb2562edac",
+      "after_sha256": "e44e3019bf1e00618ab18b8994758db1ad574e9fea25a8823ea27df7008acc0c",
+      "source_revision": null
+    },
+    {
+      "id": "event:719f0fdf8a33cf9a",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "execution-profiles",
+      "action": "set_default_profile",
+      "pointers": [
+        "/default_profile"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "e44e3019bf1e00618ab18b8994758db1ad574e9fea25a8823ea27df7008acc0c",
+      "after_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
+      "source_revision": null
+    },
+    {
+      "id": "event:a00b11846dbcf4e9",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/profile-local-6c6f63616c.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
+      "after_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
+      "source_revision": null
+    },
+    {
+      "id": "event:cbc5406477b72c5d",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/profile-local-6c6f63616c.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
+      "after_sha256": "2e165693449de1462d182d5fcfe06c0e7bb47df727221b69d078f3bf0559e491",
+      "source_revision": null
+    },
+    {
+      "id": "event:96434a58b0fe6dc5",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/local.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "after_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "source_revision": null
+    },
+    {
+      "id": "event:e60c1fe2dedf664b",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "execution-profiles",
+      "action": "promote",
+      "pointers": [
+        "configs/local.config",
+        "execution-profiles.json"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "after_sha256": "16ea81e084658e558b36aed9f4e46cbcb88fc3e86a56f4b66cf48593eb72f6e8",
+      "source_revision": null
+    }
+  ],
+  "format": "0.3.0",
+  "layer": "execution-profiles",
+  "promoted": {
+    "execution-profiles.json": "5d48db472a0859063fca9e9d74cd88178efb141fcf86402fcd844d1ef08099fc",
+    "configs/profile-local-6c6f63616c.config": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869",
+    "configs/local.config": "7616f6c78b1d71baf5ba9348e78c2c58786ce13d67c0ddb3969fa751020f6869"
+  }
+}

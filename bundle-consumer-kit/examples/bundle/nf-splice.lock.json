@@ -1,0 +1,62 @@
+{
+  "schema_version": "2.0",
+  "generator": {
+    "name": "nf-splice",
+    "version": "0.3.0"
+  },
+  "repository": {
+    "url": "https://github.com/org/multiroute",
+    "revision": null
+  },
+  "contracts": {
+    "https://schemas.splice-data.io/workflow-bundle/bundle": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/components": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/execution-profiles": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/inputs": "0.3.0",
+    "https://schemas.splice-data.io/workflow-bundle/outputs": "0.3.0"
+  },
+  "sources": {
+    "conf/local.config": {
+      "sha256": "a1e30eb488ab08706ec07dc8ed017c0bd4b3255cd925c2432990ec58dcdf557a",
+      "role": "adopted-config"
+    },
+    "nextflow_schema.json": {
+      "sha256": "7ef2937afccdb8ce07579011e100bb7d1511b80a304906fb61481258fc703da8",
+      "role": "input-schema-evidence"
+    }
+  },
+  "provenance": {
+    "ro_crate_strategy": "generated",
+    "ro_crate_source_sha256": null,
+    "ro_crate_sha256": "35c283d9e2079038eb4558de61cb432b75cbcafe2aa42a5bb131bb04834f0728"
+  },
+  "managed_files": {
+    "README.md": {
+      "sha256": "4a7dfa88ccb980dff050563f8ec2ef7ba372e2fe95ffa5f54a73ea706f269298"
+    },
+    "bundle.json": {
+      "sha256": "4074abb16ca87017fc09c046f5a474bc2e01f16d2335e1875705e4bc747afaab"
+    },
+    "components.json": {
+      "sha256": "67302a3e7cadcd39876c0e23f18073210ce666c8b13e1aa42178fded99a7656b"
+    },
+    "configs/local.config": {
+      "sha256": "a1e30eb488ab08706ec07dc8ed017c0bd4b3255cd925c2432990ec58dcdf557a"
+    },
+    "execution-profiles.json": {
+      "sha256": "8f4e7d43ed2b88a88fde7c100cdb74f774889ac5c98f7592dee2598fa4f745aa"
+    },
+    "inputs.schema.json": {
+      "sha256": "81a8bc472049121c8368ec71fb1267c7ae40cdc60b143f51b5127d720bc27803"
+    },
+    "outputs.schema.json": {
+      "sha256": "78359a983f0c95925bfb9981a72146e2f0993db641b49f33902b57c46be820e5"
+    },
+    "outputs.yaml": {
+      "sha256": "c827e4fd448bc07215c305498732953b6a87749f2ab6212d6ba1dee591fcc23d"
+    },
+    "ro-crate-metadata.json": {
+      "sha256": "35c283d9e2079038eb4558de61cb432b75cbcafe2aa42a5bb131bb04834f0728"
+    }
+  }
+}

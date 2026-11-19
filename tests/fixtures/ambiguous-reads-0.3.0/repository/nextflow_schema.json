@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "example-org/featurecount parameters",
+  "type": "object",
+  "$defs": {
+    "main_options": {
+      "title": "Main options",
+      "type": "object",
+      "required": ["input", "outdir", "reference", "annotation"],
+      "properties": {
+        "input": {"type": "string", "format": "file-path", "description": "CSV of sample and FASTQ paths."},
+        "outdir": {"type": "string", "format": "directory-path", "description": "Results directory."},
+        "reference": {"type": "string", "format": "file-path", "description": "Reference FASTA."},
+        "annotation": {"type": "string", "format": "file-path", "description": "Feature annotation (GTF or BED)."}
+      }
+    }
+  },
+  "allOf": [{"$ref": "#/$defs/main_options"}]
+}

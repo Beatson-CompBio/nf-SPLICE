@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "kind": "module",
+      "path": "modules/local/fastqc",
+      "tool": "fastqc"
+    },
+    {
+      "kind": "module",
+      "path": "modules/local/star",
+      "tool": "star"
+    },
+    {
+      "kind": "module",
+      "path": "modules/local/hisat2",
+      "tool": "hisat2"
+    },
+    {
+      "kind": "module",
+      "path": "modules/local/samtools_sort",
+      "tool": "samtools"
+    },
+    {
+      "kind": "module",
+      "path": "modules/local/salmon",
+      "tool": "salmon"
+    },
+    {
+      "kind": "module",
+      "path": "modules/local/multiqc",
+      "tool": "multiqc"
+    }
+  ]
+}

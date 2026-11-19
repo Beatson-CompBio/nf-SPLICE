@@ -9,19 +9,14 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from nf_splice.domain.authoring import EvidenceProvenance
+from nf_splice.domain.base import EvidenceProvenance
 from nf_splice.domain.inspection import (
     EvidenceKind,
-    LegacyStateClassification,
-    LegacyStatePath,
     RepositoryEvidence,
     RepositoryInspection,
 )
-from nf_splice.inspectors.splice_tree import (
-    inspect_splice_tree,
-    validate_authoring_state,
-    validate_lock_state,
-)
+from nf_splice.inspectors.splice_tree import inspect_splice_tree
+from nf_splice.layout import PUBLISHED_DIR
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -33,7 +28,6 @@ _IGNORED_DIRECTORIES = {
     ".venv",
     "__pycache__",
     "node_modules",
-    "splice",
     "work",
 }
 _INCLUDED_CONFIG = re.compile(r"\bincludeConfig\s*\(?\s*['\"]([^'\"]+)['\"]")
@@ -46,6 +40,9 @@ _CONDA = re.compile(r"\bconda\s*(?:=|\(|['\"])")
 
 
 def _git_value(root: Path, *arguments: str) -> str | None:
+    """A Git value of ``root``'s own repository, never an enclosing one."""
+    if not (root / ".git").exists():
+        return None
     try:
         result = subprocess.run(
             ("git", "-C", str(root), *arguments),
@@ -64,7 +61,10 @@ def _repository_files(root: Path) -> list[Path]:
     files: list[Path] = []
     for current, directory_names, file_names in os.walk(root, followlinks=False):
         directory_names[:] = sorted(
-            name for name in directory_names if name not in _IGNORED_DIRECTORIES
+            name
+            for name in directory_names
+            if name not in _IGNORED_DIRECTORIES
+            and not (name == PUBLISHED_DIR and Path(current) == root)
         )
         current_path = Path(current)
         files.extend(current_path / name for name in sorted(file_names))
@@ -175,36 +175,9 @@ def inspect_repository(repository_root: str | Path) -> RepositoryInspection:
                     confidence=0.9,
                 )
 
-    legacy_state: list[LegacyStatePath] = []
-    validators = {
-        "nf-splice.yaml": validate_authoring_state,
-        "nf-splice.lock.json": validate_lock_state,
-    }
-    for name, validator in validators.items():
-        path = root / name
-        if not path.exists() and not path.is_symlink():
-            continue
-        if path.is_symlink() or not path.is_file():
-            result: tuple[str, str | None] = (
-                "malformed",
-                "legacy state must be a regular file",
-            )
-        else:
-            result = validator(path)
-        classification, detail = result
-        legacy_state.append(
-            LegacyStatePath(
-                path=name,
-                destination=f"splice/{name}",
-                classification=LegacyStateClassification(classification),
-                detail=detail,
-            )
-        )
-
     return RepositoryInspection(
         root=str(root),
         repository_revision=revision,
         evidence=tuple(evidence),
         splice_tree=inspect_splice_tree(root),
-        legacy_state=tuple(legacy_state),
     )

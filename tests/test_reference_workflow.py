@@ -1,4 +1,4 @@
-"""Release-path acceptance test for a clean realistic pipeline repository."""
+"""S01: a new pipeline authored end to end through the non-interactive CLI."""
 
 from __future__ import annotations
 
@@ -7,205 +7,141 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from layer_fixtures import write_pipeline
 from nf_splice.cli import app
 
 runner = CliRunner()
 
 
-def _invoke(root: Path, *arguments: str) -> None:
-    result = runner.invoke(app, [*arguments, "--repository", str(root)])
+def _ok(root: Path, *arguments: str) -> str:
+    result = runner.invoke(
+        app, ["--user", "Ada", *arguments, "--repository", str(root)]
+    )
     assert result.exit_code == 0, result.output
+    return result.output
 
 
-def _write_clean_pipeline(root: Path) -> None:
-    (root / "main.nf").write_text(
-        """process REPORT {
-    publishDir "${params.outdir}/reports"
-    output:
-    path "report.html", emit: report
-}
-
-workflow { REPORT() }
-""",
-        encoding="utf-8",
-    )
-    (root / "nextflow_schema.json").write_text(
-        json.dumps(
-            {
-                "$defs": {
-                    "analysis": {
-                        "title": "Analysis",
-                        "type": "object",
-                        "properties": {
-                            "threshold": {
-                                "type": "number",
-                                "description": "Analysis threshold.",
-                                "default": 0.8,
-                            }
-                        },
-                    }
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    module = root / "modules" / "local" / "tool"
-    module.mkdir(parents=True)
-    (module / "meta.yml").write_text(
-        "name: tool\ntools:\n  - tool:\n      description: Example tool\n",
-        encoding="utf-8",
-    )
-    (module / "main.nf").write_text(
-        "process TOOL {\n  container 'quay.io/example/tool:1.0'\n}\n",
-        encoding="utf-8",
-    )
-    (root / "modules.json").write_text(
-        json.dumps(
-            {
-                "items": [
-                    {
-                        "kind": "module",
-                        "path": "modules/local/tool",
-                        "namespace": "local",
-                        "tool": "tool",
-                        "name": "tool",
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-    (root / "conf").mkdir()
-    (root / "conf" / "local.config").write_text(
-        "process { executor = 'local' }\nsingularity.enabled = true\n",
-        encoding="utf-8",
-    )
+def author_with_cli(root: Path) -> None:
+    """Author every layer with explicit, reproducible CLI decisions."""
+    write_pipeline(root)
     (root / "nextflow.config").write_text(
+        "manifest {\n    name = 'reference'\n    version = '1.0.0'\n"
+        "    homePage = 'https://github.com/org/reference'\n"
+        "    description = 'Reference pipeline.'\n}\n"
         "profiles { local { includeConfig 'conf/local.config' } }\n",
         encoding="utf-8",
     )
-    (root / "ro-crate-metadata.json").write_text(
-        json.dumps(
-            {
-                "@context": "https://w3id.org/ro/crate/1.1/context",
-                "@graph": [
-                    {
-                        "@id": "ro-crate-metadata.json",
-                        "@type": "CreativeWork",
-                        "about": {"@id": "./"},
-                    },
-                    {"@id": "./", "@type": "Dataset"},
-                ],
-            }
-        ),
+    _ok(root, "init", "--in-place", "--accept-detected", "--contract-version", "1.0.0")
+    _ok(
+        root,
+        "configure",
+        "identity",
+        "--add-assay",
+        "polya_rnaseq",
+        "--assay-rationale",
+        "The reference pipeline quantifies poly(A)-selected RNA-seq libraries.",
+    )
+    _ok(
+        root,
+        "configure",
+        "inputs",
+        "--set",
+        "threshold=user,agent",
+        "--set",
+        "outdir=platform",
+    )
+    # The catalogue starts empty (ADR-0068): describe the output, then refine it.
+    output = root / ".splice-local" / "report-output.yaml"
+    output.parent.mkdir(exist_ok=True)
+    output.write_text(
+        "key: report\ntitle: Report\ndescription: Draft.\ncategory: report\n"
+        "formats: [html]\nscopes: [job]\nentity_types: [file]\n"
+        "path_patterns: ['^reports/report\\.html$']\n",
         encoding="utf-8",
     )
-
-
-def test_cli_completes_clean_pipeline_to_validated_idempotent_bundle(
-    tmp_path: Path,
-) -> None:
-    _write_clean_pipeline(tmp_path)
-    inspected = runner.invoke(app, ["inspect", "--repository", str(tmp_path)])
-
-    assert inspected.exit_code == 0
-    assert "SPLICE tree: absent" in inspected.output
-    assert not (tmp_path / "splice").exists()
-
-    _invoke(
-        tmp_path,
-        "init",
-        "--name",
-        "Reference Pipeline",
-        "--pipeline-version",
-        "1.0.0",
-        "--repository-url",
-        "https://github.com/org/reference",
+    _ok(root, "configure", "outputs", "--add-output", str(output))
+    _ok(
+        root,
+        "configure",
+        "outputs",
+        "--set",
+        "report.description=Job report.",
+        "--set",
+        "report.category=job_report",
     )
-    _invoke(tmp_path, "configure", "inputs", "--set", "threshold=user-configurable")
-    _invoke(tmp_path, "configure", "components", "--accept-detected")
-
-    unresolved = tmp_path / "unresolved-outputs.json"
-    discovered = runner.invoke(
-        app,
-        [
-            "configure",
-            "outputs",
-            "--repository",
-            str(tmp_path),
-            "--contract-version",
-            "1.0.0",
-            "--export-unresolved",
-            str(unresolved),
-        ],
-    )
-    assert discovered.exit_code == 2
-    candidates = json.loads(unresolved.read_text(encoding="utf-8"))
-    assert candidates
-    output_arguments = ["configure", "outputs"]
-    for index, candidate in enumerate(candidates):
-        candidate_id = candidate["id"]
-        if index:
-            output_arguments.extend(
-                [
-                    "--set",
-                    f"{candidate_id}.action=reject",
-                    "--set",
-                    f"{candidate_id}.reason=Duplicate discovery evidence",
-                ]
-            )
-            continue
-        for field, value in (
-            ("key", "report"),
-            ("title", "Report"),
-            ("description", "Completed run report."),
-            ("category", "run_report"),
-            ("formats", "html"),
-            ("scopes", "run"),
-            ("entity_types", "file"),
-            ("path_patterns", r"^reports/report\.html$"),
-        ):
-            output_arguments.extend(["--set", f"{candidate_id}.{field}={value}"])
-    _invoke(tmp_path, *output_arguments)
-
-    _invoke(
-        tmp_path,
+    _ok(root, "configure", "components", "--require-downloadable", "false")
+    _ok(
+        root,
         "configure",
         "execution-profiles",
         "--set",
-        "profile:local.type=development",
+        "default.type=development",
         "--set",
-        "profile:local.description=Supported local execution.",
+        "default.description=Local development.",
         "--set",
-        "profile:local.executor=local",
-        "--set",
-        "profile:local.container_engine=singularity",
-        "--set",
-        "profile:local.config_source=conf/local.config",
+        "default.config_adopt=conf/local.config",
+        "--default",
+        "default",
     )
-    _invoke(
-        tmp_path,
+    _ok(
+        root,
         "configure",
-        "provenance",
+        "identity",
         "--set",
-        "provenance.include=true",
+        "licence=MIT",
+        "--set",
+        "released_at=2026-10-15T10:00:00Z",
     )
-    _invoke(tmp_path, "plan", "all", "--json")
-    _invoke(tmp_path, "build", "all", "--check", "--non-interactive", "--json")
-    _invoke(tmp_path, "build", "all", "--non-interactive")
-    first = {
-        path.relative_to(tmp_path / "splice").as_posix(): path.read_bytes()
-        for path in (tmp_path / "splice").rglob("*")
-        if path.is_file()
-    }
-    _invoke(tmp_path, "validate", "--json")
-    _invoke(tmp_path, "build", "all", "--non-interactive")
-    second = {
-        path.relative_to(tmp_path / "splice").as_posix(): path.read_bytes()
-        for path in (tmp_path / "splice").rglob("*")
-        if path.is_file()
-    }
+    _ok(root, "configure", "provenance", "--strategy", "generated")
 
-    assert second == first
-    assert (tmp_path / "ro-crate-metadata.json").is_file()
-    assert (tmp_path / "conf" / "local.config").is_file()
+
+def test_cli_completes_a_new_pipeline_to_a_validated_idempotent_bundle(
+    tmp_path: Path,
+) -> None:
+    inspected = runner.invoke(app, ["inspect", "--repository", str(tmp_path)])
+    assert "SPLICE tree: absent" in inspected.output
+    author_with_cli(tmp_path)
+
+    plan = json.loads(_ok(tmp_path, "plan", "--json"))
+    assert plan["ready"] and plan["blockers"] == []
+    built = _ok(tmp_path, "build", "all")
+    assert "Built" in built
+    assert "Valid SPLICE bundle" in _ok(tmp_path, "validate")
+    assert "byte-identical" in _ok(tmp_path, "build", "all")
+
+    splice = tmp_path / "splice"
+    assert not (splice / "nf-splice.yaml").exists()
+    assert not (splice / "outputs.json").exists()
+    bundle = json.loads((splice / "bundle.json").read_text(encoding="utf-8"))
+    assert bundle["pipeline"]["name"] == "reference"
+    assert bundle["pipeline"]["description"] == "Reference pipeline."
+
+    publish = tmp_path / "results"
+    (publish / "reports").mkdir(parents=True)
+    (publish / "reports" / "report.html").write_text("<html/>\n", encoding="utf-8")
+    job = tmp_path / "job.json"
+    job.write_text(json.dumps({"job_id_short": "A001"}), encoding="utf-8")
+    _ok(
+        tmp_path,
+        "analysis-output",
+        "generate",
+        "--publish-directory",
+        str(publish),
+        "--job-metadata",
+        str(job),
+        "--output-directory",
+        str(publish),
+    )
+    report = runner.invoke(
+        app,
+        [
+            "analysis-output",
+            "validate",
+            str(publish / "analysis_output.json"),
+            "--repository",
+            str(tmp_path),
+        ],
+    )
+    assert report.exit_code == 0, report.output
+    document = json.loads((publish / "analysis_output.json").read_text())
+    assert [item["scope"] for item in document["files"]] == ["job"]

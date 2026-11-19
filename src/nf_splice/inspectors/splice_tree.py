@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml  # type: ignore[import-untyped]
 
+from nf_splice.contracts import validate_contract_document
 from nf_splice.domain.execution import (
     ContainerEngine,
     ExecutionEngine,
@@ -24,11 +25,6 @@ from nf_splice.domain.inspection import (
     SpliceTreeInspection,
     TreeState,
     UnsafeCollision,
-)
-from nf_splice.domain.serialization import (
-    InvalidAuthoringDocument,
-    UnsupportedSchemaVersion,
-    load_authoring_document,
 )
 
 LayerNames = tuple[str, ...]
@@ -68,6 +64,10 @@ def _require_bundle(path: Path) -> str | None:
         content: Any = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as parse_error:
         return f"invalid JSON: {parse_error}"
+    report = validate_contract_document(content, filename="bundle.json")
+    if not report.valid:
+        first = report.issues[0]
+        return f"{first.json_pointer or '/'}: {first.message}"
     if content.get("bundle_format") != "splice-pipeline-bundle":
         return "bundle_format must be 'splice-pipeline-bundle'"
     files = content.get("files")
@@ -161,7 +161,6 @@ def _require_execution_profiles(path: Path) -> str | None:
                 "type",
                 "engine",
                 "executor",
-                "container_engine",
                 "config",
             )
             if not isinstance(profile.get(key), str) or not profile[key]
@@ -175,11 +174,11 @@ def _require_execution_profiles(path: Path) -> str | None:
             "container_engine": {item.value for item in ContainerEngine},
         }
         for field, vocabulary in vocabularies.items():
-            if profile[field] not in vocabulary:
-                return (
-                    f"profiles[{index}].{field} uses unsupported value "
-                    f"{profile[field]!r}"
-                )
+            value = profile.get(field)
+            if field == "container_engine" and value in (None, ""):
+                continue  # optional execution metadata (ADR-0070)
+            if value not in vocabulary:
+                return f"profiles[{index}].{field} uses unsupported value {value!r}"
         identifiers.append(profile["id"])
         config = profile["config"]
         config_path = path.parent / config
@@ -196,17 +195,6 @@ def _require_execution_profiles(path: Path) -> str | None:
     return None
 
 
-def validate_authoring_state(path: Path) -> tuple[str, str | None]:
-    """Return compatibility and detail for a canonical authoring document."""
-    try:
-        load_authoring_document(path.read_text(encoding="utf-8"))
-    except UnsupportedSchemaVersion as error:
-        return "incompatible", str(error)
-    except (OSError, UnicodeError, InvalidAuthoringDocument) as error:
-        return "malformed", str(error)
-    return "recognized", None
-
-
 def validate_lock_state(path: Path) -> tuple[str, str | None]:
     """Validate the generated bundle-provenance envelope."""
     try:
@@ -216,17 +204,11 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
     if not isinstance(content, dict):
         return "malformed", "lock state must be a JSON object"
     version = content.get("schema_version")
-    if version != "1.0":
+    if version != "2.0":
         return "incompatible", (
-            f"unsupported lock schema version {version!r}; expected '1.0'"
+            f"unsupported lock schema version {version!r}; expected '2.0'"
         )
-    required = (
-        "generator",
-        "repository",
-        "selected_evidence",
-        "sources",
-        "managed_files",
-    )
+    required = ("generator", "repository", "contracts", "sources", "managed_files")
     missing = [field for field in required if field not in content]
     if missing:
         return "malformed", f"missing required keys: {', '.join(missing)}"
@@ -247,8 +229,6 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
         )
     ):
         return "malformed", "repository must contain url and optional revision"
-    if not isinstance(content.get("selected_evidence"), list):
-        return "malformed", "selected_evidence must be an array"
     for field in ("sources", "managed_files"):
         inventory_error = _require_hash_inventory(content.get(field), field)
         if inventory_error is not None:
@@ -258,18 +238,12 @@ def validate_lock_state(path: Path) -> tuple[str, str | None]:
     return "recognized", None
 
 
-def _require_authoring_state(path: Path) -> str | None:
-    _classification, detail = validate_authoring_state(path)
-    return detail
-
-
 def _require_lock_state(path: Path) -> str | None:
     _classification, detail = validate_lock_state(path)
     return detail
 
 
 _FIXED_ARTIFACTS: dict[str, tuple[LayerNames, Validator]] = {
-    "nf-splice.yaml": (("authoring",), _require_authoring_state),
     "nf-splice.lock.json": (("bundle",), _require_lock_state),
     "bundle.json": (("bundle",), _require_bundle),
     "components.json": (
@@ -320,8 +294,41 @@ def _walk_without_following_links(root: Path) -> list[Path]:
     return sorted(entries, key=lambda path: path.relative_to(root).as_posix())
 
 
+_TRANSIENT = (".nf-splice-staging", ".nf-splice-backup")
+
+
+def _classify_legacy_drafts(relative: str, entry_type: EntryType) -> InspectedPath:
+    return InspectedPath(
+        path=relative,
+        entry_type=entry_type,
+        classification=PathClassification.MALFORMED,
+        detail="drafts of an earlier nf-splice layout; run `nf-splice migrate --check` "
+        "and `nf-splice migrate --apply` to move them to .splice-local/",
+    )
+
+
 def _classify(path: Path, relative: str) -> InspectedPath:
     entry_type = _entry_type(path)
+
+    if relative == "drafts" or relative.startswith("drafts/"):
+        return _classify_legacy_drafts(relative, entry_type)
+
+    if relative.split("/", 1)[0] in _TRANSIENT:
+        return InspectedPath(
+            path=relative,
+            entry_type=entry_type,
+            classification=PathClassification.MALFORMED,
+            affected_layers=("bundle",),
+            detail="leftover publication staging; run nf-splice draft recover",
+        )
+    if relative == ".nf-splice-publish.json":
+        return InspectedPath(
+            path=relative,
+            entry_type=entry_type,
+            classification=PathClassification.MALFORMED,
+            affected_layers=("bundle",),
+            detail="interrupted publication; run nf-splice draft recover",
+        )
 
     if relative == "configs" and entry_type is EntryType.DIRECTORY:
         return InspectedPath(
@@ -400,7 +407,7 @@ def _tree_state(paths: list[InspectedPath]) -> TreeState:
 
 
 def _collision(item: InspectedPath) -> UnsafeCollision | None:
-    if item.path in {"nf-splice.yaml", "nf-splice.lock.json"}:
+    if item.path == "nf-splice.lock.json":
         return None
     if not item.affected_layers or item.entry_type is EntryType.DIRECTORY:
         return None

@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+title: histoseg
+message: If you use this software, please cite it.
+authors:
+  - given-names: Grace
+    family-names: Hopper
+    orcid: https://orcid.org/0000-0002-1825-0097
+license: Apache-2.0
+repository-code: https://github.com/example-org/histoseg

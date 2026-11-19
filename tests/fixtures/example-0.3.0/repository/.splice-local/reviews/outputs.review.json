@@ -1,0 +1,236 @@
+{
+  "candidates": {
+    "output:08cff62b5636703d": {
+      "status": "accepted",
+      "candidate": {
+        "id": "output:08cff62b5636703d",
+        "suggested_key": "report",
+        "path_pattern": "^reports/report\\.html$",
+        "source_locations": [
+          "main.nf:4"
+        ],
+        "processes": [
+          "REPORT"
+        ],
+        "suggested_title": "Report",
+        "suggested_description": null,
+        "suggested_format": "html",
+        "likely_scope": null,
+        "likely_entity_type": "file",
+        "confidence": 0.85,
+        "conditional": false,
+        "unresolved_fields": [
+          "key",
+          "title",
+          "description",
+          "category",
+          "scopes"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "output-evidence:89dbbd0ac71b90f2",
+          "provenance": {
+            "source": "process_output",
+            "location": "main.nf:4",
+            "repository_revision": null
+          },
+          "observed_value": {
+            "suggested_key": "report",
+            "path_pattern": "^reports/report\\.html$"
+          },
+          "confidence": 0.85
+        }
+      ],
+      "output_keys": [
+        "report"
+      ]
+    },
+    "output:4043299e9097a563": {
+      "status": "rejected",
+      "candidate": {
+        "id": "output:4043299e9097a563",
+        "suggested_key": "reports",
+        "path_pattern": "^reports/.+$",
+        "source_locations": [
+          "main.nf:2"
+        ],
+        "processes": [
+          "REPORT"
+        ],
+        "suggested_title": "Reports",
+        "suggested_description": null,
+        "suggested_format": "directory",
+        "likely_scope": null,
+        "likely_entity_type": "directory",
+        "confidence": 0.65,
+        "conditional": false,
+        "unresolved_fields": [
+          "key",
+          "title",
+          "description",
+          "category",
+          "scopes"
+        ]
+      },
+      "evidence": [
+        {
+          "id": "output-evidence:97baf371680f85ab",
+          "provenance": {
+            "source": "publishDir",
+            "location": "main.nf:2",
+            "repository_revision": null
+          },
+          "observed_value": {
+            "suggested_key": "reports",
+            "path_pattern": "^reports/.+$"
+          },
+          "confidence": 0.65
+        }
+      ],
+      "reason": "Not a platform output"
+    }
+  },
+  "confirmed": {
+    "/outputs/0": {
+      "sha256": "cf179b0f28115e9f0d58a39d4525ba0a791a75b70a949034d488d96ac269e265",
+      "event": "event:1e44d277b0d38ecb"
+    }
+  },
+  "events": [
+    {
+      "id": "event:1e44d277b0d38ecb",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "outputs",
+      "action": "accept_output",
+      "pointers": [
+        "/outputs/0"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "22ef41c0162fab5086d77c8c355a4ac4481ca9050b0ebaf1bb307e3baa81bbfa",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    },
+    {
+      "id": "event:1d4253b59000c63c",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "outputs",
+      "action": "reject_output",
+      "pointers": [],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    },
+    {
+      "id": "event:8308f4f9ff64ccc0",
+      "at": "2026-10-15T11:05:11Z",
+      "layer": "outputs",
+      "action": "promote",
+      "pointers": [
+        "outputs.schema.json",
+        "outputs.yaml"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    },
+    {
+      "id": "event:1797808af4db0c26",
+      "at": "2026-10-15T21:16:30Z",
+      "layer": "outputs",
+      "action": "promote",
+      "pointers": [
+        "outputs.schema.json",
+        "outputs.yaml"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    },
+    {
+      "id": "event:d790b8165a1c4df3",
+      "at": "2026-10-16T22:51:00Z",
+      "layer": "outputs",
+      "action": "promote",
+      "pointers": [
+        "outputs.schema.json",
+        "outputs.yaml"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    },
+    {
+      "id": "event:7c79e891403052dd",
+      "at": "2026-10-17T01:16:12Z",
+      "layer": "outputs",
+      "action": "promote",
+      "pointers": [
+        "outputs.schema.json",
+        "outputs.yaml"
+      ],
+      "origin": "manual_cli",
+      "approval": "approved",
+      "actor": {
+        "label": "Ada",
+        "kind": "human"
+      },
+      "approved_by": null,
+      "tool": "nf-splice",
+      "tool_version": "0.3.0",
+      "before_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "after_sha256": "69368860afd678ce2c86ae02c4677bf8c6d98c84711dbc45f6eb2e46f47dca6b",
+      "source_revision": null
+    }
+  ],
+  "format": "0.3.0",
+  "layer": "outputs",
+  "promoted": {
+    "outputs.yaml": "4a8e35dc13b8539d0340bd24d1aab838619128ec6d5a8686bf8a9df41f79d4c2",
+    "outputs.schema.json": "acc082c64ea1c6a445e80706eb1880646eb792f002b1a716aeb6b5be89e1dc76"
+  }
+}

@@ -1,0 +1,99 @@
+catalogue_format_version: 0.3.0
+schema_version: 1.0.0
+pipeline:
+  id: multiroute
+  name: multiroute
+  version: 1.0.0
+  engine: nextflow
+  repository_url: https://github.com/org/multiroute
+schema_id: https://github.com/org/multiroute/schema/analysis-output/v1.0.0
+categories:
+- key: alignment
+- key: alignment_qc
+- key: quality_control
+- key: quantification
+outputs:
+- key: hisat2_alignment
+  title: HISAT2 alignment
+  description: HISAT2 alignment per sample.
+  category: alignment
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - bam
+  path_patterns:
+  - ^hisat2/(?P<sample_id>[^/]+)\.bam$
+- key: star_alignment
+  title: STAR alignment
+  description: Coordinate-sorted STAR alignment per sample.
+  category: alignment
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - bam
+  path_patterns:
+  - ^star/(?P<sample_id>[^/]+)\.Aligned\.sortedByCoord\.out\.bam$
+- key: star_log
+  title: STAR log
+  description: STAR alignment summary per sample.
+  category: alignment_qc
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - txt
+  path_patterns:
+  - ^star/(?P<sample_id>[^/]+)\.Log\.final\.out$
+- key: fastqc_archive
+  title: FastQC archive
+  description: Read quality data per sample.
+  category: quality_control
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - zip
+  path_patterns:
+  - ^fastqc/(?P<sample_id>[^/]+)_fastqc\.zip$
+- key: fastqc_report
+  title: FastQC report
+  description: Read quality report per sample.
+  category: quality_control
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - html
+  path_patterns:
+  - ^fastqc/(?P<sample_id>[^/]+)_fastqc\.html$
+- key: multiqc_report
+  title: MultiQC report
+  description: Aggregate quality-control report.
+  category: quality_control
+  scope:
+  - job
+  entity_type:
+  - file
+  format:
+  - html
+  path_patterns:
+  - ^multiqc/multiqc_report\.html$
+- key: salmon_quantification
+  title: Salmon quantification
+  description: Transcript quantification per sample.
+  category: quantification
+  scope:
+  - sample
+  entity_type:
+  - file
+  format:
+  - tsv
+  path_patterns:
+  - ^salmon/(?P<sample_id>[^/]+)/quant\.sf$
